@@ -1,0 +1,3 @@
+# Core contracts and demo, run from ai/
+-e ..
+# Model dependencies belong in requirements-models.txt after version/license review.
