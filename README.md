@@ -176,7 +176,7 @@ AI Pipeline (Python)
 프론트엔드, 백엔드, AI를 하나의 GitHub 저장소에서 관리하는 모노레포 구조를 사용합니다.
 
 ```text
-jjimsak/
+jimssak/
 │
 ├── frontend/                 # 프론트엔드
 │   ├── src/
@@ -200,43 +200,87 @@ jjimsak/
 ├── docs/                     # 프로젝트 문서
 ├── .github/                  # GitHub 협업 설정
 ├── .gitignore
+├── .env.example              # 루트 환경변수 예시
+├── pyproject.toml            # 공통 Python 패키지/개발 의존성
+├── CONTRIBUTING.md           # 협업과 저장소 관리자 설정 안내
 └── README.md
 ```
 
 ## 7. 설치 및 실행 방법
 
-### 저장소 복제
+현재 제공 범위는 React 화면 → FastAPI → 고정 AI 데모 응답입니다.
+실제 영상 업로드, YOLO/BoT-SORT, Depth Anything V2, 견적/계약 및 전후 비교는 후속 구현입니다.
+기획된 주요 기능과 현재 구현 범위를 구분해 주세요.
+
+### 준비
+
+Node.js 24 LTS (`.nvmrc`), Python 3.11 이상을 사용합니다.
+`python3 --version`을 먼저 확인하고, 시스템 Python이 오래되었다면
+아래 `python3` 대신 설치된 `python3.12` 등 3.11 이상의 실행 명령을 사용하세요.
 
 ```bash
-git clone https://github.com/<OWNER>/jjimsak.git
-cd jjimsak
+git clone https://github.com/OSS-team-A/jimssak.git
+cd jimssak
+cp .env.example .env
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e '.[dev]'
 ```
 
-### 프론트엔드 실행
+Windows PowerShell에서는 `Copy-Item .env.example .env`,
+`python -m venv .venv`, `.venv\Scripts\Activate.ps1`을 사용합니다.
+
+### 백엔드 실행 (저장소 루트)
+
+```bash
+python -m uvicorn backend.app.main:app --reload --port 8000
+```
+
+- 상태: http://localhost:8000/health
+- API 문서: http://localhost:8000/docs
+- 데모: `curl -X POST http://localhost:8000/api/v1/analysis/demo`
+- backend 폴더에서 실행할 때: `python -m uvicorn app.main:app --reload`
+- backend 폴더 기준 requirements 설치: `python -m pip install -r requirements-dev.txt`
+
+### 프론트엔드 실행 (새 터미널)
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
-### 백엔드 실행
+http://localhost:5173 에서 **데모 분석 실행**을 누릅니다.
+API가 실행 중이면 의자 샘플 1개가 나오며 크기는 보정 정보 필요로 표시됩니다.
+프론트엔드는 루트 `.env`의 `VITE_API_BASE_URL`을 사용합니다.
+환경변수 변경 후 앱을 재시작하세요. VITE_ 변수는 브라우저에 공개됩니다.
+
+### AI와 검증 (저장소 루트, 가상환경 활성화)
 
 ```bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload
+python -m ai.pipeline
+ruff check .
+pytest -q
+cd frontend
+npm run check
+npm run build
 ```
 
-### AI 실행 환경
+AI 핵심 규격/데모는 기본 Python 의존성만 사용합니다.
+GPU 모델 패키지와 가중치는 모델 선정 및 라이선스 확인 후 별도로 추가합니다.
+Python 직접 의존성은 `pyproject.toml`에서 관리하며 requirements 파일은 이를 참조합니다.
+Python 의존성은 호환 범위 지정이며 완전한 lock 파일은 아직 없습니다.
+프론트엔드는 커밋한 package-lock.json과 `npm ci`를 사용합니다.
 
-AI 모듈은 PyTorch 및 관련 컴퓨터 비전 라이브러리를 사용합니다.
+### 공통 규격과 협업
 
-GPU 환경 구성, 모델 가중치 다운로드 및 AI 파이프라인 실행 방법은 구현 진행에 따라 추가할 예정입니다.
-
-※ 위 실행 명령어는 예정된 프로젝트 구조를 기준으로 작성되었습니다. 실제 구현 후 실행 여부를 검증하여 업데이트합니다.
+- [AI 데이터 규격](docs/ai-contract.md), [샘플 JSON](docs/examples/demo-analysis.json)
+- [협업 및 main 보호 설정](CONTRIBUTING.md)
+- [최초 Issue 작업 목록](docs/first-tasks.md)
+- `.github/ISSUE_TEMPLATE/`: 기능/버그 양식
+- `.github/PULL_REQUEST_TEMPLATE.md`: PR 양식
+- `.github/workflows/ci.yml`: 프론트 검사/빌드, Python 린트/테스트
 
 ## 8. 팀원 및 역할
 

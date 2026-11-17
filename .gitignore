@@ -221,3 +221,40 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Jimssak frontend, local configuration, and AI artifacts
+node_modules/
+.vite/
+*.tsbuildinfo
+coverage/
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.safetensors
+runs/
+wandb/
+lightning_logs/
+datasets/
+data/raw/
+data/processed/
+uploads/
+outputs/
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.db
+*.sqlite
+*.sqlite3
+.DS_Store
+Thumbs.db
+.idea/
+logs/
+tmp/
+temp/

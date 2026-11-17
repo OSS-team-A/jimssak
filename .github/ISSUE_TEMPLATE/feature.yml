@@ -1,0 +1,28 @@
+name: 기능 작업
+description: 기능별 작업과 완료 기준 정리
+title: "[Feature] "
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: 담당 영역
+      options: [Frontend, Backend, AI detection/tracking, AI measurement, Integration]
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: 목표와 범위
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 완료 기준과 검증 방법
+      placeholder: "- [ ] 동일 샘플로 공통 JSON 출력"
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: 선행 작업 / 관련 이슈
