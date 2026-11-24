@@ -13,13 +13,19 @@ from ..schemas.moves import (
     MoveCreated,
     MoveData,
     MoveSnapshot,
+    MoveUpdate,
+    Place,
+    PlaceInput,
+    PlaceSection,
     RoomVideo,
+    Schedule,
+    ScheduleSection,
     Section,
     UploadedVideo,
 )
 from ..services.auth import AuthStore
 from ..services.media import MediaStorage, MediaTooLarge, UnsupportedMedia
-from ..services.moves import Media, Move, MoveStore
+from ..services.moves import Media, Move, MoveStore, PlaceRecord, ScheduleRecord
 from .auth import Store, bearer, unauthorized
 
 # Room for multipart boundaries and small form fields around the video.
@@ -164,7 +170,75 @@ def create_move(member: Member, moves: MoveStoreDep) -> MoveCreated:
     },
 )
 def get_move(move: AccessibleMove, moves: MoveStoreDep) -> MoveSnapshot:
+    return _snapshot(move, moves)
+
+
+@router.patch(
+    "/{move_id}",
+    summary="이사 기본정보 저장",
+    description=(
+        "SC-06의 출발지·도착지(도로명주소, 상세주소, 층, 승강기)와 이사 일정(날짜, 시작 시간)을 "
+        "저장한다. 보낸 항목(`origin`, `destination`, `schedule`)만 바뀌고, 보내지 않은 "
+        "항목은 그대로 둔다. 항목을 `null`로 보내면 지운다. 승강기(`elevator`)는 사용자가 "
+        "고칠 때만 보내며, 보내지 않으면 같은 주소에서는 기존 값을 유지하고 주소가 바뀌면 "
+        "확인 필요(unknown)로 돌아간다. 저장 후의 이사 상태를 반환한다."
+    ),
+    responses={
+        401: {"description": "인증 정보 없음"},
+        404: {"description": "없거나, 만료되었거나, 다른 사용자의 이사"},
+        422: {"description": "주소 누락, 층 범위(-5~80, 0 제외), 지난 날짜, 정시가 아닌 시간"},
+    },
+)
+def update_move(update: MoveUpdate, move: AccessibleMove, moves: MoveStoreDep) -> MoveSnapshot:
+    sent = update.model_fields_set
+    current, _ = moves.get_details(move.id)
+    places = {
+        role: _place_record(getattr(update, role), current.get(role))
+        for role in ("origin", "destination") if role in sent
+    }
+    schedule = None
+    if update.schedule is not None:
+        schedule = ScheduleRecord(
+            update.schedule.move_date.isoformat(), update.schedule.start_time.isoformat()
+        )
+    moves.update_details(move.id, places, schedule, schedule_sent="schedule" in sent)
+    return _snapshot(move, moves)
+
+
+def _place_record(place: PlaceInput | None, current: PlaceRecord | None) -> PlaceRecord | None:
+    if place is None:
+        return None
+    if place.elevator is not None:
+        # The user corrected it on the confirmation screen.
+        elevator = place.elevator
+        source = None if elevator == "unknown" else "user"
+    elif current is not None and current.road_address == place.road_address:
+        # Same building: keep what we had, whether looked up or entered.
+        elevator, source = current.elevator, current.elevator_source
+    else:
+        # New building: the old answer no longer applies.
+        elevator, source = "unknown", None
+    return PlaceRecord(
+        road_address=place.road_address,
+        detail_address=place.detail_address,
+        floor=place.floor,
+        elevator=elevator,
+        elevator_source=source,
+    )
+
+
+def _place_section(record: PlaceRecord | None) -> PlaceSection:
+    if record is None:
+        return PlaceSection(status="empty")
+    return PlaceSection(
+        status="filled" if record.floor is not None else "partial",
+        value=Place(**vars(record)),
+    )
+
+
+def _snapshot(move: Move, moves: MoveStore) -> MoveSnapshot:
     video = moves.get_video(move.id)
+    places, schedule = moves.get_details(move.id)
     data = MoveData(
         room_video=RoomVideo(
             status="uploaded" if video else "empty",
@@ -172,13 +246,18 @@ def get_move(move: AccessibleMove, moves: MoveStoreDep) -> MoveSnapshot:
         ),
         analysis=Section(status="not_started"),
         inventory=Section(status="empty"),
-        origin=Section(status="empty"),
-        destination=Section(status="empty"),
-        schedule=Section(status="empty"),
+        origin=_place_section(places.get("origin")),
+        destination=_place_section(places.get("destination")),
+        schedule=ScheduleSection(
+            status="filled" if schedule else "empty",
+            value=Schedule(move_date=schedule.move_date, start_time=schedule.start_time)
+            if schedule else None,
+        ),
     )
+    # Anything not yet complete still needs asking; partial places count as missing.
     missing = [
         step for step in ("room_video", "origin", "destination", "schedule")
-        if getattr(data, step).status == "empty"
+        if getattr(data, step).status not in ("uploaded", "filled")
     ]
     return MoveSnapshot(
         move_id=move.id,

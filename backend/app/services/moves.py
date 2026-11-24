@@ -38,7 +38,23 @@ class Media:
     created_at: int
 
 
-MEDIA_COLUMNS = "id, move_id, filename, content_type, size_bytes, storage_path, created_at"
+@dataclass(frozen=True)
+class PlaceRecord:
+    road_address: str
+    detail_address: str | None
+    floor: int | None
+    elevator: str
+    elevator_source: str | None
+
+
+@dataclass(frozen=True)
+class ScheduleRecord:
+    # ISO strings: YYYY-MM-DD and HH:MM:SS.
+    move_date: str
+    start_time: str
+
+
+MEDIA_COLUMNS ="id, move_id, filename, content_type, size_bytes, storage_path, created_at"
 
 
 class MoveStore:
@@ -77,6 +93,25 @@ class MoveStore:
                     size_bytes INTEGER NOT NULL,
                     storage_path TEXT NOT NULL,
                     created_at INTEGER NOT NULL
+                );
+                -- SC-06: origin and destination are kept apart, since one end can
+                -- have stairs and the other an elevator.
+                CREATE TABLE IF NOT EXISTS move_places (
+                    move_id TEXT NOT NULL REFERENCES moves(id) ON DELETE CASCADE,
+                    role TEXT NOT NULL CHECK (role IN ('origin', 'destination')),
+                    road_address TEXT NOT NULL,
+                    detail_address TEXT,
+                    floor INTEGER,
+                    elevator TEXT NOT NULL,
+                    elevator_source TEXT,
+                    updated_at INTEGER NOT NULL,
+                    PRIMARY KEY (move_id, role)
+                );
+                CREATE TABLE IF NOT EXISTS move_schedules (
+                    move_id TEXT PRIMARY KEY NOT NULL REFERENCES moves(id) ON DELETE CASCADE,
+                    move_date TEXT NOT NULL,
+                    start_time TEXT NOT NULL,
+                    updated_at INTEGER NOT NULL
                 );
             """)
 
@@ -130,6 +165,64 @@ class MoveStore:
                  media.size_bytes, media.storage_path, media.created_at),
             )
         return Media(**dict(old)) if old else None
+
+    def get_details(self, move_id: str) -> tuple[dict[str, PlaceRecord], ScheduleRecord | None]:
+        with self._connect() as db:
+            places = {
+                row["role"]: PlaceRecord(
+                    row["road_address"], row["detail_address"], row["floor"],
+                    row["elevator"], row["elevator_source"],
+                )
+                for row in db.execute(
+                    "SELECT * FROM move_places WHERE move_id = ?", (move_id,)
+                ).fetchall()
+            }
+            row = db.execute(
+                "SELECT move_date, start_time FROM move_schedules WHERE move_id = ?", (move_id,)
+            ).fetchone()
+        return places, ScheduleRecord(row["move_date"], row["start_time"]) if row else None
+
+    def update_details(
+        self,
+        move_id: str,
+        places: dict[str, PlaceRecord | None],
+        schedule: ScheduleRecord | None,
+        schedule_sent: bool,
+    ) -> None:
+        """Replace only the sections that were sent, all in one transaction.
+
+        A place or schedule given as None is cleared.
+        """
+        now = int(time.time())
+        with self._connect() as db:
+            for role, place in places.items():
+                if place is None:
+                    db.execute(
+                        "DELETE FROM move_places WHERE move_id = ? AND role = ?", (move_id, role)
+                    )
+                    continue
+                db.execute(
+                    "INSERT INTO move_places(move_id, role, road_address, detail_address, floor, "
+                    "elevator, elevator_source, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT(move_id, role) DO UPDATE SET "
+                    "road_address = excluded.road_address, "
+                    "detail_address = excluded.detail_address, floor = excluded.floor, "
+                    "elevator = excluded.elevator, elevator_source = excluded.elevator_source, "
+                    "updated_at = excluded.updated_at",
+                    (move_id, role, place.road_address, place.detail_address, place.floor,
+                     place.elevator, place.elevator_source, now),
+                )
+            if schedule_sent:
+                if schedule is None:
+                    db.execute("DELETE FROM move_schedules WHERE move_id = ?", (move_id,))
+                else:
+                    db.execute(
+                        "INSERT INTO move_schedules(move_id, move_date, start_time, updated_at) "
+                        "VALUES (?, ?, ?, ?) ON CONFLICT(move_id) DO UPDATE SET "
+                        "move_date = excluded.move_date, start_time = excluded.start_time, "
+                        "updated_at = excluded.updated_at",
+                        (move_id, schedule.move_date, schedule.start_time, now),
+                    )
 
     def get_video(self, move_id: str) -> Media | None:
         with self._connect() as db:
