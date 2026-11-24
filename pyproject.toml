@@ -11,6 +11,7 @@ dependencies = ["fastapi>=0.115,<1", "uvicorn[standard]>=0.34,<1", "pydantic-set
 
 [project.optional-dependencies]
 vision = ["opencv-python-headless>=4.10,<5", "numpy>=2,<3"]
+depth = ["torch>=2.6,<3", "transformers>=4.57,<5", "safetensors>=0.5,<1", "Pillow>=10,<13"]
 dev = ["pytest>=8,<10", "httpx>=0.28,<1", "ruff>=0.11,<1"]
 
 [tool.setuptools.packages.find]
