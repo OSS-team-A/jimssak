@@ -54,6 +54,24 @@ class ScheduleRecord:
     start_time: str
 
 
+@dataclass(frozen=True)
+class LookupRecord:
+    """Building register result for one end of a move, kept so it is fetched only once."""
+
+    # found / ambiguous / not_found / failed / not_requested
+    status: str
+    # The lot the lookup was for; null when the address had no search codes.
+    adm_cd: str | None = None
+    mountain: bool = False
+    lot_main: int | None = None
+    lot_sub: int | None = None
+    # Every main-building row of the lot as JSON, or null when the fetch failed.
+    rows_json: str | None = None
+    # The chosen row as JSON when status is found.
+    building_json: str | None = None
+    checked_at: int | None = None
+
+
 MEDIA_COLUMNS ="id, move_id, filename, content_type, size_bytes, storage_path, created_at"
 
 
@@ -105,6 +123,19 @@ class MoveStore:
                     elevator TEXT NOT NULL,
                     elevator_source TEXT,
                     updated_at INTEGER NOT NULL,
+                    PRIMARY KEY (move_id, role)
+                );
+                CREATE TABLE IF NOT EXISTS move_building_lookups (
+                    move_id TEXT NOT NULL REFERENCES moves(id) ON DELETE CASCADE,
+                    role TEXT NOT NULL CHECK (role IN ('origin', 'destination')),
+                    status TEXT NOT NULL,
+                    adm_cd TEXT,
+                    mountain INTEGER NOT NULL DEFAULT 0,
+                    lot_main INTEGER,
+                    lot_sub INTEGER,
+                    rows_json TEXT,
+                    building_json TEXT,
+                    checked_at INTEGER,
                     PRIMARY KEY (move_id, role)
                 );
                 CREATE TABLE IF NOT EXISTS move_schedules (
@@ -182,19 +213,48 @@ class MoveStore:
             ).fetchone()
         return places, ScheduleRecord(row["move_date"], row["start_time"]) if row else None
 
+    def get_lookups(self, move_id: str) -> dict[str, LookupRecord]:
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT * FROM move_building_lookups WHERE move_id = ?", (move_id,)
+            ).fetchall()
+        return {
+            row["role"]: LookupRecord(
+                status=row["status"], adm_cd=row["adm_cd"], mountain=bool(row["mountain"]),
+                lot_main=row["lot_main"], lot_sub=row["lot_sub"], rows_json=row["rows_json"],
+                building_json=row["building_json"], checked_at=row["checked_at"],
+            )
+            for row in rows
+        }
+
     def update_details(
         self,
         move_id: str,
         places: dict[str, PlaceRecord | None],
         schedule: ScheduleRecord | None,
         schedule_sent: bool,
+        lookups: dict[str, LookupRecord | None] | None = None,
     ) -> None:
         """Replace only the sections that were sent, all in one transaction.
 
-        A place or schedule given as None is cleared.
+        A place, schedule or lookup given as None is cleared.
         """
         now = int(time.time())
         with self._connect() as db:
+            for role, lookup in (lookups or {}).items():
+                db.execute(
+                    "DELETE FROM move_building_lookups WHERE move_id = ? AND role = ?",
+                    (move_id, role),
+                )
+                if lookup is not None:
+                    db.execute(
+                        "INSERT INTO move_building_lookups(move_id, role, status, adm_cd, "
+                        "mountain, lot_main, lot_sub, rows_json, building_json, checked_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (move_id, role, lookup.status, lookup.adm_cd, int(lookup.mountain),
+                         lookup.lot_main, lookup.lot_sub, lookup.rows_json,
+                         lookup.building_json, lookup.checked_at),
+                    )
             for role, place in places.items():
                 if place is None:
                     db.execute(

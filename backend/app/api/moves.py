@@ -1,3 +1,6 @@
+import json
+import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
@@ -9,6 +12,7 @@ from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials
 
 from ..schemas.auth import User
 from ..schemas.moves import (
+    BuildingInfo,
     MediaInfo,
     MoveCreated,
     MoveData,
@@ -24,8 +28,23 @@ from ..schemas.moves import (
     UploadedVideo,
 )
 from ..services.auth import AuthStore
+from ..services.building_register import (
+    BuildingLookupFailed,
+    BuildingRegister,
+    LotCode,
+    count,
+    decide_elevator,
+    select_building,
+)
 from ..services.media import MediaStorage, MediaTooLarge, UnsupportedMedia
-from ..services.moves import Media, Move, MoveStore, PlaceRecord, ScheduleRecord
+from ..services.moves import (
+    LookupRecord,
+    Media,
+    Move,
+    MoveStore,
+    PlaceRecord,
+    ScheduleRecord,
+)
 from .auth import Store, bearer, unauthorized
 
 # Room for multipart boundaries and small form fields around the video.
@@ -115,6 +134,13 @@ def get_media_storage(request: Request) -> MediaStorage:
 
 MoveStoreDep = Annotated[MoveStore, Depends(get_move_store)]
 MediaStorageDep = Annotated[MediaStorage, Depends(get_media_storage)]
+
+
+def get_building_register(request: Request) -> BuildingRegister:
+    return request.app.state.building_register
+
+
+RegisterDep = Annotated[BuildingRegister, Depends(get_building_register)]
 Bearer = Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]
 GuestToken = Annotated[str | None, Depends(guest_header)]
 
@@ -179,9 +205,14 @@ def get_move(move: AccessibleMove, moves: MoveStoreDep) -> MoveSnapshot:
     description=(
         "SC-06의 출발지·도착지(도로명주소, 상세주소, 층, 승강기)와 이사 일정(날짜, 시작 시간)을 "
         "저장한다. 보낸 항목(`origin`, `destination`, `schedule`)만 바뀌고, 보내지 않은 "
-        "항목은 그대로 둔다. 항목을 `null`로 보내면 지운다. 승강기(`elevator`)는 사용자가 "
-        "고칠 때만 보내며, 보내지 않으면 같은 주소에서는 기존 값을 유지하고 주소가 바뀌면 "
-        "확인 필요(unknown)로 돌아간다. 저장 후의 이사 상태를 반환한다."
+        "항목은 그대로 둔다. 항목을 `null`로 보내면 지운다.\n\n"
+        "주소 검색(`GET /addresses`)에서 고른 후보의 `building_name`, `adm_cd`, `mountain`, "
+        "`lot_main`, `lot_sub`를 함께 보내면 건축물대장을 조회해 건물 정보(`building`)와 승강기를 "
+        "채운다. 같은 지번을 다시 보내면 외부 조회 없이 저장된 결과를 쓰고, 조회가 실패했던 "
+        "주소만 다시 조회한다. 조회가 실패해도 저장은 성공한다. 외부 API가 간헐적으로 "
+        "실패하므로, 응답의 `building.status`가 `failed`이면 같은 본문으로 한 번 더 저장한다.\n\n"
+        "승강기(`elevator`)는 사용자가 고칠 때만 보낸다. 사용자가 고친 값은 같은 주소인 동안 "
+        "조회 결과로 덮어쓰지 않는다. 저장 후의 이사 상태를 반환한다."
     ),
     responses={
         401: {"description": "인증 정보 없음"},
@@ -189,31 +220,90 @@ def get_move(move: AccessibleMove, moves: MoveStoreDep) -> MoveSnapshot:
         422: {"description": "주소 누락, 층 범위(-5~80, 0 제외), 지난 날짜, 정시가 아닌 시간"},
     },
 )
-def update_move(update: MoveUpdate, move: AccessibleMove, moves: MoveStoreDep) -> MoveSnapshot:
+def update_move(
+    update: MoveUpdate, move: AccessibleMove, moves: MoveStoreDep, register: RegisterDep
+) -> MoveSnapshot:
     sent = update.model_fields_set
     current, _ = moves.get_details(move.id)
-    places = {
-        role: _place_record(getattr(update, role), current.get(role))
-        for role in ("origin", "destination") if role in sent
+    known = moves.get_lookups(move.id)
+    places: dict[str, PlaceRecord | None] = {}
+    lookups: dict[str, LookupRecord | None] = {}
+    sent_places = {
+        role: getattr(update, role) for role in ("origin", "destination") if role in sent
     }
+    # The register can be slow and is retried, so both ends are looked up at the same time.
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        pending = {
+            role: pool.submit(_look_up, register, place, known.get(role))
+            for role, place in sent_places.items() if place is not None
+        }
+    for role, place in sent_places.items():
+        if place is None:
+            places[role] = lookups[role] = None
+            continue
+        lookups[role] = pending[role].result()
+        places[role] = _place_record(place, current.get(role), lookups[role])
     schedule = None
     if update.schedule is not None:
         schedule = ScheduleRecord(
             update.schedule.move_date.isoformat(), update.schedule.start_time.isoformat()
         )
-    moves.update_details(move.id, places, schedule, schedule_sent="schedule" in sent)
+    moves.update_details(move.id, places, schedule, schedule_sent="schedule" in sent,
+                         lookups=lookups)
     return _snapshot(move, moves)
 
 
-def _place_record(place: PlaceInput | None, current: PlaceRecord | None) -> PlaceRecord | None:
-    if place is None:
-        return None
+def _look_up(
+    register: BuildingRegister, place: PlaceInput, known: LookupRecord | None
+) -> LookupRecord:
+    """Find the user's building, calling the register only for a lot not read before."""
+    if place.adm_cd is None or place.lot_main is None:
+        return LookupRecord(status="not_requested")
+    lot = LotCode(place.adm_cd, place.mountain, place.lot_main, place.lot_sub)
+    codes = {"adm_cd": lot.adm_cd, "mountain": lot.mountain,
+             "lot_main": lot.lot_main, "lot_sub": lot.lot_sub}
+    same_lot = known is not None and known.rows_json is not None and (
+        (known.adm_cd, known.mountain, known.lot_main, known.lot_sub)
+        == (lot.adm_cd, lot.mountain, lot.lot_main, lot.lot_sub)
+    )
+    if same_lot:
+        rows, checked_at = json.loads(known.rows_json), known.checked_at
+    else:
+        checked_at = int(time.time())
+        try:
+            rows = register.fetch(lot)
+        except BuildingLookupFailed:
+            return LookupRecord(status="failed", checked_at=checked_at, **codes)
+    # Matching runs on the kept rows, so a changed 동 in the detail address needs no new call.
+    match = select_building(rows, place.road_address, place.building_name, place.detail_address)
+    return LookupRecord(
+        status=match.status,
+        rows_json=json.dumps(rows, ensure_ascii=False),
+        building_json=json.dumps(match.row, ensure_ascii=False) if match.row else None,
+        checked_at=checked_at,
+        **codes,
+    )
+
+
+def _place_record(
+    place: PlaceInput, current: PlaceRecord | None, lookup: LookupRecord
+) -> PlaceRecord:
+    same_address = current is not None and current.road_address == place.road_address
     if place.elevator is not None:
         # The user corrected it on the confirmation screen.
         elevator = place.elevator
         source = None if elevator == "unknown" else "user"
-    elif current is not None and current.road_address == place.road_address:
-        # Same building: keep what we had, whether looked up or entered.
+    elif same_address and current.elevator_source == "user":
+        # A user's answer for this building outranks the register.
+        elevator, source = current.elevator, current.elevator_source
+    elif lookup.status == "found":
+        elevator = decide_elevator(json.loads(lookup.building_json))
+        source = None if elevator == "unknown" else "building_register"
+    elif lookup.status != "not_requested":
+        # Looked up but could not tell which building, or the lookup failed.
+        elevator, source = "unknown", None
+    elif same_address:
+        # No lookup codes this time: keep what we had for this building.
         elevator, source = current.elevator, current.elevator_source
     else:
         # New building: the old answer no longer applies.
@@ -227,18 +317,33 @@ def _place_record(place: PlaceInput | None, current: PlaceRecord | None) -> Plac
     )
 
 
-def _place_section(record: PlaceRecord | None) -> PlaceSection:
+def _building_info(lookup: LookupRecord | None) -> BuildingInfo:
+    if lookup is None:
+        return BuildingInfo(status="not_requested")
+    info = BuildingInfo(status=lookup.status, checked_at=_time(lookup.checked_at))
+    if lookup.building_json:
+        row = json.loads(lookup.building_json)
+        info.building_name = (row.get("bldNm") or "").strip() or None
+        info.dong_name = (row.get("dongNm") or "").strip() or None
+        info.above_ground_floors = count(row.get("grndFlrCnt"))
+        info.ride_elevators = count(row.get("rideUseElvtCnt"))
+        info.emergency_elevators = count(row.get("emgenUseElvtCnt"))
+    return info
+
+
+def _place_section(record: PlaceRecord | None, lookup: LookupRecord | None) -> PlaceSection:
     if record is None:
         return PlaceSection(status="empty")
     return PlaceSection(
         status="filled" if record.floor is not None else "partial",
-        value=Place(**vars(record)),
+        value=Place(**vars(record), building=_building_info(lookup)),
     )
 
 
 def _snapshot(move: Move, moves: MoveStore) -> MoveSnapshot:
     video = moves.get_video(move.id)
     places, schedule = moves.get_details(move.id)
+    lookups = moves.get_lookups(move.id)
     data = MoveData(
         room_video=RoomVideo(
             status="uploaded" if video else "empty",
@@ -246,8 +351,8 @@ def _snapshot(move: Move, moves: MoveStore) -> MoveSnapshot:
         ),
         analysis=Section(status="not_started"),
         inventory=Section(status="empty"),
-        origin=_place_section(places.get("origin")),
-        destination=_place_section(places.get("destination")),
+        origin=_place_section(places.get("origin"), lookups.get("origin")),
+        destination=_place_section(places.get("destination"), lookups.get("destination")),
         schedule=ScheduleSection(
             status="filled" if schedule else "empty",
             value=Schedule(move_date=schedule.move_date, start_time=schedule.start_time)

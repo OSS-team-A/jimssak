@@ -10,6 +10,7 @@ from .api.routes import router
 from .config import Settings
 from .services.address_search import JusoAddressSearch
 from .services.auth import AuthStore
+from .services.building_register import HubBuildingRegister
 from .services.media import MediaStorage
 from .services.moves import MoveStore
 
@@ -36,6 +37,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             settings.address_search_url,
             key.get_secret_value() if key else None,
             settings.external_api_timeout_seconds,
+        )
+        data_key = settings.data_go_kr_service_key
+        app.state.building_register = HubBuildingRegister(
+            settings.building_register_url,
+            data_key.get_secret_value() if data_key else None,
+            settings.external_api_timeout_seconds,
+            settings.building_lookup_budget_seconds,
         )
         yield
 
