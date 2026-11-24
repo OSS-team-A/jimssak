@@ -2,6 +2,8 @@ import { useState, type FormEvent } from 'react';
 import { navigate, routes } from '../app/routes';
 import { BrandHeader } from '../components/common/BrandHeader';
 import { Button } from '../components/common/Button';
+import { login, saveSession, signup } from '../api/auth';
+import { ApiError } from '../api/client';
 
 export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   const isSignup = mode === 'signup';
@@ -10,14 +12,25 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [message, setMessage] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (isSignup && password !== confirmation) {
       setMessage('비밀번호가 일치하지 않아요. 다시 확인해주세요.');
       return;
     }
-    setMessage('계정 연결은 다음 개발 단계에서 사용할 수 있어요.');
+    setSubmitting(true);
+    setMessage('');
+    try {
+      if (isSignup) await signup(email, password);
+      saveSession(await login(email, password));
+      navigate(routes.history);
+    } catch (cause) {
+      setMessage(cause instanceof ApiError
+        ? cause.status === 409 ? '이미 가입한 이메일이에요.' : cause.status === 401 ? '이메일 또는 비밀번호를 확인해주세요.' : '요청을 완료하지 못했어요. 잠시 후 다시 시도해주세요.'
+        : '서버에 연결하지 못했어요. 연결 상태를 확인해주세요.');
+    } finally { setSubmitting(false); }
   }
 
   return <main className="app-page auth-page">
@@ -34,7 +47,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
         {isSignup && <label>비밀번호 확인<input type="password" autoComplete="new-password" placeholder="비밀번호를 한 번 더 입력해주세요" value={confirmation} onChange={e => setConfirmation(e.target.value)} required /></label>}
       </div>
       {message && <p className="auth-message" role="status">{message}</p>}
-      <div className="auth-actions"><Button type="submit">{isSignup ? '가입하기' : '로그인'}</Button>
+      <div className="auth-actions"><Button type="submit" disabled={submitting}>{submitting ? '처리 중...' : isSignup ? '가입하기' : '로그인'}</Button>
         {!isSignup && <p>처음이신가요? <button type="button" onClick={() => navigate(routes.signup)}>회원가입</button></p>}
         {isSignup && <p><button type="button" onClick={() => navigate(routes.login)}>이미 계정이 있나요? 로그인</button></p>}
       </div>

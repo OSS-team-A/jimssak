@@ -1,6 +1,6 @@
 export const routes = {
   home: '/', guide: '/guide', login: '/login', signup: '/signup', chat: '/chat', capture: '/capture', inventory: '/inventory',
-  moveInfo: '/move-info', result: '/result', history: '/history',
+  moveInfo: '/move-info', analysis: '/analysis', result: '/result', history: '/history',
 } as const;
 
 export type AppRoute = (typeof routes)[keyof typeof routes];

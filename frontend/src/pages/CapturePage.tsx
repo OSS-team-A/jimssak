@@ -4,7 +4,8 @@ import { ApiError } from '../api/client';
 import { navigate, routes } from '../app/routes';
 import { BrandHeader } from '../components/common/BrandHeader';
 import { Button } from '../components/common/Button';
-import mascot from '../assets/mascot.png';
+import mascot from '../assets/capture-mascot.webp';
+import analysisMascot from '../assets/analysis-mascot.webp';
 import bulbIcon from '../assets/capture-bulb.svg';
 import cameraIcon from '../assets/capture-camera.svg';
 import arrowIcon from '../assets/capture-arrow.svg';
@@ -74,13 +75,13 @@ export function CapturePage() {
       let move = moveRef.current;
       if (!move) {
         const created = await createMove();
-        if (!created.guest_token) throw new Error('비회원 이사를 만들지 못했어요.');
-        move = { move_id: created.move_id, guest_token: created.guest_token };
+        move = { move_id: created.move_id, guest_token: created.guest_token ?? '' };
         moveRef.current = move;
       }
       await uploadMoveVideo(move.move_id, move.guest_token, file);
-      sessionStorage.setItem('jimssak-guest-move', JSON.stringify(move));
+      sessionStorage.setItem(move.guest_token ? 'jimssak-guest-move' : 'jimssak-member-move', JSON.stringify(move));
       setUploaded(true);
+      navigate(routes.moveInfo);
     } catch (cause) {
       if (cause instanceof ApiError) {
         setError(cause.status === 413 ? '영상 용량이 너무 커요. 짧게 다시 촬영해주세요.'
@@ -125,7 +126,7 @@ export function CapturePage() {
       <BrandHeader />
       <span className="capture-eyebrow">촬영 준비</span>
       <h1>방을 찍기 전에<br />이것만 확인해주세요</h1>
-      <div className="mascot-window capture-mascot" role="img" aria-label="짐싹 캐릭터"><img src={mascot} alt="" /></div>
+      <div className="capture-mascot" role="img" aria-label="짐싹 캐릭터"><img src={mascot} alt="" /></div>
       <div className="capture-tips">
         <div className="capture-tip"><img className="capture-tip-icon" src={bulbIcon} alt="" /><div><strong>조명을 켜주세요</strong><p>밝을수록 물품을 확인하기 쉬워요.</p></div></div>
         <div className="capture-tip"><img className="capture-tip-icon" src={cameraIcon} alt="" /><div><strong>큰 가구부터, 빠짐없이</strong><p>가구 전체와 가려진 공간까지 담아주세요.</p></div></div>
@@ -134,8 +135,9 @@ export function CapturePage() {
       {error && <p role="alert">{error}</p>}
       <div className="capture-prep-actions"><Button onClick={() => setPermissionOpen(true)}>촬영 시작하기</Button></div>
       <input ref={fileRef} type="file" accept=".mp4,.mov,video/mp4,video/quicktime" capture="environment" onChange={chooseFile} hidden aria-label="카메라로 영상 촬영" />
-      {permissionOpen && <div className="capture-permission-backdrop">
-        <div className="capture-permission" role="dialog" aria-modal="true" aria-label="카메라 사용 안내">
+      {permissionOpen && <div className="capture-permission-backdrop" onClick={() => setPermissionOpen(false)}>
+        <div className="capture-permission" role="dialog" aria-modal="true" aria-label="카메라 사용 안내" onClick={event => event.stopPropagation()}>
+          <button className="permission-close" type="button" aria-label="닫기" onClick={() => setPermissionOpen(false)}>×</button>
           <img src={permissionCameraIcon} width="40" height="40" alt="" />
           <h2>방을 촬영하려면<br />카메라 사용이 필요해요</h2>
           <p>이삿짐 목록을 만들기 위해 카메라를 사용해요.<br />다음 브라우저 안내에서 ‘허용’을 눌러주세요.</p>
@@ -154,10 +156,10 @@ export function CapturePage() {
       <BrandHeader />
       <h1>{uploading ? '영상을 저장하고 있어요' : uploaded ? '영상이 저장됐어요' : '영상을 저장하지 못했어요'}</h1>
       <p>{uploading ? '촬영한 영상을 업로드하고 있어요.' : uploaded ? '영상 분석은 아직 연결되지 않았어요.' : error}</p>
-      <div className="capture-status-mascot mascot-window"><img src={mascot} alt="" /></div>
+      <div className="capture-status-mascot"><img src={analysisMascot} alt="" /></div>
       <div className="capture-status-strip" role="status">{uploading ? '영상 업로드 중' : uploaded ? '영상 업로드 완료' : '영상 업로드 실패'}</div>
       {uploaded && <p className="capture-status-detail">이삿짐 목록과 명세서 생성은 아직 연결되지 않았어요.</p>}
-      {!uploading && <div className="capture-status-actions"><Button onClick={() => navigate(routes.home)}>홈으로 돌아가기</Button></div>}
+      {!uploading && !uploaded && <div className="capture-status-actions"><Button variant="secondary" onClick={() => { setError(''); setScreen('prep'); }}>영상 다시 촬영하기</Button></div>}
     </div>}
   </main>;
 }
