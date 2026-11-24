@@ -1,5 +1,6 @@
 import sqlite3
 from contextlib import closing
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -284,3 +285,35 @@ def test_accepted_upload_is_read(settings):
         )
         assert response.status_code == 201
         assert counter.read > len(MP4)
+
+
+def test_ids_are_uuids(client):
+    body = client.post(MOVES).json()
+    assert str(UUID(body["move_id"])) == body["move_id"]
+    headers = {"X-Guest-Token": body["guest_token"]}
+    upload = client.post(
+        f"{MOVES}/{body['move_id']}/media", headers=headers,
+        files={"file": ("room.mp4", MP4, "video/mp4")},
+    ).json()
+    assert str(UUID(upload["media_id"])) == upload["media_id"]
+    # Any spelling of the same UUID finds the move.
+    upper = body["move_id"].upper()
+    assert client.get(f"{MOVES}/{upper}", headers=headers).status_code == 200
+    assert client.post(
+        f"{MOVES}/{upper}/media", headers=headers,
+        files={"file": ("room.mp4", MP4, "video/mp4")},
+    ).status_code == 201
+
+
+def test_malformed_move_id_is_rejected(settings):
+    counter = BodyCounter(create_app(settings))
+    with TestClient(counter) as client:
+        _, headers = guest_move(client)
+        assert client.get(f"{MOVES}/not-a-uuid", headers=headers).status_code == 422
+        counter.read = 0
+        response = client.post(
+            f"{MOVES}/not-a-uuid/media", headers=headers,
+            files={"file": ("room.mp4", MP4, "video/mp4")},
+        )
+        assert response.status_code == 422
+        assert counter.read == 0
