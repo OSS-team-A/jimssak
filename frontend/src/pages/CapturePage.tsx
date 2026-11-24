@@ -4,7 +4,9 @@ import { ApiError } from '../api/client';
 import { navigate, routes } from '../app/routes';
 import { BrandHeader } from '../components/common/BrandHeader';
 import { Button } from '../components/common/Button';
+import mascot from '../assets/mascot.png';
 
+type Screen = 'prep' | 'camera' | 'review';
 const acceptedVideo = (file: File) => /\.(mp4|mov)$/i.test(file.name)
   && ['video/mp4', 'video/quicktime', 'application/octet-stream', ''].includes(file.type);
 
@@ -15,41 +17,55 @@ export function CapturePage() {
   const chunksRef = useRef<Blob[]>([]);
   const previewUrlRef = useRef<string | null>(null);
   const moveRef = useRef<{ move_id: string; guest_token: string } | null>(null);
+  const [screen, setScreen] = useState<Screen>('prep');
+  const [permissionOpen, setPermissionOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [recording, setRecording] = useState(false);
+  const [seconds, setSeconds] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [uploaded, setUploaded] = useState(false);
   const [error, setError] = useState('');
-  const [cameraReady, setCameraReady] = useState(false);
   const mp4Recording = typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported('video/mp4');
 
   useEffect(() => {
-    let mounted = true;
-    async function openCamera() {
-      try {
-        if (!navigator.mediaDevices?.getUserMedia) throw new Error('HTTPS 연결과 브라우저 카메라 권한을 확인해주세요.');
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: true });
-        if (!mounted) { stream.getTracks().forEach(track => track.stop()); return; }
-        streamRef.current = stream;
-        if (videoRef.current) videoRef.current.srcObject = stream;
-        setCameraReady(true);
-      } catch {
-        if (mounted) setError('카메라와 마이크를 사용할 수 없어요. 권한을 허용하거나 MP4·MOV 파일을 선택해주세요.');
-      }
-    }
-    void openCamera();
-    return () => {
-      mounted = false;
-      if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
-      streamRef.current?.getTracks().forEach(track => track.stop());
-      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
-    };
+    if (!recording) return;
+    const timer = window.setInterval(() => setSeconds(value => value + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [recording]);
+
+  useEffect(() => () => {
+    if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
+    streamRef.current?.getTracks().forEach(track => track.stop());
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
   }, []);
 
   useEffect(() => {
-    if (!previewUrl && videoRef.current && streamRef.current) videoRef.current.srcObject = streamRef.current;
-  }, [previewUrl]);
+    if (screen === 'camera' && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      void videoRef.current.play().catch(() => {});
+    }
+  }, [screen]);
+
+  async function openCamera() {
+    setPermissionOpen(false);
+    setError('');
+    if (!mp4Recording) {
+      setError('이 브라우저는 MP4 녹화를 지원하지 않아요. 아래에서 MP4·MOV 영상을 선택해주세요.');
+      return;
+    }
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error('카메라를 사용할 수 없어요.');
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: true });
+      streamRef.current?.getTracks().forEach(track => track.stop());
+      streamRef.current = stream;
+      setScreen('camera');
+      setHelpOpen(!sessionStorage.getItem('jimssak-capture-help-seen'));
+    } catch {
+      setError('카메라와 마이크를 사용할 수 없어요. 권한을 확인하거나 MP4·MOV 영상을 선택해주세요.');
+    }
+  }
 
   function showFile(nextFile: File) {
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
@@ -59,33 +75,25 @@ export function CapturePage() {
     setFile(nextFile);
     setUploaded(false);
     setError('');
+    streamRef.current?.getTracks().forEach(track => track.stop());
+    streamRef.current = null;
+    setScreen('review');
   }
 
   function start() {
-    if (!streamRef.current || !mp4Recording) {
-      setError('이 브라우저는 MP4 녹화를 지원하지 않아요. MP4·MOV 파일을 선택해주세요.');
-      return;
-    }
+    if (!streamRef.current || !mp4Recording) return;
     try {
-      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
-      previewUrlRef.current = null;
-      setPreviewUrl(null);
-      setFile(null);
-      setUploaded(false);
       chunksRef.current = [];
       const recorder = new MediaRecorder(streamRef.current, { mimeType: 'video/mp4' });
       recorderRef.current = recorder;
       recorder.ondataavailable = event => { if (event.data.size) chunksRef.current.push(event.data); };
       recorder.onstop = () => {
-        if (!chunksRef.current.length) {
-          setError('촬영된 영상이 없어요. 다시 시도해주세요.');
-          setRecording(false);
-          return;
-        }
-        showFile(new File(chunksRef.current, 'room-video.mp4', { type: 'video/mp4' }));
         setRecording(false);
+        if (!chunksRef.current.length) { setError('촬영된 영상이 없어요. 다시 시도해주세요.'); return; }
+        showFile(new File(chunksRef.current, 'room-video.mp4', { type: 'video/mp4' }));
       };
       recorder.start();
+      setSeconds(0);
       setRecording(true);
       setError('');
     } catch {
@@ -112,7 +120,7 @@ export function CapturePage() {
       let move = moveRef.current;
       if (!move) {
         const created = await createMove();
-        if (!created.guest_token) throw new Error('비회원 촬영 정보를 만들지 못했어요.');
+        if (!created.guest_token) throw new Error('비회원 이사를 만들지 못했어요.');
         move = { move_id: created.move_id, guest_token: created.guest_token };
         moveRef.current = move;
       }
@@ -133,25 +141,60 @@ export function CapturePage() {
   }
 
   return <main className="app-page capture-page">
-    <BrandHeader />
-    <h1>방을 천천히 한 바퀴 촬영해주세요</h1>
-    <p>비회원도 영상을 올릴 수 있어요. 촬영한 영상을 확인한 뒤 업로드해주세요.</p>
-    {previewUrl
-      ? <video className="capture-preview" src={previewUrl} controls playsInline aria-label="촬영한 영상" />
-      : <video ref={videoRef} className="capture-preview" autoPlay muted playsInline aria-label="카메라 미리보기" />}
-    <p className="capture-notice">영상 분석과 이삿짐 목록·명세서 생성은 아직 연결되지 않았어요. 지금은 영상 업로드까지만 가능합니다.</p>
-    {recording && <p className="capture-recording" role="status">● 촬영 중</p>}
-    {uploaded && <p className="capture-success" role="status">영상 업로드가 완료됐어요. 분석 기능은 준비 중이에요.</p>}
-    {error && <p role="alert">{error}</p>}
-    <div className="capture-actions">
-      {recording
-        ? <Button onClick={() => recorderRef.current?.stop()}>촬영 마치기</Button>
-        : <Button onClick={start} disabled={!cameraReady || !mp4Recording || uploading}>{file ? '다시 촬영하기' : '촬영 시작'}</Button>}
-      {!recording && <label>또는 기기에서 MP4·MOV 영상 선택
-        <input type="file" accept=".mp4,.mov,video/mp4,video/quicktime" onChange={chooseFile} disabled={uploading} />
-      </label>}
-      {file && !recording && <Button onClick={() => void upload()} disabled={uploading || uploaded}>{uploading ? '업로드 중…' : uploaded ? '업로드 완료' : '영상 업로드하기'}</Button>}
-      <Button variant="secondary" onClick={() => navigate(routes.home)} disabled={uploading}>홈으로 돌아가기</Button>
-    </div>
+    {screen === 'prep' && <div className="capture-prep">
+      <BrandHeader />
+      <span className="capture-eyebrow">촬영 준비</span>
+      <h1>방을 찍기 전에<br />이것만 확인해주세요</h1>
+      <img className="capture-mascot" src={mascot} alt="짐싹 캐릭터" />
+      <div className="capture-tips">
+        <div className="capture-tip"><span className="capture-tip-icon">☀</span><div><strong>조명을 켜주세요</strong><p>밝을수록 물품을 확인하기 쉬워요.</p></div></div>
+        <div className="capture-tip"><span className="capture-tip-icon">▣</span><div><strong>큰 가구부터, 빠짐없이</strong><p>가구 전체와 가려진 공간까지 담아주세요.</p></div></div>
+        <div className="capture-tip"><span className="capture-tip-icon">→</span><div><strong>수평을 맞추고 천천히</strong><p>한 방향으로 방을 둘러보듯 촬영해요.</p></div></div>
+      </div>
+      {error && <p role="alert">{error}</p>}
+      <div className="capture-prep-actions">
+        <Button onClick={() => setPermissionOpen(true)}>촬영 시작하기</Button>
+        <label className="capture-file-label">MP4·MOV 영상이 이미 있나요?
+          <input type="file" accept=".mp4,.mov,video/mp4,video/quicktime" onChange={chooseFile} />
+        </label>
+      </div>
+      {permissionOpen && <div className="capture-permission-backdrop">
+        <div className="capture-permission" role="dialog" aria-modal="true" aria-label="카메라 사용 안내">
+          <span aria-hidden="true">📷</span>
+          <h2>방을 촬영하려면<br />카메라 사용이 필요해요</h2>
+          <p>이삿짐 영상을 만들기 위해 카메라를 사용해요. 다음 브라우저 안내에서 ‘허용’을 눌러주세요.</p>
+          <Button onClick={() => void openCamera()}>카메라 사용 허용하기</Button>
+        </div>
+      </div>}
+    </div>}
+    {screen === 'camera' && <div className="capture-camera">
+      <video ref={videoRef} autoPlay muted playsInline aria-label="카메라 미리보기" />
+      <div className="capture-camera-top"><button type="button" onClick={() => { if (recording && recorderRef.current) { recorderRef.current.onstop = null; recorderRef.current.stop(); setRecording(false); } streamRef.current?.getTracks().forEach(track => track.stop()); streamRef.current = null; setScreen('prep'); }}>×</button><button type="button" onClick={() => setHelpOpen(true)}>도움말</button></div>
+      <div className="capture-camera-guide" aria-hidden="true" />
+      <p className="capture-camera-hint">{recording ? '한 방향으로 천천히 이동해주세요 ››' : '수평을 맞추고 천천히 움직여주세요'}</p>
+      {recording && <p className="capture-recording-time" role="status">● {String(Math.floor(seconds / 60)).padStart(2, '0')}:{String(seconds % 60).padStart(2, '0')}</p>}
+      {error && <p role="alert" className="capture-camera-hint">{error}</p>}
+      <div className="capture-camera-controls"><button type="button" className={recording ? 'capture-shutter capture-shutter--recording' : 'capture-shutter'} onClick={() => recording ? recorderRef.current?.stop() : start()} aria-label={recording ? '촬영 종료' : '촬영 시작'} /><span>{recording ? '촬영 종료' : '촬영 시작'}</span></div>
+      {helpOpen && <div className="capture-help" role="dialog" aria-modal="true" aria-label="촬영 도움말">
+        <h2>촬영 화면, 이렇게 사용해요</h2>
+        <p>× 나가기: 촬영 준비로 돌아가요.</p><p>도움말: 이 안내를 다시 볼 수 있어요.</p>
+        <p>가구 전체가 화면 안에 들어오게 맞춰주세요.</p><p>아래 버튼을 눌러 촬영을 시작하고 다시 누르면 종료해요.</p>
+        <Button onClick={() => { sessionStorage.setItem('jimssak-capture-help-seen', '1'); setHelpOpen(false); }}>알겠어요</Button>
+      </div>}
+    </div>}
+    {screen === 'review' && <div className="capture-review">
+      <BrandHeader />
+      <h1>촬영한 영상을 확인해주세요</h1>
+      <p>가구와 가려진 공간이 빠짐없이 담겼는지 확인해주세요.</p>
+      {previewUrl && <video src={previewUrl} controls playsInline aria-label="촬영한 영상" />}
+      <p className="capture-notice">영상 분석과 이삿짐 목록·명세서 생성은 아직 연결되지 않았어요. 지금은 업로드까지만 가능합니다.</p>
+      {uploaded && <p className="capture-success" role="status">영상 업로드가 완료됐어요. 분석 기능은 준비 중이에요.</p>}
+      {error && <p role="alert">{error}</p>}
+      <div className="capture-actions">
+        <Button onClick={() => void upload()} disabled={uploading || uploaded}>{uploading ? '업로드 중…' : uploaded ? '업로드 완료' : '영상 업로드하기'}</Button>
+        <Button variant="secondary" onClick={() => { setUploaded(false); setScreen('prep'); }} disabled={uploading}>다시 촬영하기</Button>
+        <Button variant="secondary" onClick={() => navigate(routes.home)} disabled={uploading}>홈으로 돌아가기</Button>
+      </div>
+    </div>}
   </main>;
 }
