@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from fastapi.responses import JSONResponse, Response
 from fastapi.routing import APIRoute
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials
@@ -13,8 +13,9 @@ from ..schemas.moves import (
     MoveCreated,
     MoveData,
     MoveSnapshot,
-    RoomVideos,
+    RoomVideo,
     Section,
+    UploadedVideo,
 )
 from ..services.auth import AuthStore
 from ..services.media import MediaStorage, MediaTooLarge, UnsupportedMedia
@@ -163,9 +164,12 @@ def create_move(member: Member, moves: MoveStoreDep) -> MoveCreated:
     },
 )
 def get_move(move: AccessibleMove, moves: MoveStoreDep) -> MoveSnapshot:
-    videos = [_media_info(item) for item in moves.list_media(move.id)]
+    video = moves.get_video(move.id)
     data = MoveData(
-        room_video=RoomVideos(status="uploaded" if videos else "empty", items=videos),
+        room_video=RoomVideo(
+            status="uploaded" if video else "empty",
+            video=_media_info(video) if video else None,
+        ),
         analysis=Section(status="not_started"),
         inventory=Section(status="empty"),
         origin=Section(status="empty"),
@@ -192,8 +196,9 @@ def get_move(move: AccessibleMove, moves: MoveStoreDep) -> MoveSnapshot:
     status_code=status.HTTP_201_CREATED,
     summary="방 영상 업로드",
     description=(
-        "multipart/form-data로 `file`(mp4·mov)과 선택 항목 `space`(예: 방1, 거실)를 보낸다. "
-        "한 이사에 공간별로 여러 영상을 올릴 수 있다. AI 분석은 요청하지 않는다."
+        "multipart/form-data로 `file`(mp4·mov)을 보낸다. 소형 원룸 이사라 이사 한 건에 영상은 "
+        "하나다. 이미 영상이 있으면 새 영상으로 교체하고(재촬영) `replaced`가 true다. "
+        "AI 분석은 요청하지 않는다."
     ),
     responses={
         401: {"description": "인증 정보 없음"},
@@ -207,27 +212,26 @@ def upload_media(
     file: Annotated[UploadFile, File(description="방 촬영 영상 (mp4, mov)")],
     moves: MoveStoreDep,
     storage: MediaStorageDep,
-    space: Annotated[str | None, Form(max_length=30)] = None,
-) -> MediaInfo:
+) -> UploadedVideo:
     try:
-        media = storage.save_video(
-            move.id, file.file, file.filename, file.content_type,
-            (space or "").strip() or None,
-        )
+        media = storage.save_video(move.id, file.file, file.filename, file.content_type)
     except UnsupportedMedia as exc:
         raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, str(exc)) from exc
     except MediaTooLarge as exc:
         raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, str(exc)) from exc
     try:
-        moves.add_media(media)
+        replaced = moves.replace_video(media)
     except BaseException:
         storage.discard(media)
         raise
-    return _media_info(media)
+    # The database no longer points at the old file, so it can go.
+    if replaced is not None:
+        storage.discard(replaced)
+    return UploadedVideo(**_media_info(media).model_dump(), replaced=replaced is not None)
 
 
 def _media_info(media: Media) -> MediaInfo:
     return MediaInfo(
         media_id=media.id, filename=media.filename, content_type=media.content_type,
-        size_bytes=media.size_bytes, space=media.space, created_at=_time(media.created_at),
+        size_bytes=media.size_bytes, created_at=_time(media.created_at),
     )

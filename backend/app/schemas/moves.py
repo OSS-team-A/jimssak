@@ -30,17 +30,22 @@ class MediaInfo(BaseModel):
     filename: str
     content_type: Literal["video/mp4", "video/quicktime"]
     size_bytes: int
-    space: str | None = Field(description="Room label such as 방1 or 거실, if given.")
     created_at: datetime
 
 
-class RoomVideos(BaseModel):
+class UploadedVideo(MediaInfo):
+    replaced: bool = Field(description="True when this upload replaced an earlier video.")
+
+
+class RoomVideo(BaseModel):
+    """One video per move: small one-room moves are filmed in a single take."""
+
     status: Literal["empty", "uploaded"]
-    items: list[MediaInfo] = Field(default_factory=list)
+    video: MediaInfo | None = None
 
 
 class MoveData(BaseModel):
-    room_video: RoomVideos
+    room_video: RoomVideo
     analysis: Section
     inventory: Section
     origin: Section

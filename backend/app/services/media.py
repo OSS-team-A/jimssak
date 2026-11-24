@@ -50,8 +50,7 @@ class MediaStorage:
         return self.root / media.storage_path
 
     def save_video(
-        self, move_id: str, source: BinaryIO, filename: str | None,
-        content_type: str | None, space: str | None,
+        self, move_id: str, source: BinaryIO, filename: str | None, content_type: str | None
     ) -> Media:
         """Write the upload under its own ID. A failure leaves no file behind."""
         name = clean_filename(filename)
@@ -80,7 +79,7 @@ class MediaStorage:
         return Media(
             id=media_id, move_id=move_id, filename=name,
             content_type=CANONICAL_TYPE[extension], size_bytes=size,
-            storage_path=relative, space=space, created_at=int(time.time()),
+            storage_path=relative, created_at=int(time.time()),
         )
 
     def discard(self, media: Media) -> None:
