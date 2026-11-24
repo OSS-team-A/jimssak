@@ -24,9 +24,18 @@ class Section(BaseModel):
     status: Literal["empty", "not_started"]
 
 
+class MediaInfo(BaseModel):
+    media_id: str
+    filename: str
+    content_type: Literal["video/mp4", "video/quicktime"]
+    size_bytes: int
+    space: str | None = Field(description="Room label such as 방1 or 거실, if given.")
+    created_at: datetime
+
+
 class RoomVideos(BaseModel):
     status: Literal["empty", "uploaded"]
-    items: list[dict] = Field(default_factory=list)
+    items: list[MediaInfo] = Field(default_factory=list)
 
 
 class MoveData(BaseModel):

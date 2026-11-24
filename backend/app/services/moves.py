@@ -25,6 +25,19 @@ class Move:
         return self.user_id is None
 
 
+@dataclass(frozen=True)
+class Media:
+    id: str
+    move_id: str
+    filename: str
+    content_type: str
+    size_bytes: int
+    # Relative to the media directory, so the folder can be moved.
+    storage_path: str
+    space: str | None
+    created_at: int
+
+
 class MoveStore:
     """Moves live next to users so a member move can reference its account."""
 
@@ -52,6 +65,17 @@ class MoveStore:
                     CHECK ((user_id IS NULL) <> (guest_digest IS NULL))
                 );
                 CREATE INDEX IF NOT EXISTS moves_user ON moves(user_id);
+                CREATE TABLE IF NOT EXISTS media (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    move_id TEXT NOT NULL REFERENCES moves(id) ON DELETE CASCADE,
+                    filename TEXT NOT NULL,
+                    content_type TEXT NOT NULL,
+                    size_bytes INTEGER NOT NULL,
+                    storage_path TEXT NOT NULL,
+                    space TEXT,
+                    created_at INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS media_move ON media(move_id);
             """)
 
     def _move(self, row: sqlite3.Row) -> Move:
@@ -85,6 +109,22 @@ class MoveStore:
                 "SELECT * FROM moves WHERE id = ? AND user_id = ?", (move_id, user_id)
             ).fetchone()
         return self._move(row) if row else None
+
+    def add_media(self, media: Media) -> None:
+        with self._connect() as db:
+            db.execute(
+                "INSERT INTO media(id, move_id, filename, content_type, size_bytes, "
+                "storage_path, space, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (media.id, media.move_id, media.filename, media.content_type,
+                 media.size_bytes, media.storage_path, media.space, media.created_at),
+            )
+
+    def list_media(self, move_id: str) -> list[Media]:
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT * FROM media WHERE move_id = ? ORDER BY created_at, rowid", (move_id,)
+            ).fetchall()
+        return [Media(**dict(row)) for row in rows]
 
     def get_for_guest(self, move_id: str, guest_token: str) -> Move | None:
         """Return an unexpired guest move and extend its inactivity deadline."""
