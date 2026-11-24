@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "mode": "demo",
+  "frame": {
+    "video_id": "demo-room",
+    "frame_id": 0,
+    "timestamp_ms": 0.0,
+    "width_px": 1280,
+    "height_px": 720,
+    "camera": {
+      "fx_px": 1000,
+      "fy_px": 1000
+    }
+  },
+  "detections": [
+    {
+      "track_id": "demo-room:demo:1",
+      "object_id": null,
+      "label": "chair",
+      "confidence": 0.95,
+      "bbox": {
+        "x1": 320.0,
+        "y1": 144.0,
+        "x2": 832.0,
+        "y2": 648.0
+      },
+      "mask_polygon_px": null,
+      "depth_m": 2.0,
+      "dimensions": null,
+      "measurement_status": "needs_calibration"
+    }
+  ]
+}
