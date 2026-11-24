@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import PositiveInt, field_validator
+from pydantic import PositiveFloat, PositiveInt, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -20,8 +20,18 @@ class Settings(BaseSettings):
     guest_move_ttl_seconds: PositiveInt = 24 * 60 * 60
     media_dir: Path = BACKEND_DIR / "data" / "media"
     media_max_bytes: PositiveInt = 500 * 1024 * 1024
+    # 행정안전부 실시간 주소정보 조회(검색API) 승인키. Without it, address search returns 503.
+    address_search_api_key: SecretStr | None = None
+    address_search_url: str = "https://business.juso.go.kr/addrlink/addrLinkApi.do"
+    external_api_timeout_seconds: PositiveFloat = 5.0
 
     @field_validator("auth_db_path", "media_dir")
     @classmethod
     def resolve_backend_path(cls, path: Path) -> Path:
         return BACKEND_DIR / path
+
+    @field_validator("address_search_api_key", mode="before")
+    @classmethod
+    def blank_key_is_missing(cls, key: object) -> object:
+        # `KEY=` left empty in .env means "not configured", not an empty key.
+        return None if isinstance(key, str) and not key.strip() else key

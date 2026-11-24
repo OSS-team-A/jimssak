@@ -3,10 +3,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .api.addresses import router as addresses_router
 from .api.auth import router as auth_router
 from .api.moves import router as moves_router
 from .api.routes import router
 from .config import Settings
+from .services.address_search import JusoAddressSearch
 from .services.auth import AuthStore
 from .services.media import MediaStorage
 from .services.moves import MoveStore
@@ -29,6 +31,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         move_store.initialize()
         app.state.move_store = move_store
         app.state.media_storage = MediaStorage(settings.media_dir, settings.media_max_bytes)
+        key = settings.address_search_api_key
+        app.state.address_search = JusoAddressSearch(
+            settings.address_search_url,
+            key.get_secret_value() if key else None,
+            settings.external_api_timeout_seconds,
+        )
         yield
 
     app = FastAPI(title="짐싹 API", version="0.1.0", lifespan=lifespan)
@@ -42,6 +50,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(router)
     app.include_router(auth_router)
     app.include_router(moves_router)
+    app.include_router(addresses_router)
     return app
 
 
