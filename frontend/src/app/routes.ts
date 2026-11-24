@@ -1,5 +1,5 @@
 export const routes = {
-  home: '/', chat: '/chat', capture: '/capture', inventory: '/inventory',
+  home: '/', guide: '/guide', login: '/login', signup: '/signup', chat: '/chat', capture: '/capture', inventory: '/inventory',
   moveInfo: '/move-info', result: '/result', history: '/history', demo: '/dev/analysis',
 } as const;
 
