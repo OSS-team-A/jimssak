@@ -123,7 +123,7 @@ def object_dimensions(view, shape_mask, depth, camera, up):
     if up is None or not view.complete:
         return {}
     foreground = shape_mask.astype(bool)
-    if view.mask_polygon_px is None:
+    if not view.has_mask:
         # A detection box may include a wall or floor. Keep the depth cluster
         # around its center and report these as box-based estimates.
         x1, y1, x2, y2 = map(int, (

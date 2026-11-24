@@ -80,6 +80,9 @@ def _video_frames(clip, first, last, selected):
 def _shape_mask(view, shape):
     if view.mask_polygon_px is not None:
         return polygon_mask(shape, view.mask_polygon_px)
+    if view.mask_rle is not None:
+        counts = view.mask_rle
+        return np.repeat(np.arange(len(counts), dtype=np.uint8) % 2, counts).reshape(shape)
     if view.bbox is not None:
         mask = np.zeros(shape, np.uint8)
         box = view.bbox
@@ -148,7 +151,7 @@ def _table_from_motion(observations, camera):
 
 
 def _registered_mask_size(items, camera):
-    candidates = [item for item in items if item.view.mask_polygon_px and item.view.complete]
+    candidates = [item for item in items if item.view.has_mask and item.view.complete]
     if len(candidates) < 3:
         return {}
     up_hints = [item.pose.rotation.T @ item.up for item in candidates if item.up is not None]
@@ -166,12 +169,18 @@ def _registered_mask_size(items, camera):
     ]
     first = candidates[0].view
     result = measure_track(first.track_id, first.label, registered)
-    return {key: value for key, value in zip(
-        ("width", "depth", "height"), (result.width_cm, result.depth_cm, result.height_cm)
-    ) if value is not None}
+    return {
+        key: {"cm": value, "method": "registered_multiview", "views": len(ids)}
+        for key, value, ids in (
+            ("width", result.width_cm, result.frame_ids),
+            ("depth", result.depth_cm, result.frame_ids),
+            ("height", result.height_cm, result.height_frame_ids),
+        )
+        if value is not None
+    }
 
 
-def _estimate_track(observations, camera):
+def _estimate_track(observations, camera, has_capture_poses):
     component_views = defaultdict(list)
     per_dimension = defaultdict(list)
     for item in observations:
@@ -180,19 +189,24 @@ def _estimate_track(observations, camera):
             if np.isfinite(value) and value > 0:
                 per_dimension[key].append(value)
     dimensions = {key: {"cm": float(np.median(values)),
-                        "method": "metric_depth_view_median", "views": len(values)}
+                        "method": "metric_depth_view_median", "views": len(values),
+                        "scale_source": "pretrained_depth"}
                   for key, values in per_dimension.items()}
     best_first = sorted(component_views.values(), key=len, reverse=True)
     for items in best_first:
         registered = _registered_mask_size(items, camera)
         tabletop = _table_from_motion(items, camera)
         if registered or tabletop:
-            for key, result in (registered | (tabletop or {})).items():
-                if key == "height" and any(item.view.floor_contacts_px for item in items):
-                    continue
-                dimensions[key] = {
-                    "cm": result, "method": "registered_multiview", "views": len(items)
-                }
+            if "height" in dimensions and any(item.view.floor_contacts_px for item in items):
+                registered.pop("height", None)
+            dimensions.update(registered)
+            tables = sum(item.view.tabletop_px is not None for item in items)
+            for key, value in (tabletop or {}).items():
+                dimensions[key] = {"cm": value, "method": "registered_multiview", "views": tables}
+            scale_source = "capture_poses" if has_capture_poses else "pretrained_depth"
+            for item in dimensions.values():
+                if item["method"] == "registered_multiview":
+                    item["scale_source"] = scale_source
             break
     first = observations[0].view
     fields = ("width", "depth", "height", "top_width", "top_depth", "overall_width")
@@ -203,19 +217,21 @@ def _estimate_track(observations, camera):
     status = "estimated" if requested <= dimensions.keys() else "partial"
     if not dimensions:
         status = "unavailable"
+    qualifiers = set()
+    if any(item.view.bbox and not item.view.has_mask for item in observations):
+        qualifiers.add("bounding_box_is_approximate")
+    if any(item["method"] == "metric_depth_view_median" for item in dimensions.values()):
+        qualifiers.add("single_view_depth_scale_used")
     return {"track_id": first.track_id, "label": first.label, "status": status,
             "dimensions": {key: dimensions.get(key) for key in fields},
             "frames": [item.view.frame_index for item in observations],
-            "qualifiers": sorted({
-                "bounding_box_is_approximate" for item in observations
-                if item.view.bbox and item.view.mask_polygon_px is None
-            })}
+            "qualifiers": sorted(qualifiers)}
 
 
 def _calibrate(clip, objects):
     reference = clip.scale_reference
     if reference is None:
-        return {"status": "model_metric_scale"}
+        return {"status": "capture_metric_scale" if clip.capture_poses else "model_metric_scale"}
     target = next(item for item in objects if item["track_id"] == reference.track_id)
     dimension = target["dimensions"][reference.dimension]
     if dimension is None:
@@ -225,12 +241,23 @@ def _calibrate(clip, objects):
         for estimate in item["dimensions"].values():
             if estimate is not None:
                 estimate["cm"] *= factor
+                estimate["scale_source"] = "reference_dimension"
     return {"status": "reference_scaled", "reference": reference.model_dump(), "factor": factor}
 
 
 def estimate_video(clip: VideoInput, model: MetricDepth) -> VideoResult:
     camera = _camera(clip)
-    tracker = CameraTracker(camera)
+    tracker = CameraTracker(camera) if not clip.capture_poses else None
+    capture_poses = {}
+    for item in clip.capture_poses:
+        rotation = np.asarray(item.world_to_camera_rotation)
+        if not np.allclose(rotation @ rotation.T, np.eye(3), atol=1e-3) or not np.isclose(
+            np.linalg.det(rotation), 1.0, atol=1e-3
+        ):
+            raise ValueError(f"Invalid capture rotation at frame {item.frame_index}")
+        capture_poses[item.frame_index] = CameraPose(
+            rotation, np.asarray(item.world_to_camera_translation_m), component=0
+        )
     lookup = defaultdict(list)
     for view in clip.views:
         lookup[view.frame_index].append(view)
@@ -239,7 +266,9 @@ def estimate_video(clip: VideoInput, model: MetricDepth) -> VideoResult:
         raise ValueError(f"At most {MAX_KEYFRAMES} annotated frames are allowed per video")
     slots = max(1, MAX_KEYFRAMES - len(lookup))
     stride = max(clip.pose_stride, int(np.ceil((last - first + 1) / slots)))
-    keyframes = set(range(first, last + 1, stride)) | set(lookup)
+    keyframes = set(lookup)
+    if tracker is not None:
+        keyframes.update(range(first, last + 1, stride))
     observations = defaultdict(list)
     poses = []
     timings = []
@@ -247,7 +276,7 @@ def estimate_video(clip: VideoInput, model: MetricDepth) -> VideoResult:
         start = time.perf_counter()
         depth = model(image, 0)
         timings.append(time.perf_counter() - start)
-        pose = tracker.add(index, image, depth)
+        pose = tracker.add(index, image, depth) if tracker is not None else capture_poses[index]
         poses.append({
             "frame_index": index, "component": pose.component, "parent_frame": pose.parent_frame,
             "inliers": pose.inliers, "median_reprojection_error_px": pose.error_px,
@@ -256,13 +285,16 @@ def estimate_video(clip: VideoInput, model: MetricDepth) -> VideoResult:
         for view in lookup.get(index, ()):
             observations[view.track_id].append(_observe(view, pose, image, depth, camera))
 
-    objects = [_estimate_track(items, camera) for items in observations.values()]
+    objects = [
+        _estimate_track(items, camera, bool(capture_poses)) for items in observations.values()
+    ]
     calibration = _calibrate(clip, objects)
     source = "approximate_phone_fov"
     if clip.intrinsics is not None:
         source = "provided_approximate" if clip.intrinsics.approximate else "provided"
     return VideoResult(
         video_id=clip.video_id, device=model.device, intrinsics_source=source,
+        pose_source="capture_poses" if capture_poses else "rgb_metric_depth_pnp",
         scale=calibration, objects=objects, poses=poses,
         depth_timing={"frames": len(timings), "total_s": sum(timings),
                       "median_s": float(np.median(timings))},

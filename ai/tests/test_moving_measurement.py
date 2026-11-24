@@ -58,5 +58,39 @@ def test_scale_only_uses_the_explicit_dimension():
     }}]
     assert _calibrate(clip, results)["factor"] == 0.5
     assert results[0]["dimensions"] == {
-        "top_width": {"cm": 59}, "top_depth": {"cm": 36}, "overall_width": None,
+        "top_width": {"cm": 59, "scale_source": "reference_dimension"},
+        "top_depth": {"cm": 36, "scale_source": "reference_dimension"}, "overall_width": None,
     }
+
+
+def test_video_emits_typed_result_from_mock_box_and_capture_pose(monkeypatch):
+    from ai.measurement import moving_video
+
+    class MockDepth:
+        device = "cpu"
+
+        def __call__(self, image, turns):
+            return np.full(image.shape[:2], 2.0)
+
+    image = np.zeros((100, 100, 3), dtype=np.uint8)
+    clip = VideoInput(
+        video_id="mock-move", path="mock.avi", annotation_size_px=(100, 100),
+        intrinsics={"fx": 100, "fy": 100, "cx": 50, "cy": 50},
+        capture_poses=[{
+            "frame_index": 5,
+            "world_to_camera_rotation": np.eye(3).tolist(),
+            "world_to_camera_translation_m": [0, 0, 0],
+        }],
+        views=[{
+            "frame_index": 5, "track_id": "desk", "label": "desk",
+            "bbox": {"x1": 25, "x2": 75, "y1": 25, "y2": 75},
+            "camera_up": [0, -1, 0],
+        }],
+    )
+    monkeypatch.setattr(moving_video, "_video_frames", lambda *args: [(5, image)])
+    result = moving_video.estimate_video(clip, MockDepth())
+    assert result.pose_source == "capture_poses"
+    assert result.poses[0].frame_index == 5
+    assert result.objects[0].dimensions["depth"] is None
+    assert result.objects[0].dimensions["width"].scale_source == "pretrained_depth"
+    assert "bounding_box_is_approximate" in result.objects[0].qualifiers
