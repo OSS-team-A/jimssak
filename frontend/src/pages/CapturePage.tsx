@@ -8,6 +8,8 @@ import mascot from '../assets/mascot.png';
 import bulbIcon from '../assets/capture-bulb.svg';
 import cameraIcon from '../assets/capture-camera.svg';
 import arrowIcon from '../assets/capture-arrow.svg';
+import permissionCameraIcon from '../assets/capture-permission-camera.svg';
+import doubleArrowIcon from '../assets/capture-double-arrow.svg';
 
 type Screen = 'prep' | 'camera' | 'review';
 const acceptedVideo = (file: File) => /\.(mp4|mov)$/i.test(file.name)
@@ -163,7 +165,7 @@ export function CapturePage() {
       </div>
       {permissionOpen && <div className="capture-permission-backdrop">
         <div className="capture-permission" role="dialog" aria-modal="true" aria-label="카메라 사용 안내">
-          <img src={cameraIcon} width="42" height="42" alt="" />
+          <img src={permissionCameraIcon} width="40" height="40" alt="" />
           <h2>방을 촬영하려면<br />카메라 사용이 필요해요</h2>
           <p>이삿짐 영상을 만들기 위해 카메라를 사용해요. 다음 브라우저 안내에서 ‘허용’을 눌러주세요.</p>
           <Button onClick={() => void openCamera()}>카메라 사용 허용하기</Button>
@@ -174,7 +176,7 @@ export function CapturePage() {
       <video ref={videoRef} autoPlay muted playsInline aria-label="카메라 미리보기" />
       <div className="capture-camera-top"><button type="button" onClick={() => { if (recording && recorderRef.current) { recorderRef.current.onstop = null; recorderRef.current.stop(); setRecording(false); } streamRef.current?.getTracks().forEach(track => track.stop()); streamRef.current = null; setScreen('prep'); }}>×</button><button type="button" onClick={() => setHelpOpen(true)}>도움말</button></div>
       <div className="capture-camera-guide" aria-hidden="true" />
-      <p className="capture-camera-hint">{recording ? '한 방향으로 천천히 이동해주세요 ››' : '수평을 맞추고 천천히 움직여주세요'}</p>
+      <p className="capture-camera-hint">{recording ? <>한 방향으로 천천히 이동해주세요 <img className="capture-double-arrow" src={doubleArrowIcon} alt="" /></> : '수평을 맞추고 천천히 움직여주세요'}</p>
       {recording && <p className="capture-recording-time" role="status">● {String(Math.floor(seconds / 60)).padStart(2, '0')}:{String(seconds % 60).padStart(2, '0')}</p>}
       {error && <p role="alert" className="capture-camera-hint">{error}</p>}
       <div className="capture-camera-controls"><button type="button" className={recording ? 'capture-shutter capture-shutter--recording' : 'capture-shutter'} onClick={() => recording ? recorderRef.current?.stop() : start()} aria-label={recording ? '촬영 종료' : '촬영 시작'} /><span>{recording ? '촬영 종료' : '촬영 시작'}</span></div>

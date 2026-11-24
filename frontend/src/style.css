@@ -181,3 +181,5 @@ button { font: inherit; }
 
 .capture-prep .capture-mascot { width: 224px; height: 132px; margin: 38px auto 28px; }
 .capture-prep .capture-mascot img { object-fit: fill; }
+
+.capture-double-arrow { display: inline-block; width: 18px; height: 18px; vertical-align: middle; }
