@@ -16,8 +16,12 @@ class Settings(BaseSettings):
     auth_db_path: Path = BACKEND_DIR / "data" / "auth.sqlite3"
     auth_session_ttl_seconds: PositiveInt = 86400
     auth_refresh_ttl_seconds: PositiveInt = 14 * 24 * 60 * 60
+    # A guest move stays open for this long after its last request.
+    guest_move_ttl_seconds: PositiveInt = 24 * 60 * 60
+    media_dir: Path = BACKEND_DIR / "data" / "media"
+    media_max_bytes: PositiveInt = 500 * 1024 * 1024
 
-    @field_validator("auth_db_path")
+    @field_validator("auth_db_path", "media_dir")
     @classmethod
-    def resolve_db_path(cls, path: Path) -> Path:
+    def resolve_backend_path(cls, path: Path) -> Path:
         return BACKEND_DIR / path
