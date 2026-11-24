@@ -17,6 +17,8 @@ def settings(tmp_path):
         cors_origins=["http://localhost:5173"],
         auth_db_path=tmp_path / "app.sqlite3",
         guest_move_ttl_seconds=600,
+        media_dir=tmp_path / "media",
+        media_max_bytes=4096,
     )
 
 
@@ -115,3 +117,122 @@ def test_cors_allows_guest_header(client):
         "Access-Control-Request-Headers": "X-Guest-Token",
     })
     assert response.status_code == 200
+
+
+# The start of a real MP4: a box size followed by the "ftyp" box type.
+MP4 = b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 1000
+
+
+def guest_move(client: TestClient) -> tuple[str, dict[str, str]]:
+    body = client.post(MOVES).json()
+    return f"{MOVES}/{body['move_id']}", {"X-Guest-Token": body["guest_token"]}
+
+
+def stored_files(settings) -> list[str]:
+    return sorted(p.name for p in settings.media_dir.rglob("*") if p.is_file())
+
+
+def test_upload_video_and_see_it_in_snapshot(client, settings):
+    url, headers = guest_move(client)
+    upload = client.post(
+        f"{url}/media", headers=headers, data={"space": " 거실 "},
+        files={"file": (r"C:\fakepath\room.MP4", MP4, "video/mp4")},
+    )
+    assert upload.status_code == 201
+    media = upload.json()
+    assert media["filename"] == "room.MP4"
+    assert media["content_type"] == "video/mp4"
+    assert media["size_bytes"] == len(MP4)
+    assert media["space"] == "거실"
+
+    # .mov from a browser that does not know the type.
+    second = client.post(
+        f"{url}/media", headers=headers,
+        files={"file": ("bedroom.mov", MP4, "application/octet-stream")},
+    )
+    assert second.status_code == 201
+    assert second.json()["content_type"] == "video/quicktime"
+    assert second.json()["space"] is None
+
+    snapshot = client.get(url, headers=headers).json()
+    videos = snapshot["data"]["room_video"]
+    assert videos["status"] == "uploaded"
+    assert [item["media_id"] for item in videos["items"]] == [
+        media["media_id"], second.json()["media_id"]
+    ]
+    assert snapshot["missing"] == ["origin", "destination", "schedule"]
+    assert snapshot["next_step"] == "origin"
+    assert stored_files(settings) == sorted(
+        [f"{media['media_id']}.mp4", f"{second.json()['media_id']}.mov"]
+    )
+
+
+def test_member_can_upload_to_own_move_only(client):
+    owner = member_headers(client, "mover@example.com")
+    move_id = client.post(MOVES, headers=owner).json()["move_id"]
+    video = {"file": ("room.mp4", MP4, "video/mp4")}
+    assert client.post(f"{MOVES}/{move_id}/media", headers=owner, files=video).status_code == 201
+    other = member_headers(client, "other@example.com")
+    assert client.post(f"{MOVES}/{move_id}/media", headers=other, files=video).status_code == 404
+
+
+@pytest.mark.parametrize(("name", "content", "content_type"), [
+    ("notes.txt", MP4, "text/plain"),
+    ("room.avi", MP4, "video/x-msvideo"),
+    ("room.mp4", MP4, "image/png"),
+    ("room.mp4", b"not a video at all", "video/mp4"),
+])
+def test_unsupported_files_are_refused(client, settings, name, content, content_type):
+    url, headers = guest_move(client)
+    response = client.post(
+        f"{url}/media", headers=headers, files={"file": (name, content, content_type)}
+    )
+    assert response.status_code == 415
+    assert response.json()["detail"]
+    assert stored_files(settings) == []
+
+
+def test_oversized_video_leaves_no_file(client, settings):
+    url, headers = guest_move(client)
+    # Over the 4096-byte limit but under the Content-Length pre-check,
+    # so the size is caught while writing.
+    response = client.post(
+        f"{url}/media", headers=headers,
+        files={"file": ("room.mp4", MP4 + b"\x00" * 4096, "video/mp4")},
+    )
+    assert response.status_code == 413
+    assert "MB" in response.json()["detail"]
+    assert stored_files(settings) == []
+    assert client.get(url, headers=headers).json()["data"]["room_video"]["items"] == []
+
+
+def test_huge_request_refused_before_reading(client, settings):
+    url, headers = guest_move(client)
+    response = client.post(
+        f"{url}/media", headers=headers,
+        files={"file": ("room.mp4", MP4 + b"\x00" * 200_000, "video/mp4")},
+    )
+    assert response.status_code == 413
+    assert stored_files(settings) == []
+
+
+def test_upload_needs_access(client, settings):
+    url, headers = guest_move(client)
+    video = {"file": ("room.mp4", MP4, "video/mp4")}
+    assert client.post(f"{url}/media", files=video).status_code == 401
+    _, other = guest_move(client)
+    assert client.post(f"{url}/media", headers=other, files=video).status_code == 404
+    assert stored_files(settings) == []
+
+
+def test_failed_database_write_removes_file(client, settings, monkeypatch):
+    url, headers = guest_move(client)
+
+    def broken(media):
+        raise sqlite3.OperationalError("disk full")
+
+    monkeypatch.setattr(client.app.state.move_store, "add_media", broken)
+    with pytest.raises(sqlite3.OperationalError):
+        client.post(f"{url}/media", headers=headers,
+                    files={"file": ("room.mp4", MP4, "video/mp4")})
+    assert stored_files(settings) == []

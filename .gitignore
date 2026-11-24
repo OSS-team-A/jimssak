@@ -244,6 +244,7 @@ datasets/
 data/raw/
 data/processed/
 uploads/
+backend/data/media/
 outputs/
 *.mp4
 *.mov
