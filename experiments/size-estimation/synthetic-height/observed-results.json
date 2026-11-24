@@ -1,0 +1,58 @@
+{
+  "synthetic_train_views": 24000,
+  "synthetic_validation_views": 3000,
+  "synthetic_test_views": 3000,
+  "epochs": 40,
+  "picked_epoch": 38,
+  "synthetic_test": {
+    "geometry_approx_focal": {
+      "mape_percent": 5.257585401731754,
+      "median_ape_percent": 3.4874690984119363
+    },
+    "geometry_self_calibrated_with_fallback": {
+      "mape_percent": 8.362435519939638,
+      "median_ape_percent": 4.275450587964221
+    },
+    "learned": {
+      "mape_percent": 4.562559118454711,
+      "median_ape_percent": 3.0787156748642888
+    }
+  },
+  "real_checks": [
+    {
+      "unit": "left",
+      "frame": 0,
+      "reference_width_cm": 82.0,
+      "catalog_height_cm": 138.8,
+      "focal_hint_px": 790.0,
+      "geometry_self_calibrated_cm": 137.20225463199122,
+      "geometry_approx_focal_cm": 136.9402500434101,
+      "learned_cm": 138.06956608222762
+    },
+    {
+      "unit": "left",
+      "frame": 433,
+      "reference_width_cm": 82.0,
+      "catalog_height_cm": 138.8,
+      "focal_hint_px": 790.0,
+      "geometry_self_calibrated_cm": 133.81525791145137,
+      "geometry_approx_focal_cm": 134.21453559881854,
+      "learned_cm": 135.40241134423408
+    },
+    {
+      "unit": "right",
+      "frame": 24,
+      "reference_width_cm": 82.0,
+      "catalog_height_cm": 138.8,
+      "focal_hint_px": 790.0,
+      "geometry_self_calibrated_cm": 143.40669762600334,
+      "geometry_approx_focal_cm": 143.4239981041728,
+      "learned_cm": 143.65366845788742
+    }
+  ],
+  "real_mae_against_catalog_cm": {
+    "geometry_self_calibrated_cm": 3.729728360853585,
+    "geometry_approx_focal_cm": 3.689737487314725,
+    "learned_cm": 2.993897010475242
+  }
+}

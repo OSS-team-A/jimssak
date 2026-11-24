@@ -1,0 +1,35 @@
+{
+  "training": {
+    "scans": [
+      "40777060",
+      "40777065",
+      "40777073",
+      "40809740",
+      "40958733",
+      "40958748",
+      "40958764"
+    ],
+    "objects": 47,
+    "views": 167,
+    "unique_frames": 111
+  },
+  "held_out": {
+    "scans": [
+      "41069021",
+      "41069042"
+    ],
+    "objects": 16,
+    "views": 72,
+    "unique_frames": 53
+  },
+  "axis_convention": "Long horizontal input, short horizontal extent (depth proxy), height",
+  "alpha_selected_within_training_scans": 1.0,
+  "category_median_baseline_mae_cm": {
+    "depth": 15.626240070865721,
+    "height": 35.505991424902845
+  },
+  "learned_mae_cm": {
+    "depth": 9.122062918848297,
+    "height": 18.36189003735228
+  }
+}
