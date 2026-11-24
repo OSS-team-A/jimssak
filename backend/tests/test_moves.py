@@ -236,3 +236,51 @@ def test_failed_database_write_removes_file(client, settings, monkeypatch):
         client.post(f"{url}/media", headers=headers,
                     files={"file": ("room.mp4", MP4, "video/mp4")})
     assert stored_files(settings) == []
+
+
+class BodyCounter:
+    """ASGI wrapper that counts request body bytes the app actually reads."""
+
+    def __init__(self, app):
+        self.app = app
+        self.read = 0
+
+    async def __call__(self, scope, receive, send):
+        async def counting_receive():
+            message = await receive()
+            if message["type"] == "http.request":
+                self.read += len(message.get("body", b""))
+            return message
+
+        await self.app(scope, counting_receive, send)
+
+
+@pytest.mark.parametrize("who", ["nobody", "other_guest", "bad_bearer"])
+def test_refused_upload_is_not_read(settings, who):
+    counter = BodyCounter(create_app(settings))
+    with TestClient(counter) as client:
+        url, _ = guest_move(client)
+        headers = {
+            "nobody": {},
+            "other_guest": guest_move(client)[1],
+            "bad_bearer": {"Authorization": "Bearer expired"},
+        }[who]
+        counter.read = 0
+        response = client.post(
+            f"{url}/media", headers=headers, files={"file": ("room.mp4", MP4, "video/mp4")}
+        )
+        assert response.status_code == (404 if who == "other_guest" else 401)
+        assert counter.read == 0
+    assert stored_files(settings) == []
+
+
+def test_accepted_upload_is_read(settings):
+    counter = BodyCounter(create_app(settings))
+    with TestClient(counter) as client:
+        url, headers = guest_move(client)
+        counter.read = 0
+        response = client.post(
+            f"{url}/media", headers=headers, files={"file": ("room.mp4", MP4, "video/mp4")}
+        )
+        assert response.status_code == 201
+        assert counter.read > len(MP4)
