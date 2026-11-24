@@ -275,6 +275,7 @@ Python 의존성은 호환 범위 지정이며 완전한 lock 파일은 아직 �
 
 ### 공통 규격과 협업
 
+- [크기 추정 첫 실험](docs/measurement-start.md)
 - [AI 데이터 규격](docs/ai-contract.md), [샘플 JSON](docs/examples/demo-analysis.json)
 - [협업 및 main 보호 설정](CONTRIBUTING.md)
 - [최초 Issue 작업 목록](docs/first-tasks.md)
