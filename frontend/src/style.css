@@ -126,7 +126,7 @@ button { font: inherit; }
 .capture-page h1 { font-size: 25px; line-height: 1.4; letter-spacing: -.04em; }
 .capture-page p { color: #687286; font-size: 14px; line-height: 1.5; }
 /* SC-03 and SC-04: final 11/24 capture flow */
-.capture-page { position: relative; padding: 0; display: flex; flex-direction: column; gap: 0; overflow: hidden; background: #fff; }
+.capture-page { position: relative; padding: 0; display: flex; flex-direction: column; gap: 0; background: #fff; }
 .capture-prep { padding: max(12px, env(safe-area-inset-top)) 24px max(32px, env(safe-area-inset-bottom)); min-height: 100dvh; display: flex; flex-direction: column; }
 .capture-prep .brand-header { margin-bottom: 30px; }
 .capture-eyebrow { color: #00a58d; font-size: 13px; font-weight: 700; }
