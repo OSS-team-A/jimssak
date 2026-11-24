@@ -35,8 +35,10 @@ class Media:
     size_bytes: int
     # Relative to the media directory, so the folder can be moved.
     storage_path: str
-    space: str | None
     created_at: int
+
+
+MEDIA_COLUMNS = "id, move_id, filename, content_type, size_bytes, storage_path, created_at"
 
 
 class MoveStore:
@@ -66,17 +68,16 @@ class MoveStore:
                     CHECK ((user_id IS NULL) <> (guest_digest IS NULL))
                 );
                 CREATE INDEX IF NOT EXISTS moves_user ON moves(user_id);
-                CREATE TABLE IF NOT EXISTS media (
+                -- Small one-room moves: one room video per move.
+                CREATE TABLE IF NOT EXISTS move_videos (
                     id TEXT PRIMARY KEY NOT NULL,
-                    move_id TEXT NOT NULL REFERENCES moves(id) ON DELETE CASCADE,
+                    move_id TEXT NOT NULL UNIQUE REFERENCES moves(id) ON DELETE CASCADE,
                     filename TEXT NOT NULL,
                     content_type TEXT NOT NULL,
                     size_bytes INTEGER NOT NULL,
                     storage_path TEXT NOT NULL,
-                    space TEXT,
                     created_at INTEGER NOT NULL
                 );
-                CREATE INDEX IF NOT EXISTS media_move ON media(move_id);
             """)
 
     def _move(self, row: sqlite3.Row) -> Move:
@@ -111,21 +112,31 @@ class MoveStore:
             ).fetchone()
         return self._move(row) if row else None
 
-    def add_media(self, media: Media) -> None:
-        with self._connect() as db:
-            db.execute(
-                "INSERT INTO media(id, move_id, filename, content_type, size_bytes, "
-                "storage_path, space, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (media.id, media.move_id, media.filename, media.content_type,
-                 media.size_bytes, media.storage_path, media.space, media.created_at),
-            )
+    def replace_video(self, media: Media) -> Media | None:
+        """Make media the move's only video and return the one it replaced.
 
-    def list_media(self, move_id: str) -> list[Media]:
+        Delete and insert happen in one transaction, so a failure keeps the old
+        video and a move never has zero or two videos in between.
+        """
         with self._connect() as db:
-            rows = db.execute(
-                "SELECT * FROM media WHERE move_id = ? ORDER BY created_at, rowid", (move_id,)
-            ).fetchall()
-        return [Media(**dict(row)) for row in rows]
+            db.execute("BEGIN IMMEDIATE")
+            old = db.execute(
+                f"SELECT {MEDIA_COLUMNS} FROM move_videos WHERE move_id = ?", (media.move_id,)
+            ).fetchone()
+            db.execute("DELETE FROM move_videos WHERE move_id = ?", (media.move_id,))
+            db.execute(
+                f"INSERT INTO move_videos({MEDIA_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (media.id, media.move_id, media.filename, media.content_type,
+                 media.size_bytes, media.storage_path, media.created_at),
+            )
+        return Media(**dict(old)) if old else None
+
+    def get_video(self, move_id: str) -> Media | None:
+        with self._connect() as db:
+            row = db.execute(
+                f"SELECT {MEDIA_COLUMNS} FROM move_videos WHERE move_id = ?", (move_id,)
+            ).fetchone()
+        return Media(**dict(row)) if row else None
 
     def get_for_guest(self, move_id: str, guest_token: str) -> Move | None:
         """Return an unexpired guest move and extend its inactivity deadline."""

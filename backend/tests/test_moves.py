@@ -65,7 +65,7 @@ def test_guest_move_needs_its_token(client):
     assert snapshot.status_code == 200
     data = snapshot.json()
     assert data["owner"] == "guest"
-    assert data["data"]["room_video"] == {"status": "empty", "items": []}
+    assert data["data"]["room_video"] == {"status": "empty", "video": None}
     assert data["data"]["analysis"] == {"status": "not_started"}
     assert data["missing"] == ["room_video", "origin", "destination", "schedule"]
     assert data["next_step"] == "room_video"
@@ -136,7 +136,7 @@ def stored_files(settings) -> list[str]:
 def test_upload_video_and_see_it_in_snapshot(client, settings):
     url, headers = guest_move(client)
     upload = client.post(
-        f"{url}/media", headers=headers, data={"space": " 거실 "},
+        f"{url}/media", headers=headers,
         files={"file": (r"C:\fakepath\room.MP4", MP4, "video/mp4")},
     )
     assert upload.status_code == 201
@@ -144,28 +144,51 @@ def test_upload_video_and_see_it_in_snapshot(client, settings):
     assert media["filename"] == "room.MP4"
     assert media["content_type"] == "video/mp4"
     assert media["size_bytes"] == len(MP4)
-    assert media["space"] == "거실"
-
-    # .mov from a browser that does not know the type.
-    second = client.post(
-        f"{url}/media", headers=headers,
-        files={"file": ("bedroom.mov", MP4, "application/octet-stream")},
-    )
-    assert second.status_code == 201
-    assert second.json()["content_type"] == "video/quicktime"
-    assert second.json()["space"] is None
+    assert media["replaced"] is False
+    assert "space" not in media
 
     snapshot = client.get(url, headers=headers).json()
-    videos = snapshot["data"]["room_video"]
-    assert videos["status"] == "uploaded"
-    assert [item["media_id"] for item in videos["items"]] == [
-        media["media_id"], second.json()["media_id"]
-    ]
+    video = snapshot["data"]["room_video"]
+    assert video["status"] == "uploaded"
+    assert video["video"]["media_id"] == media["media_id"]
     assert snapshot["missing"] == ["origin", "destination", "schedule"]
     assert snapshot["next_step"] == "origin"
-    assert stored_files(settings) == sorted(
-        [f"{media['media_id']}.mp4", f"{second.json()['media_id']}.mov"]
+    assert stored_files(settings) == [f"{media['media_id']}.mp4"]
+
+
+def test_reupload_replaces_the_only_video(client, settings):
+    url, headers = guest_move(client)
+    first = client.post(
+        f"{url}/media", headers=headers, files={"file": ("room.mp4", MP4, "video/mp4")}
+    ).json()
+    # Re-shoot, as .mov from a browser that does not know the type.
+    second = client.post(
+        f"{url}/media", headers=headers,
+        files={"file": ("retake.mov", MP4, "application/octet-stream")},
     )
+    assert second.status_code == 201
+    assert second.json()["replaced"] is True
+    assert second.json()["content_type"] == "video/quicktime"
+
+    video = client.get(url, headers=headers).json()["data"]["room_video"]["video"]
+    assert video["media_id"] == second.json()["media_id"] != first["media_id"]
+    assert video["filename"] == "retake.mov"
+    # The replaced file is removed from disk.
+    assert stored_files(settings) == [f"{second.json()['media_id']}.mov"]
+
+
+def test_failed_reupload_keeps_previous_video(client, settings):
+    url, headers = guest_move(client)
+    first = client.post(
+        f"{url}/media", headers=headers, files={"file": ("room.mp4", MP4, "video/mp4")}
+    ).json()
+    bad = client.post(
+        f"{url}/media", headers=headers, files={"file": ("notes.txt", MP4, "text/plain")}
+    )
+    assert bad.status_code == 415
+    video = client.get(url, headers=headers).json()["data"]["room_video"]["video"]
+    assert video["media_id"] == first["media_id"]
+    assert stored_files(settings) == [f"{first['media_id']}.mp4"]
 
 
 def test_member_can_upload_to_own_move_only(client):
@@ -204,7 +227,9 @@ def test_oversized_video_leaves_no_file(client, settings):
     assert response.status_code == 413
     assert "MB" in response.json()["detail"]
     assert stored_files(settings) == []
-    assert client.get(url, headers=headers).json()["data"]["room_video"]["items"] == []
+    assert client.get(url, headers=headers).json()["data"]["room_video"] == {
+        "status": "empty", "video": None
+    }
 
 
 def test_huge_request_refused_before_reading(client, settings):
@@ -226,17 +251,21 @@ def test_upload_needs_access(client, settings):
     assert stored_files(settings) == []
 
 
-def test_failed_database_write_removes_file(client, settings, monkeypatch):
+def test_failed_database_write_removes_new_file_only(client, settings, monkeypatch):
     url, headers = guest_move(client)
+    first = client.post(
+        f"{url}/media", headers=headers, files={"file": ("room.mp4", MP4, "video/mp4")}
+    ).json()
 
     def broken(media):
         raise sqlite3.OperationalError("disk full")
 
-    monkeypatch.setattr(client.app.state.move_store, "add_media", broken)
+    monkeypatch.setattr(client.app.state.move_store, "replace_video", broken)
     with pytest.raises(sqlite3.OperationalError):
         client.post(f"{url}/media", headers=headers,
-                    files={"file": ("room.mp4", MP4, "video/mp4")})
-    assert stored_files(settings) == []
+                    files={"file": ("retake.mp4", MP4, "video/mp4")})
+    # The new file is gone and the previous video is untouched.
+    assert stored_files(settings) == [f"{first['media_id']}.mp4"]
 
 
 class BodyCounter:
