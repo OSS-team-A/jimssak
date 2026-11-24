@@ -1,0 +1,12 @@
+:root {
+  font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #242b32;
+  background: #f7faf9;
+  font-synthesis: none;
+  --color-primary: #22ae99;
+  --color-primary-dark: #168a78;
+  --color-text: #242b32;
+  --color-muted: #697780;
+  --color-surface: #fff;
+  --radius-card: 20px;
+}

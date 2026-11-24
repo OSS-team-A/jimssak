@@ -1,6 +1,7 @@
+@import './styles/tokens.css';
 * { box-sizing: border-box; }
-body { margin: 0; background: #f5f7f2; color: #182c26; font-family: system-ui, sans-serif; }
-main { max-width: 850px; margin: auto; padding: 72px 24px; }
+body { margin: 0; min-width: 280px; background: #f7faf9; color: var(--color-text); font-family: Pretendard, -apple-system, BlinkMacSystemFont, sans-serif; }
+.demo-page { max-width: 850px; margin: auto; padding: 72px 24px; }
 .badge { font-size: 12px; font-weight: 700; letter-spacing: 2px; }
 h1 { font-size: clamp(44px, 8vw, 76px); line-height: 1.12; letter-spacing: -3px; }
 h1 span { color: #247650; }
@@ -16,4 +17,21 @@ ul { padding: 0; list-style: none; }
 li { padding: 18px; background: #f5f7f2; border-radius: 10px; }
 .detail { display: block; margin-top: 8px; font-size: 14px; }
 [role=alert] { color: #a32a2a; }
-@media (max-width: 480px) { main { padding: 36px 18px; } section { padding: 22px; } }
+@media (max-width: 480px) { .demo-page { padding: 36px 18px; } .demo-page section { padding: 22px; } }
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+button { font: inherit; }
+.app-page { min-height: 100vh; min-height: 100dvh; width: 100%; max-width: 430px; margin: auto; background: var(--color-surface); padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom)); }
+.home-page { display: flex; flex-direction: column; }
+.home-header { min-height: 70px; display: flex; align-items: center; font-size: 22px; color: var(--color-primary-dark); }
+.home-content { flex: 1; display: flex; flex-direction: column; justify-content: center; text-align: center; }
+.home-content h1 { font-size: clamp(22px, 6.4vw, 25px); line-height: 1.35; letter-spacing: -.04em; overflow-wrap: keep-all; }
+.home-content p { color: var(--color-muted); line-height: 1.5; font-size: 14px; }
+.home-actions { display: grid; gap: 10px; padding-bottom: 12px; text-align: center; }
+.home-actions small { color: var(--color-muted); font-size: 12px; }
+.button { border: 0; border-radius: 12px; min-height: 52px; padding: 12px 18px; font-weight: 700; cursor: pointer; }
+.button--primary { background: var(--color-primary); color: white; }
+.button--secondary { background: #eef7f5; color: var(--color-primary-dark); }
+.button:disabled { cursor: not-allowed; opacity: .55; }
+@media (max-width: 360px) { .app-page { padding-left: 18px; padding-right: 18px; } }
