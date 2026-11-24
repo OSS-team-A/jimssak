@@ -66,6 +66,8 @@ class VideoInput(Contract):
     path: Path
     annotation_size_px: tuple[int, int]
     intrinsics: Intrinsics | None = None
+    frame_intrinsics: dict[int, Intrinsics] = Field(default_factory=dict)
+    pixel_rotation_ccw: Literal[0, 1, 2, 3] = 0
     pose_stride: int = Field(default=12, ge=1)
     views: list[ObjectView] = Field(min_length=1)
     scale_reference: ScaleReference | None = None
@@ -76,10 +78,13 @@ class VideoInput(Contract):
         width, height = self.annotation_size_px
         if not (1 <= width <= 1920 and 1 <= height <= 1920):
             raise ValueError("annotation dimensions must be between 1 and 1920 pixels")
-        if self.intrinsics and not (
-            0 <= self.intrinsics.cx < width and 0 <= self.intrinsics.cy < height
-        ):
+        cameras = list(self.frame_intrinsics.values())
+        if self.intrinsics is not None:
+            cameras.append(self.intrinsics)
+        if any(not (0 <= k.cx < width and 0 <= k.cy < height) for k in cameras):
             raise ValueError("Principal point must be inside the annotation image")
+        if any(index < 0 for index in self.frame_intrinsics):
+            raise ValueError("Intrinsics frame indices must be nonnegative")
         ids = set()
         for view in self.views:
             key = (view.frame_index, view.track_id)
@@ -107,7 +112,9 @@ class VideoInput(Contract):
                 raise ValueError("Capture pose frame indices must be unique")
             if any(view.frame_index not in provided for view in self.views):
                 raise ValueError("Capture poses must cover every object observation")
-            if self.intrinsics is None:
+            if self.intrinsics is None and any(
+                view.frame_index not in self.frame_intrinsics for view in self.views
+            ):
                 raise ValueError("Capture poses require the corresponding camera intrinsics")
         if self.scale_reference and not any(
             view.track_id == self.scale_reference.track_id for view in self.views
@@ -168,7 +175,9 @@ class VideoResult(Contract):
     video_id: str
     device: str
     pose_source: Literal["rgb_metric_depth_pnp", "capture_poses"]
-    intrinsics_source: Literal["provided", "provided_approximate", "approximate_phone_fov"]
+    intrinsics_source: Literal[
+        "provided", "provided_approximate", "approximate_phone_fov", "provided_per_frame"
+    ]
     scale: ScaleResult
     objects: list[MeasuredTrack]
     poses: list[PoseResult]

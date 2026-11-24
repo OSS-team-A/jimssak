@@ -30,28 +30,30 @@ def backproject(pixels, depth, camera):
     return rays(pixels, camera) * depth[:, None]
 
 
-def relative_pose(source, target, depths, camera):
+def relative_pose(source, target, depths, camera, target_camera=None):
     """Return source-to-target motion or None for insufficient reliable matches."""
+    if target_camera is None:
+        target_camera = camera
     valid = np.isfinite(depths) & (depths > 0.15) & (depths < 20.0)
     source, target, depths = source[valid], target[valid], depths[valid]
     if len(source) < 20:
         return None
     world = backproject(source, depths, camera)
     ok, vector, translation, matches = cv2.solvePnPRansac(
-        world, target, camera, None, iterationsCount=250, reprojectionError=2.5,
+        world, target, target_camera, None, iterationsCount=250, reprojectionError=2.5,
         confidence=0.999, flags=cv2.SOLVEPNP_EPNP,
     )
     if not ok or matches is None or len(matches) < max(16, 0.35 * len(world)):
         return None
     selected = matches.ravel()
     span = np.ptp(target[selected], axis=0)
-    if np.any(span < 0.06 * np.array([2 * camera[0, 2], 2 * camera[1, 2]])):
+    if np.any(span < 0.06 * np.array([2 * target_camera[0, 2], 2 * target_camera[1, 2]])):
         return None
     vector, translation = cv2.solvePnPRefineLM(
-        world[selected], target[selected], camera, None, vector, translation,
+        world[selected], target[selected], target_camera, None, vector, translation,
     )
     rotation = cv2.Rodrigues(vector)[0]
-    projected = (world[selected] @ rotation.T + translation.ravel()) @ camera.T
+    projected = (world[selected] @ rotation.T + translation.ravel()) @ target_camera.T
     if np.any(projected[:, 2] <= 0):
         return None
     error = np.linalg.norm(
@@ -60,7 +62,7 @@ def relative_pose(source, target, depths, camera):
     if np.median(error) > 2.5:
         return None
     before = rays(source[selected], camera) @ rotation.T
-    after = rays(target[selected], camera)
+    after = rays(target[selected], target_camera)
     cosine = np.sum(before * after, axis=1) / (
         np.linalg.norm(before, axis=1) * np.linalg.norm(after, axis=1)
     )
@@ -92,7 +94,9 @@ class CameraTracker:
         reverse = ratio(second, first)
         return [(i, j) for i, j in ratio(first, second).items() if reverse.get(j) == i]
 
-    def add(self, frame_id, image, depth):
+    def add(self, frame_id, image, depth, camera=None):
+        if camera is None:
+            camera = self.camera
         points, descriptors = self.sift.detectAndCompute(
             cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), None
         )
@@ -100,15 +104,16 @@ class CameraTracker:
         x, y = np.rint(pixels).astype(int).T
         samples = depth[np.clip(y, 0, depth.shape[0] - 1), np.clip(x, 0, depth.shape[1] - 1)]
         pose = None
-        for parent_id, parent, previous_pixels, previous_descriptors, previous_depth in reversed(
-            self.recent
-        ):
+        for entry in reversed(self.recent):
+            (
+                parent_id, parent, previous_pixels, previous_descriptors, previous_depth, previous_k
+            ) = entry
             pairs = self._mutual(previous_descriptors, descriptors)
             if len(pairs) < 20:
                 continue
             source, target = np.asarray(pairs).T
             relative = relative_pose(
-                previous_pixels[source], pixels[target], previous_depth[source], self.camera
+                previous_pixels[source], pixels[target], previous_depth[source], previous_k, camera
             )
             if relative is None:
                 continue
@@ -125,6 +130,6 @@ class CameraTracker:
         if pose is None:
             pose = CameraPose(np.eye(3), np.zeros(3), self.next_component)
             self.next_component += 1
-        self.recent.append((frame_id, pose, pixels, descriptors, samples))
+        self.recent.append((frame_id, pose, pixels, descriptors, samples, camera))
         self.recent = self.recent[-3:]
         return pose

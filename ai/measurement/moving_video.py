@@ -36,6 +36,7 @@ MAX_KEYFRAMES = 180
 class ObservedView:
     view: ObjectView
     pose: CameraPose
+    camera: np.ndarray
     image: np.ndarray
     depth: np.ndarray
     mask: np.ndarray | None
@@ -43,9 +44,9 @@ class ObservedView:
     dimensions: dict[str, float]
 
 
-def _camera(clip):
+def _camera(clip, frame_index=None):
     w, h = clip.annotation_size_px
-    k = clip.intrinsics
+    k = clip.frame_intrinsics.get(frame_index, clip.intrinsics)
     if k is not None:
         return np.array([[k.fx, 0, k.cx], [0, k.fy, k.cy], [0, 0, 1]])
     # Approximate 74-degree diagonal field of view for a standard phone camera.
@@ -59,15 +60,16 @@ def _video_frames(clip, first, last, selected):
         raise ValueError(f"Cannot open video: {clip.path}")
     video.set(cv2.CAP_PROP_ORIENTATION_AUTO, 1)
     try:
-        video.set(cv2.CAP_PROP_POS_FRAMES, first)
-        for index in range(first, last + 1):
+        # Decode in presentation order rather than seeking by frame number in a VFR movie.
+        for index in range(last + 1):
             if not video.grab():
                 raise ValueError(f"Video {clip.video_id} ended before required frame {index}")
-            if index not in selected:
+            if index < first or index not in selected:
                 continue
             ok, image = video.retrieve()
             if not ok:
                 raise ValueError(f"Cannot decode {clip.video_id} frame {index}")
+            image = np.rot90(image, clip.pixel_rotation_ccw)
             width, height = clip.annotation_size_px
             raw_h, raw_w = image.shape[:2]
             if abs(raw_w / raw_h / (width / height) - 1) > 0.015:
@@ -112,19 +114,21 @@ def _observe(view, pose, image, depth, camera):
             if up is not None:
                 diff -= (diff @ up) * up
             dimensions["overall_width"] = float(np.linalg.norm(diff) * 100)
-    return ObservedView(view, pose, image, depth, shape, up, dimensions)
+    return ObservedView(view, pose, camera, image, depth, shape, up, dimensions)
 
 
-def _table_from_motion(observations, camera):
+def _table_from_motion(observations):
     """Use multiview top corners only when motion and model depth both support them."""
     tables = [item for item in observations if item.view.tabletop_px is not None]
     if len(tables) < 3:
         return None
-    projections = [camera @ np.c_[item.pose.rotation, item.pose.translation] for item in tables]
+    projections = [
+        item.camera @ np.c_[item.pose.rotation, item.pose.translation] for item in tables
+    ]
     world_corners = []
     for i in range(4):
         pixels = [item.view.tabletop_px[i] for item in tables]
-        directions = np.array([item.pose.rotation.T @ rays([px], camera)[0]
+        directions = np.array([item.pose.rotation.T @ rays([px], item.camera)[0]
                                for item, px in zip(tables, pixels)])
         directions /= np.linalg.norm(directions, axis=1, keepdims=True)
         if np.min(directions @ directions.T) > np.cos(np.deg2rad(2.0)):
@@ -137,7 +141,7 @@ def _table_from_motion(observations, camera):
             return None
         for item, matrix, pixel in zip(tables, projections, pixels):
             projected, z = project(point[None], matrix)
-            sample = sample_point(pixel, item.depth, camera)
+            sample = sample_point(pixel, item.depth, item.camera)
             if z[0] <= 0 or np.linalg.norm(projected[0] - pixel) > 4.0 or sample is None:
                 return None
             if abs(z[0] / sample[2] - 1) > 0.30:
@@ -150,7 +154,7 @@ def _table_from_motion(observations, camera):
     return {"top_width": float(np.mean(edges[::2])), "top_depth": float(np.mean(edges[1::2]))}
 
 
-def _registered_mask_size(items, camera):
+def _registered_mask_size(items):
     candidates = [item for item in items if item.view.has_mask and item.view.complete]
     if len(candidates) < 3:
         return {}
@@ -163,7 +167,7 @@ def _registered_mask_size(items, camera):
     basis = upright_basis(up)
     registered = [
         MaskView(item.view.frame_index, item.mask,
-                 camera @ np.c_[item.pose.rotation @ basis, item.pose.translation],
+                 item.camera @ np.c_[item.pose.rotation @ basis, item.pose.translation],
                  image=item.image, depth=item.depth)
         for item in candidates
     ]
@@ -180,7 +184,7 @@ def _registered_mask_size(items, camera):
     }
 
 
-def _estimate_track(observations, camera, has_capture_poses):
+def _estimate_track(observations, has_capture_poses):
     component_views = defaultdict(list)
     per_dimension = defaultdict(list)
     for item in observations:
@@ -194,8 +198,8 @@ def _estimate_track(observations, camera, has_capture_poses):
                   for key, values in per_dimension.items()}
     best_first = sorted(component_views.values(), key=len, reverse=True)
     for items in best_first:
-        registered = _registered_mask_size(items, camera)
-        tabletop = _table_from_motion(items, camera)
+        registered = _registered_mask_size(items)
+        tabletop = _table_from_motion(items)
         if registered or tabletop:
             if "height" in dimensions and any(item.view.floor_contacts_px for item in items):
                 registered.pop("height", None)
@@ -276,21 +280,29 @@ def estimate_video(clip: VideoInput, model: MetricDepth) -> VideoResult:
         start = time.perf_counter()
         depth = model(image, 0)
         timings.append(time.perf_counter() - start)
-        pose = tracker.add(index, image, depth) if tracker is not None else capture_poses[index]
+        frame_camera = _camera(clip, index)
+        pose = (
+            tracker.add(index, image, depth, frame_camera)
+            if tracker is not None else capture_poses[index]
+        )
         poses.append({
             "frame_index": index, "component": pose.component, "parent_frame": pose.parent_frame,
             "inliers": pose.inliers, "median_reprojection_error_px": pose.error_px,
             "parallax_deg": pose.parallax_deg, "camera_center_m": pose.center.tolist(),
         })
         for view in lookup.get(index, ()):
-            observations[view.track_id].append(_observe(view, pose, image, depth, camera))
+            observations[view.track_id].append(
+                _observe(view, pose, image, depth, frame_camera)
+            )
 
     objects = [
-        _estimate_track(items, camera, bool(capture_poses)) for items in observations.values()
+        _estimate_track(items, bool(capture_poses)) for items in observations.values()
     ]
     calibration = _calibrate(clip, objects)
     source = "approximate_phone_fov"
-    if clip.intrinsics is not None:
+    if clip.frame_intrinsics:
+        source = "provided_per_frame"
+    elif clip.intrinsics is not None:
         source = "provided_approximate" if clip.intrinsics.approximate else "provided"
     return VideoResult(
         video_id=clip.video_id, device=model.device, intrinsics_source=source,

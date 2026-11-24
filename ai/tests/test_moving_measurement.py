@@ -14,15 +14,21 @@ def projection(points, camera):
     return projected[:, :2] / projected[:, 2:]
 
 
-def test_translation_and_rotation_only_are_distinguished():
+@pytest.mark.parametrize("vary_intrinsics", (False, True))
+def test_translation_and_rotation_only_are_distinguished(vary_intrinsics):
     rng = np.random.default_rng(553)
     points = rng.uniform([-1, -0.7, 2.0], [1, 0.7, 4.0], size=(80, 3))
     camera = np.array([[440., 0, 320], [0, 440., 240], [0, 0, 1]])
     rotation = cv2.Rodrigues(np.array([0.03, -0.08, 0.01]))[0]
     source = projection(points, camera)
+    target_k = camera.copy()
+    if vary_intrinsics:
+        target_k[0, 0] *= 1.07
+        target_k[1, 1] *= 1.05
+        target_k[0, 2] += 7
     for movement in [np.array([0.30, 0, 0.05]), np.zeros(3)]:
-        target = projection(points @ rotation.T + movement, camera)
-        result = relative_pose(source, target, points[:, 2], camera)
+        target = projection(points @ rotation.T + movement, target_k)
+        result = relative_pose(source, target, points[:, 2], camera, target_k)
         assert result is not None
         assert result[0] == pytest.approx(rotation, abs=1e-5)
         assert result[1] == pytest.approx(movement, abs=1e-5)
