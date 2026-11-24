@@ -4,6 +4,7 @@ import { HomePage } from '../pages/HomePage';
 import { GuidePage } from '../pages/GuidePage';
 import { AuthPage } from '../pages/AuthPage';
 import { HistoryPage } from '../pages/HistoryPage';
+import { CapturePage } from '../pages/CapturePage';
 import { routes } from './routes';
 
 export function App() {
@@ -14,6 +15,7 @@ export function App() {
     return () => window.removeEventListener('popstate', sync);
   }, []);
 
+  if (path === routes.capture) return <CapturePage />;
   if (path === routes.demo) return <AnalysisDemoPage />;
   if (path === routes.home) return <HomePage />;
   if (path === routes.guide) return <GuidePage />;

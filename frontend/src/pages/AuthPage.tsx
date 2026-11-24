@@ -6,7 +6,7 @@ import { Button } from '../components/common/Button';
 export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   const isSignup = mode === 'signup';
   const [name, setName] = useState('');
-  const [identifier, setIdentifier] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [message, setMessage] = useState('');
@@ -25,11 +25,11 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
     <form className="auth-form" onSubmit={submit}>
       <div className="auth-intro">
         <h1>{isSignup ? <>짐싹과 함께<br />이사 준비를 시작해요</> : '다시 만나 반가워요'}</h1>
-        <p>{isSignup ? '사용할 아이디와 비밀번호를 입력해주세요.' : '로그인하고 이사 기록을 이어보세요.'}</p>
+        <p>{isSignup ? '사용할 이메일과 비밀번호를 입력해주세요.' : '로그인하고 이사 기록을 이어보세요.'}</p>
       </div>
       <div className="auth-fields">
         {isSignup && <label>이름<input autoComplete="name" placeholder="이름을 입력해주세요" value={name} onChange={e => setName(e.target.value)} required /></label>}
-        <label>아이디<input autoComplete="username" placeholder="아이디를 입력해주세요" value={identifier} onChange={e => setIdentifier(e.target.value)} required /></label>
+        <label>이메일<input type="email" autoComplete="email" inputMode="email" placeholder="example@email.com" value={email} onChange={e => setEmail(e.target.value)} required /></label>
         <label>비밀번호<input type="password" autoComplete={isSignup ? 'new-password' : 'current-password'} placeholder="비밀번호를 입력해주세요" value={password} onChange={e => setPassword(e.target.value)} required /></label>
         {isSignup && <label>비밀번호 확인<input type="password" autoComplete="new-password" placeholder="비밀번호를 한 번 더 입력해주세요" value={confirmation} onChange={e => setConfirmation(e.target.value)} required /></label>}
       </div>

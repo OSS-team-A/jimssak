@@ -122,3 +122,10 @@ button { font: inherit; }
 .history-empty { margin-top: 32px !important; text-align: center; }
 @media (max-width: 360px) { .guide-tabs { gap: 16px; padding: 0 18px; } .guide-body { padding-left: 18px; padding-right: 18px; } .home-content { padding-top: 36px; } }
 @media (max-height: 680px) { .home-content { padding-top: 16px; } .auth-page .brand-header { margin-bottom: 8px; } }
+
+.capture-page { display: flex; flex-direction: column; gap: 20px; }
+.capture-page h1 { font-size: 25px; line-height: 1.4; letter-spacing: -.04em; }
+.capture-page p { color: #687286; font-size: 14px; line-height: 1.5; }
+.capture-preview { width: 100%; aspect-ratio: 3 / 4; max-height: 55dvh; border-radius: 18px; background: #17211f; object-fit: cover; }
+.capture-actions { display: grid; gap: 10px; margin-top: auto; }
+.capture-notice { padding: 14px; border-radius: 12px; background: #eef7f5; }
