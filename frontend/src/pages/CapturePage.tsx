@@ -5,6 +5,9 @@ import { navigate, routes } from '../app/routes';
 import { BrandHeader } from '../components/common/BrandHeader';
 import { Button } from '../components/common/Button';
 import mascot from '../assets/mascot.png';
+import bulbIcon from '../assets/capture-bulb.svg';
+import cameraIcon from '../assets/capture-camera.svg';
+import arrowIcon from '../assets/capture-arrow.svg';
 
 type Screen = 'prep' | 'camera' | 'review';
 const acceptedVideo = (file: File) => /\.(mp4|mov)$/i.test(file.name)
@@ -147,9 +150,9 @@ export function CapturePage() {
       <h1>방을 찍기 전에<br />이것만 확인해주세요</h1>
       <div className="mascot-window capture-mascot" role="img" aria-label="짐싹 캐릭터"><img src={mascot} alt="" /></div>
       <div className="capture-tips">
-        <div className="capture-tip"><span className="capture-tip-icon">☀</span><div><strong>조명을 켜주세요</strong><p>밝을수록 물품을 확인하기 쉬워요.</p></div></div>
-        <div className="capture-tip"><span className="capture-tip-icon">▣</span><div><strong>큰 가구부터, 빠짐없이</strong><p>가구 전체와 가려진 공간까지 담아주세요.</p></div></div>
-        <div className="capture-tip"><span className="capture-tip-icon">→</span><div><strong>수평을 맞추고 천천히</strong><p>한 방향으로 방을 둘러보듯 촬영해요.</p></div></div>
+        <div className="capture-tip"><img className="capture-tip-icon" src={bulbIcon} alt="" /><div><strong>조명을 켜주세요</strong><p>밝을수록 물품을 확인하기 쉬워요.</p></div></div>
+        <div className="capture-tip"><img className="capture-tip-icon" src={cameraIcon} alt="" /><div><strong>큰 가구부터, 빠짐없이</strong><p>가구 전체와 가려진 공간까지 담아주세요.</p></div></div>
+        <div className="capture-tip"><img className="capture-tip-icon" src={arrowIcon} alt="" /><div><strong>수평을 맞추고 천천히</strong><p>한 방향으로 방을 둘러보듯 촬영해요.</p></div></div>
       </div>
       {error && <p role="alert">{error}</p>}
       <div className="capture-prep-actions">
@@ -160,7 +163,7 @@ export function CapturePage() {
       </div>
       {permissionOpen && <div className="capture-permission-backdrop">
         <div className="capture-permission" role="dialog" aria-modal="true" aria-label="카메라 사용 안내">
-          <span aria-hidden="true">📷</span>
+          <img src={cameraIcon} width="42" height="42" alt="" />
           <h2>방을 촬영하려면<br />카메라 사용이 필요해요</h2>
           <p>이삿짐 영상을 만들기 위해 카메라를 사용해요. 다음 브라우저 안내에서 ‘허용’을 눌러주세요.</p>
           <Button onClick={() => void openCamera()}>카메라 사용 허용하기</Button>
