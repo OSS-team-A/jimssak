@@ -26,7 +26,7 @@ export function AnalysisPage() {
   return <main className="app-page analysis-page">
     <BrandHeader />
     <h1>이사 정보가 저장됐어요</h1>
-    <p>이삿짐 목록을 마무리하고 있어요.<br />분석이 끝나면 목록 확인으로 이동해요.</p>
+    <p>이사 정보를 저장했어요.<br />영상 분석 기능이 연결되면 목록을 확인할 수 있어요.</p>
     <img className="analysis-mascot" src={mascot} alt="" />
     <div className="analysis-state" role="status">{loading ? '이사 상태 확인 중' :
       snapshot?.data.analysis.status === 'not_started' ? '영상 분석 기능이 아직 연결되지 않았어요.' :
