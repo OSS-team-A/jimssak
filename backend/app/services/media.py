@@ -1,5 +1,5 @@
-import secrets
 import time
+import uuid
 from pathlib import Path, PurePath
 from typing import BinaryIO
 
@@ -58,7 +58,7 @@ class MediaStorage:
         extension = video_extension(name, content_type, source.read(8))
         source.seek(0)
 
-        media_id = secrets.token_urlsafe(12)
+        media_id = str(uuid.uuid4())
         relative = f"{move_id}/{media_id}{extension}"
         target = self.root / relative
         partial = target.with_name(f"{media_id}.uploading")

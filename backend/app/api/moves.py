@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import JSONResponse, Response
@@ -78,8 +79,15 @@ class GuardedRoute(APIRoute):
                     {"detail": "업로드 용량이 너무 큽니다."},
                     status_code=status.HTTP_413_CONTENT_TOO_LARGE,
                 )
-            move_id = request.path_params.get("move_id")
-            if move_id is not None and request.method != "GET":
+            raw_move_id = request.path_params.get("move_id")
+            if raw_move_id is not None and request.method != "GET":
+                try:
+                    move_id = str(UUID(raw_move_id))
+                except ValueError:
+                    return JSONResponse(
+                        {"detail": "이사 ID 형식이 올바르지 않습니다."},
+                        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    )
                 member = resolve_member(state.auth_store, await bearer(request))
                 resolve_move(state.move_store, move_id, member, await guest_header(request))
             return await handler(request)
@@ -112,9 +120,10 @@ Member = Annotated[User | None, Depends(optional_member)]
 
 
 def get_accessible_move(
-    move_id: str, member: Member, guest_token: GuestToken, moves: MoveStoreDep
+    move_id: UUID, member: Member, guest_token: GuestToken, moves: MoveStoreDep
 ) -> Move:
-    return resolve_move(moves, move_id, member, guest_token)
+    # IDs are stored in canonical lowercase form, whatever form the path used.
+    return resolve_move(moves, str(move_id), member, guest_token)
 
 
 AccessibleMove = Annotated[Move, Depends(get_accessible_move)]

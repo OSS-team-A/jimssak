@@ -2,6 +2,7 @@ import hashlib
 import secrets
 import sqlite3
 import time
+import uuid
 from collections.abc import Iterator
 from contextlib import closing, contextmanager
 from dataclasses import dataclass
@@ -84,7 +85,7 @@ class MoveStore:
 
     def create_for_member(self, user_id: int) -> Move:
         now = int(time.time())
-        move_id = secrets.token_urlsafe(12)
+        move_id = str(uuid.uuid4())
         with self._connect() as db:
             db.execute(
                 "INSERT INTO moves(id, user_id, created_at, last_used_at) VALUES (?, ?, ?, ?)",
@@ -94,7 +95,7 @@ class MoveStore:
 
     def create_for_guest(self) -> tuple[Move, str]:
         now = int(time.time())
-        move_id = secrets.token_urlsafe(12)
+        move_id = str(uuid.uuid4())
         guest_token = secrets.token_urlsafe(32)
         with self._connect() as db:
             db.execute(

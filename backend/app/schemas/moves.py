@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -9,7 +10,7 @@ Step = Literal["room_video", "origin", "destination", "schedule"]
 
 
 class MoveCreated(BaseModel):
-    move_id: str
+    move_id: UUID
     owner: Owner
     guest_token: str | None = Field(
         default=None,
@@ -25,7 +26,7 @@ class Section(BaseModel):
 
 
 class MediaInfo(BaseModel):
-    media_id: str
+    media_id: UUID
     filename: str
     content_type: Literal["video/mp4", "video/quicktime"]
     size_bytes: int
@@ -48,7 +49,7 @@ class MoveData(BaseModel):
 
 
 class MoveSnapshot(BaseModel):
-    move_id: str
+    move_id: UUID
     owner: Owner
     created_at: datetime
     expires_at: datetime | None
