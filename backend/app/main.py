@@ -43,7 +43,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.building_register = HubBuildingRegister(
             settings.building_register_url,
             data_key.get_secret_value() if data_key else None,
-            settings.external_api_timeout_seconds,
+            settings.building_register_request_timeout_seconds,
             settings.building_lookup_budget_seconds,
         )
         kakao_key = settings.kakao_rest_api_key

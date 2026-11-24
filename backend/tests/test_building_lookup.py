@@ -326,3 +326,36 @@ def test_client_stops_at_time_budget(monkeypatch):
     # 5s, then only the 1s left: the whole lookup never runs past the 6s budget.
     assert timeouts == [5.0, 1.0]
     assert clock["now"] <= 6.0
+
+
+def test_short_request_timeout_leaves_room_to_retry(monkeypatch):
+    """A 503 that takes ~6 s must not use up the whole budget in one try."""
+    clock = {"now": 0.0}
+    monkeypatch.setattr(br.time, "monotonic", lambda: clock["now"])
+    monkeypatch.setattr(br.time, "sleep", lambda seconds: clock.update(now=clock["now"] + seconds))
+    monkeypatch.setattr(br, "RETRY_PAUSE_SECONDS", 0.5)
+    request = httpx.Request("GET", "https://hub.example")
+    timeouts = []
+
+    def flaky_get(url, params, timeout):
+        timeouts.append(timeout)
+        if len(timeouts) < 3:
+            clock["now"] += timeout  # the slow 503 is cut off at our timeout
+            raise httpx.ReadTimeout("slow 503")
+        clock["now"] += 0.5
+        return httpx.Response(200, json=ok_body(TOEGYE, 1), request=request)
+
+    monkeypatch.setattr(httpx, "get", flaky_get)
+    rows = HubBuildingRegister("https://hub.example", "k", 2.0, 6.0).fetch(TOEGYE_LOT)
+    assert rows == TOEGYE
+    # Two cut-off tries and a third that succeeds, all inside the 6 s budget.
+    assert timeouts == [2.0, 2.0, 1.0]
+    assert clock["now"] <= 6.0
+
+
+def test_app_uses_short_register_timeout(tmp_path):
+    settings = Settings(auth_db_path=tmp_path / "app.sqlite3")
+    with TestClient(create_app(settings)) as client:
+        register = client.app.state.building_register
+        assert register.timeout == 2.0
+        assert register.budget == 6.0

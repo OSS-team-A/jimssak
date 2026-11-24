@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     data_go_kr_service_key: SecretStr | None = None
     # Total time one building lookup may take, retries included.
     building_lookup_budget_seconds: PositiveFloat = 6.0
+    # Per request: good answers come back in under a second, while the register's 503
+    # SERVICETIMEOUT_ERROR takes about 6 s. Giving up early leaves time to retry.
+    building_register_request_timeout_seconds: PositiveFloat = 2.0
     building_register_url: str = (
         "https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo"
     )
