@@ -1,0 +1,201 @@
+{
+  "videos": [
+    {
+      "video_id": "img3898-unanchored",
+      "path": "IMG_3898.MOV",
+      "annotation_size_px": [
+        540,
+        960
+      ],
+      "intrinsics": {
+        "fx": 611.0,
+        "fy": 611.0,
+        "cx": 270.0,
+        "cy": 480.0,
+        "approximate": true
+      },
+      "pose_stride": 6,
+      "views": [
+        {
+          "frame_index": 170,
+          "track_id": "white-A",
+          "label": "desk-and-chair",
+          "tabletop_px": [
+            [
+              114.0,
+              569.0
+            ],
+            [
+              247.0,
+              515.0
+            ],
+            [
+              381.0,
+              533.0
+            ],
+            [
+              247.0,
+              599.0
+            ]
+          ],
+          "floor_contacts_px": [
+            [
+              245.0,
+              881.0
+            ],
+            [
+              348.0,
+              774.0
+            ]
+          ],
+          "camera_up": [
+            0.008583553124493323,
+            -0.989294236269728,
+            -0.14568197108515055
+          ],
+          "complete": true
+        },
+        {
+          "frame_index": 196,
+          "track_id": "white-A",
+          "label": "desk-and-chair",
+          "tabletop_px": [
+            [
+              230.0,
+              571.0
+            ],
+            [
+              357.0,
+              526.0
+            ],
+            [
+              494.0,
+              546.0
+            ],
+            [
+              363.0,
+              608.0
+            ]
+          ],
+          "floor_contacts_px": [
+            [
+              362.0,
+              896.0
+            ],
+            [
+              449.0,
+              784.0
+            ]
+          ],
+          "camera_up": [
+            0.010898545927848544,
+            -0.9859853953447186,
+            -0.1664752890478865
+          ],
+          "complete": true
+        }
+      ]
+    },
+    {
+      "video_id": "img3898-width-anchor",
+      "path": "IMG_3898.MOV",
+      "annotation_size_px": [
+        540,
+        960
+      ],
+      "intrinsics": {
+        "fx": 611.0,
+        "fy": 611.0,
+        "cx": 270.0,
+        "cy": 480.0,
+        "approximate": true
+      },
+      "pose_stride": 6,
+      "views": [
+        {
+          "frame_index": 170,
+          "track_id": "white-A",
+          "label": "desk-and-chair",
+          "tabletop_px": [
+            [
+              114.0,
+              569.0
+            ],
+            [
+              247.0,
+              515.0
+            ],
+            [
+              381.0,
+              533.0
+            ],
+            [
+              247.0,
+              599.0
+            ]
+          ],
+          "floor_contacts_px": [
+            [
+              245.0,
+              881.0
+            ],
+            [
+              348.0,
+              774.0
+            ]
+          ],
+          "camera_up": [
+            0.008583553124493323,
+            -0.989294236269728,
+            -0.14568197108515055
+          ],
+          "complete": true
+        },
+        {
+          "frame_index": 196,
+          "track_id": "white-A",
+          "label": "desk-and-chair",
+          "tabletop_px": [
+            [
+              230.0,
+              571.0
+            ],
+            [
+              357.0,
+              526.0
+            ],
+            [
+              494.0,
+              546.0
+            ],
+            [
+              363.0,
+              608.0
+            ]
+          ],
+          "floor_contacts_px": [
+            [
+              362.0,
+              896.0
+            ],
+            [
+              449.0,
+              784.0
+            ]
+          ],
+          "camera_up": [
+            0.010898545927848544,
+            -0.9859853953447186,
+            -0.1664752890478865
+          ],
+          "complete": true
+        }
+      ],
+      "scale_reference": {
+        "track_id": "white-A",
+        "dimension": "top_width",
+        "cm": 59.0
+      }
+    }
+  ]
+}
