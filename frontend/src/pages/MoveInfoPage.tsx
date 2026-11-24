@@ -41,6 +41,7 @@ const fromSnapshot = (record: MoveSnapshot): Draft => ({
 export function MoveInfoPage() {
   const move = savedMove();
   const draftKey = move ? `jimssak-draft-${move.move_id}` : '';
+  const [hadDraft] = useState(() => Boolean(draftKey && sessionStorage.getItem(draftKey)));
   const [draft, setDraft] = useState<Draft>(() => {
     try { return JSON.parse(sessionStorage.getItem(draftKey) || 'null') || emptyDraft(); }
     catch { return emptyDraft(); }
@@ -63,9 +64,9 @@ export function MoveInfoPage() {
   useEffect(() => {
     if (!move) return;
     void getMove(move.move_id, move.guest_token).then(record => {
-      if (!sessionStorage.getItem(draftKey)) setDraft(fromSnapshot(record));
+      if (!hadDraft) setDraft(fromSnapshot(record));
     }).catch(() => setError('저장된 이사 정보를 불러오지 못했어요.'));
-  }, [draftKey, move?.move_id, move?.guest_token]);
+  }, [draftKey, hadDraft, move?.move_id, move?.guest_token]);
   useEffect(() => {
     if (!keyword.trim() || keyword.trim().length < 2 || sheet === 'schedule' || sheet === null) {
       setResults([]); setSearchError(''); return;

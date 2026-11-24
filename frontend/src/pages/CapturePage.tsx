@@ -23,7 +23,12 @@ export function CapturePage() {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const cancelledRef = useRef(false);
-  const moveRef = useRef<{ move_id: string; guest_token: string } | null>(null);
+  const moveRef = useRef<{ move_id: string; guest_token: string } | null>((() => {
+    try {
+      const saved = sessionStorage.getItem('jimssak-member-move') || sessionStorage.getItem('jimssak-guest-move');
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  })());
   const [screen, setScreen] = useState<Screen>('prep');
   const [permissionOpen, setPermissionOpen] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -77,6 +82,7 @@ export function CapturePage() {
         const created = await createMove();
         move = { move_id: created.move_id, guest_token: created.guest_token ?? '' };
         moveRef.current = move;
+        sessionStorage.setItem(move.guest_token ? 'jimssak-guest-move' : 'jimssak-member-move', JSON.stringify(move));
       }
       await uploadMoveVideo(move.move_id, move.guest_token, file);
       sessionStorage.setItem(move.guest_token ? 'jimssak-guest-move' : 'jimssak-member-move', JSON.stringify(move));
