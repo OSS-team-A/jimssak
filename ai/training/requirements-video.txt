@@ -1,0 +1,7 @@
+# Versions used for the local video experiment (Python 3.12, macOS arm64).
+numpy==2.5.5
+opencv-python==5.1.0.95
+ultralytics==8.4.215
+torch==2.15.0
+torchvision==0.29.2
+lap==0.5.14
