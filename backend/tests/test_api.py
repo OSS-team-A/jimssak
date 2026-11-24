@@ -1,8 +1,9 @@
 from fastapi.testclient import TestClient
 
-from backend.app.main import app
+from backend.app.config import Settings
+from backend.app.main import create_app
 
-client = TestClient(app)
+client = TestClient(create_app(Settings(cors_origins=["http://localhost:5173"])))
 
 
 def test_health():
