@@ -187,11 +187,10 @@ def decide_elevator(row: dict) -> str:
     ride, emergency = count(row.get("rideUseElvtCnt")), count(row.get("emgenUseElvtCnt"))
     if ride is None or emergency is None:
         return "unknown"
-    if ride >= 1:
+    # Apartments often record their everyday lifts as emergency elevators (비상용 겸용),
+    # so either kind counts as having an elevator.
+    if ride >= 1 or emergency >= 1:
         return "available"
-    if emergency >= 1:
-        # Only an emergency elevator: whether movers may use it is for the building to say.
-        return "unknown"
     floors = count(row.get("grndFlrCnt"))
     if floors is not None and floors >= TALL_BUILDING_FLOORS:
         # A tall building recorded with no elevator is more likely a gap in the record.
