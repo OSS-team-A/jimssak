@@ -1,4 +1,3 @@
-@import './styles/tokens.css';
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 280px; background: #f7faf9; color: var(--color-text); font-family: Pretendard, -apple-system, BlinkMacSystemFont, sans-serif; }
 .demo-page { max-width: 850px; margin: auto; padding: 72px 24px; }
@@ -126,15 +125,6 @@ button { font: inherit; }
 .capture-page { display: flex; flex-direction: column; gap: 20px; }
 .capture-page h1 { font-size: 25px; line-height: 1.4; letter-spacing: -.04em; }
 .capture-page p { color: #687286; font-size: 14px; line-height: 1.5; }
-.capture-preview { width: 100%; aspect-ratio: 3 / 4; max-height: 55dvh; border-radius: 18px; background: #17211f; object-fit: cover; }
-.capture-actions { display: grid; gap: 10px; margin-top: auto; }
-.capture-notice { padding: 14px; border-radius: 12px; background: #eef7f5; }
-
-.capture-actions input[type="file"] { width: 100%; font-size: 13px; color: #687286; }
-.capture-actions input[type="file"]::file-selector-button { margin-right: 12px; border: 1px solid #dce4dc; border-radius: 10px; padding: 10px; background: #fff; font: inherit; }
-.capture-success { padding: 14px; border-radius: 12px; background: #e9faf4; color: #08745f !important; }
-.capture-recording { color: #ae2934 !important; font-weight: 700; }
-
 /* SC-03 and SC-04: final 11/24 capture flow */
 .capture-page { position: relative; padding: 0; display: flex; flex-direction: column; gap: 0; overflow: hidden; background: #fff; }
 .capture-prep { padding: max(12px, env(safe-area-inset-top)) 24px max(32px, env(safe-area-inset-bottom)); min-height: 100dvh; display: flex; flex-direction: column; }
@@ -151,16 +141,12 @@ button { font: inherit; }
 .capture-tip p { margin-top: 4px; font-size: 13px; }
 .capture-prep-actions { margin-top: auto; display: grid; gap: 12px; }
 .capture-prep-actions .button { width: 100%; }
-.capture-file-label { display: block; text-align: center; font-size: 13px; color: #687286; }
-.capture-file-label input { width: 100%; margin-top: 8px; }
 .capture-permission-backdrop { position: absolute; inset: 0; z-index: 5; background: #0007; display: flex; align-items: end; padding: 16px 16px max(38px, env(safe-area-inset-bottom)); }
 .capture-permission { width: 100%; padding: 34px 24px 20px; background: #fff; border-radius: 28px; }
 .capture-permission h2 { font-size: 22px; line-height: 1.55; margin: 22px 0 16px; }
 .capture-permission p { margin-bottom: 66px; }
 .capture-camera { position: relative; width: 100%; height: 100dvh; overflow: hidden; background: #17211f; color: white; }
 .capture-camera video { width: 100%; height: 100%; object-fit: cover; }
-.capture-camera-top { position: absolute; top: max(40px, env(safe-area-inset-top)); left: 24px; right: 24px; display: flex; justify-content: space-between; align-items: center; }
-.capture-camera-top button { padding: 8px; background: #0004; color: white; border-radius: 10px; }
 .capture-camera-guide { position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%); width: 180px; height: 100px; border: 1px solid #fff9; border-radius: 50%; }
 .capture-camera-guide::after { content: ''; position: absolute; left: -45px; right: -45px; top: 50%; border-top: 1px solid #fff9; }
 .capture-camera-hint { position: absolute; top: 60%; width: 100%; padding: 0 18px; text-align: center; color: white !important; font-weight: 700; }
@@ -169,17 +155,12 @@ button { font: inherit; }
 .capture-shutter--recording { background: white; display: grid; place-items: center; }
 .capture-shutter--recording::after { content: ''; width: 28px; height: 28px; border-radius: 5px; background: #f44355; }
 .capture-camera-controls span { color: #fff; font-size: 14px; font-weight: 700; }
-.capture-recording-time { position: absolute; top: 16%; left: 50%; transform: translateX(-50%); padding: 6px 14px; border-radius: 20px; background: #0008; color: white !important; }
-.capture-help { position: absolute; z-index: 3; inset: 0; background: #000b; padding: 150px 24px 40px; color: white; }
-.capture-help h2 { font-size: 24px; }
-.capture-help p { color: #fff; margin: 18px 0; }
-.capture-help .button { margin-top: 30px; }
-.capture-review { padding: max(20px, env(safe-area-inset-top)) 24px max(32px, env(safe-area-inset-bottom)); min-height: 100dvh; display: flex; flex-direction: column; gap: 18px; }
-.capture-review h1 { font-size: 24px; }
-.capture-review video { width: 100%; max-height: 48dvh; aspect-ratio: 3 / 4; background: #17211f; object-fit: cover; border-radius: 18px; }
-.capture-review .capture-actions { margin-top: auto; }
 
-.capture-prep .capture-mascot { width: 224px; height: 132px; margin: 38px auto 28px; }
-.capture-prep .capture-mascot img { object-fit: fill; }
-
-.capture-double-arrow { display: inline-block; width: 18px; height: 18px; vertical-align: middle; }
+.capture-camera-error { position: absolute; bottom: 158px; left: 24px; right: 24px; color: #fff !important; text-align: center; background: #0009; padding: 10px; border-radius: 8px; }
+.capture-status { min-height: 100dvh; padding: max(12px, env(safe-area-inset-top)) 24px max(32px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; }
+.capture-status h1 { margin-top: 30px; font-size: 22px; }
+.capture-status > p { margin-top: 12px; font-size: 14px; }
+.capture-status-mascot { align-self: center; margin: 36px 0 28px; }
+.capture-status-strip { padding: 16px; background: #f2f3f5; color: #8b95a1; border-radius: 10px; font-size: 13px; }
+.capture-status .capture-status-detail { margin-top: 12px; font-size: 12px; }
+.capture-status-actions { margin-top: auto; }

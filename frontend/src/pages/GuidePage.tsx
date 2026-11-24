@@ -18,7 +18,7 @@ const tabs: { id: Tab; label: string }[] = [
   { id: 'intro', label: '서비스 소개' }, { id: 'how', label: '이용 방법' }, { id: 'faq', label: '자주 묻는 질문' },
 ];
 const features = [
-  { icon: guideBox, title: '이삿짐 목록을 간편하게', description: '방을 촬영하면 AI가 가구와 가전 등 물품을 찾아 목록으로 정리해요. 빠지거나 잘못 정리된 내용은 직접 수정할 수 있어요.' },
+  { icon: guideBox, title: '이삿짐 목록을 간편하게', description: '방을 촬영하면 AI가 가구와 가전을 찾아 종류·수량·예상 크기를 정리해요. 빠지거나 잘못 정리된 내용은 직접 수정할 수 있어요.' },
   { icon: guideHouse, title: '이사 유형별 예상 비용 비교', description: '확인한 이삿짐과 이사 조건을 바탕으로 일반·반포장·포장 이사의 예상 비용과 포함 작업을 살펴봐요. 실제 견적은 업체에 문의해 확인해주세요.' },
   { icon: guideDocument, title: '이삿짐 명세서를 간편하게', description: '확인한 물품과 이사 조건을 PDF 명세서로 받아 여러 업체에 전달할 수 있어요. 같은 이삿짐 목록을 매번 다시 작성하지 않아도 돼요.' },
   { icon: guideShield, title: '이사 후에도 한 번 더 확인', description: '이사 전후 영상을 비교해 상태 변화가 의심되거나 확인이 필요한 물품을 함께 살펴봐요.' },

@@ -16,7 +16,7 @@ export function HomePage() {
     <div className="home-actions">
       <Button onClick={() => navigate(routes.capture)}>촬영하고 이삿짐 정리하기</Button>
       <Button variant="secondary" onClick={() => navigate(memberPreview ? routes.history : routes.login)}>{memberPreview ? '내 이사 기록 확인하기' : '로그인 / 회원가입'}</Button>
-      {!memberPreview && <small>로그인 없이 촬영할 수 있어요. 로그인하면 이사 기록을 저장하고 이어볼 수 있어요.</small>}
+      {!memberPreview && <small>로그인하면 이사 기록을 저장하고 이어볼 수 있어요.</small>}
     </div>
   </main>;
 }
