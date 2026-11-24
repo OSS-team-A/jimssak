@@ -22,6 +22,7 @@ from ..schemas.moves import (
     PlaceInput,
     PlaceSection,
     RoomVideo,
+    RouteSection,
     Schedule,
     ScheduleSection,
     Section,
@@ -43,8 +44,10 @@ from ..services.moves import (
     Move,
     MoveStore,
     PlaceRecord,
+    RouteRecord,
     ScheduleRecord,
 )
+from ..services.route import AddressNotLocated, RouteLookupFailed, Router
 from .auth import Store, bearer, unauthorized
 
 # Room for multipart boundaries and small form fields around the video.
@@ -141,6 +144,13 @@ def get_building_register(request: Request) -> BuildingRegister:
 
 
 RegisterDep = Annotated[BuildingRegister, Depends(get_building_register)]
+
+
+def get_router(request: Request) -> Router:
+    return request.app.state.router
+
+
+RouterDep = Annotated[Router, Depends(get_router)]
 Bearer = Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]
 GuestToken = Annotated[str | None, Depends(guest_header)]
 
@@ -211,6 +221,9 @@ def get_move(move: AccessibleMove, moves: MoveStoreDep) -> MoveSnapshot:
         "채운다. 같은 지번을 다시 보내면 외부 조회 없이 저장된 결과를 쓰고, 조회가 실패했던 "
         "주소만 다시 조회한다. 조회가 실패해도 저장은 성공한다. 외부 API가 간헐적으로 "
         "실패하므로, 응답의 `building.status`가 `failed`이면 같은 본문으로 한 번 더 저장한다.\n\n"
+        "출발지·도착지가 모두 있으면 카카오 자동차 길찾기로 도로거리를 계산해 `route`에 "
+        "저장한다. 두 도로명주소 중 하나가 바뀔 때만 다시 계산하며, `route.status`가 "
+        "`failed`이면 같은 본문으로 다시 저장해 재계산한다.\n\n"
         "승강기(`elevator`)는 사용자가 고칠 때만 보낸다. 사용자가 고친 값은 같은 주소인 동안 "
         "조회 결과로 덮어쓰지 않는다. 저장 후의 이사 상태를 반환한다."
     ),
@@ -221,7 +234,8 @@ def get_move(move: AccessibleMove, moves: MoveStoreDep) -> MoveSnapshot:
     },
 )
 def update_move(
-    update: MoveUpdate, move: AccessibleMove, moves: MoveStoreDep, register: RegisterDep
+    update: MoveUpdate, move: AccessibleMove, moves: MoveStoreDep, register: RegisterDep,
+    router: RouterDep,
 ) -> MoveSnapshot:
     sent = update.model_fields_set
     current, _ = moves.get_details(move.id)
@@ -231,12 +245,22 @@ def update_move(
     sent_places = {
         role: getattr(update, role) for role in ("origin", "destination") if role in sent
     }
-    # The register can be slow and is retried, so both ends are looked up at the same time.
-    with ThreadPoolExecutor(max_workers=2) as pool:
+    # The two addresses the move will have once this save is done.
+    addresses = {}
+    for role in ("origin", "destination"):
+        if role in sent_places:
+            place = sent_places[role]
+            addresses[role] = place.road_address if place else None
+        else:
+            addresses[role] = current[role].road_address if role in current else None
+    route_sent, route_job = _route_plan(addresses, moves.get_route(move.id))
+    # External calls can be slow and are retried, so they all run at the same time.
+    with ThreadPoolExecutor(max_workers=3) as pool:
         pending = {
             role: pool.submit(_look_up, register, place, known.get(role))
             for role, place in sent_places.items() if place is not None
         }
+        route_future = pool.submit(_find_route, router, *route_job) if route_job else None
     for role, place in sent_places.items():
         if place is None:
             places[role] = lookups[role] = None
@@ -248,9 +272,53 @@ def update_move(
         schedule = ScheduleRecord(
             update.schedule.move_date.isoformat(), update.schedule.start_time.isoformat()
         )
-    moves.update_details(move.id, places, schedule, schedule_sent="schedule" in sent,
-                         lookups=lookups)
+    moves.update_details(
+        move.id, places, schedule, schedule_sent="schedule" in sent, lookups=lookups,
+        route=route_future.result() if route_future else None, route_sent=route_sent,
+    )
     return _snapshot(move, moves)
+
+
+def _route_plan(
+    addresses: dict[str, str | None], known: RouteRecord | None
+) -> tuple[bool, tuple[str, str] | None]:
+    """Whether the stored route changes, and which address pair to compute if any."""
+    origin, destination = addresses["origin"], addresses["destination"]
+    if origin is None or destination is None:
+        # Nothing to measure yet; drop a route left from earlier addresses.
+        return known is not None, None
+    if known is not None and known.status != "failed" and (
+        (known.origin_address, known.destination_address) == (origin, destination)
+    ):
+        return False, None
+    return True, (origin, destination)
+
+
+def _find_route(router: Router, origin: str, destination: str) -> RouteRecord:
+    checked_at = int(time.time())
+    base = {"origin_address": origin, "destination_address": destination,
+            "checked_at": checked_at}
+    try:
+        found = router.route(origin, destination)
+    except AddressNotLocated:
+        return RouteRecord(status="not_found", **base)
+    except RouteLookupFailed:
+        return RouteRecord(status="failed", **base)
+    return RouteRecord(
+        status="found", distance_m=found.distance_m, duration_s=found.duration_s,
+        origin_x=found.origin.x, origin_y=found.origin.y,
+        destination_x=found.destination.x, destination_y=found.destination.y, **base,
+    )
+
+
+def _route_section(route: RouteRecord | None) -> RouteSection:
+    if route is None:
+        return RouteSection(status="not_ready")
+    return RouteSection(
+        status=route.status, distance_m=route.distance_m, duration_s=route.duration_s,
+        basis="kakao_car_recommend" if route.status == "found" else None,
+        checked_at=_time(route.checked_at),
+    )
 
 
 def _look_up(
@@ -344,6 +412,7 @@ def _snapshot(move: Move, moves: MoveStore) -> MoveSnapshot:
     video = moves.get_video(move.id)
     places, schedule = moves.get_details(move.id)
     lookups = moves.get_lookups(move.id)
+    route = moves.get_route(move.id)
     data = MoveData(
         room_video=RoomVideo(
             status="uploaded" if video else "empty",
@@ -353,6 +422,7 @@ def _snapshot(move: Move, moves: MoveStore) -> MoveSnapshot:
         inventory=Section(status="empty"),
         origin=_place_section(places.get("origin"), lookups.get("origin")),
         destination=_place_section(places.get("destination"), lookups.get("destination")),
+        route=_route_section(route),
         schedule=ScheduleSection(
             status="filled" if schedule else "empty",
             value=Schedule(move_date=schedule.move_date, start_time=schedule.start_time)

@@ -197,12 +197,31 @@ class ScheduleSection(BaseModel):
     value: Schedule | None = None
 
 
+class RouteSection(BaseModel):
+    """Road distance between origin and destination, for the quote's distance rules."""
+
+    status: Literal["not_ready", "found", "not_found", "failed"] = Field(
+        description=(
+            "not_ready: 출발지·도착지 중 하나가 아직 없음, found: 계산됨, "
+            "not_found: 주소의 좌표를 찾지 못함(주소 확인 필요), "
+            "failed: 조회 실패(같은 본문으로 다시 저장하면 재계산)"
+        )
+    )
+    distance_m: int | None = Field(default=None, description="자동차 도로거리(m). 화면은 km로 변환")
+    duration_s: int | None = Field(default=None, description="예상 이동 시간(초)")
+    basis: Literal["kakao_car_recommend"] | None = Field(
+        default=None, description="거리 기준: 카카오 자동차 길찾기 추천 경로"
+    )
+    checked_at: datetime | None = None
+
+
 class MoveData(BaseModel):
     room_video: RoomVideo
     analysis: Section
     inventory: Section
     origin: PlaceSection
     destination: PlaceSection
+    route: RouteSection
     schedule: ScheduleSection
 
 

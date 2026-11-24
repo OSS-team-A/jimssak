@@ -13,6 +13,7 @@ from .services.auth import AuthStore
 from .services.building_register import HubBuildingRegister
 from .services.media import MediaStorage
 from .services.moves import MoveStore
+from .services.route import KakaoRouter
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -42,8 +43,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.building_register = HubBuildingRegister(
             settings.building_register_url,
             data_key.get_secret_value() if data_key else None,
-            settings.external_api_timeout_seconds,
+            settings.building_register_request_timeout_seconds,
             settings.building_lookup_budget_seconds,
+        )
+        kakao_key = settings.kakao_rest_api_key
+        app.state.router = KakaoRouter(
+            settings.kakao_geocode_url,
+            settings.kakao_directions_url,
+            kakao_key.get_secret_value() if kakao_key else None,
+            settings.external_api_timeout_seconds,
+            settings.route_lookup_budget_seconds,
         )
         yield
 

@@ -72,6 +72,24 @@ class LookupRecord:
     checked_at: int | None = None
 
 
+@dataclass(frozen=True)
+class RouteRecord:
+    """Road route between the two addresses, kept so it is computed only once."""
+
+    # found / not_found (an address could not be located) / failed
+    status: str
+    # The two road addresses this result is for; a change to either means recompute.
+    origin_address: str
+    destination_address: str
+    distance_m: int | None = None
+    duration_s: int | None = None
+    origin_x: float | None = None
+    origin_y: float | None = None
+    destination_x: float | None = None
+    destination_y: float | None = None
+    checked_at: int | None = None
+
+
 MEDIA_COLUMNS ="id, move_id, filename, content_type, size_bytes, storage_path, created_at"
 
 
@@ -137,6 +155,19 @@ class MoveStore:
                     building_json TEXT,
                     checked_at INTEGER,
                     PRIMARY KEY (move_id, role)
+                );
+                CREATE TABLE IF NOT EXISTS move_routes (
+                    move_id TEXT PRIMARY KEY NOT NULL REFERENCES moves(id) ON DELETE CASCADE,
+                    status TEXT NOT NULL,
+                    origin_address TEXT NOT NULL,
+                    destination_address TEXT NOT NULL,
+                    distance_m INTEGER,
+                    duration_s INTEGER,
+                    origin_x REAL,
+                    origin_y REAL,
+                    destination_x REAL,
+                    destination_y REAL,
+                    checked_at INTEGER
                 );
                 CREATE TABLE IF NOT EXISTS move_schedules (
                     move_id TEXT PRIMARY KEY NOT NULL REFERENCES moves(id) ON DELETE CASCADE,
@@ -227,6 +258,15 @@ class MoveStore:
             for row in rows
         }
 
+    def get_route(self, move_id: str) -> RouteRecord | None:
+        with self._connect() as db:
+            row = db.execute("SELECT * FROM move_routes WHERE move_id = ?", (move_id,)).fetchone()
+        if row is None:
+            return None
+        fields = dict(row)
+        fields.pop("move_id")
+        return RouteRecord(**fields)
+
     def update_details(
         self,
         move_id: str,
@@ -234,13 +274,27 @@ class MoveStore:
         schedule: ScheduleRecord | None,
         schedule_sent: bool,
         lookups: dict[str, LookupRecord | None] | None = None,
+        route: RouteRecord | None = None,
+        route_sent: bool = False,
     ) -> None:
         """Replace only the sections that were sent, all in one transaction.
 
-        A place, schedule or lookup given as None is cleared.
+        A place, schedule, lookup or route given as None is cleared.
         """
         now = int(time.time())
         with self._connect() as db:
+            if route_sent:
+                db.execute("DELETE FROM move_routes WHERE move_id = ?", (move_id,))
+                if route is not None:
+                    db.execute(
+                        "INSERT INTO move_routes(move_id, status, origin_address, "
+                        "destination_address, distance_m, duration_s, origin_x, origin_y, "
+                        "destination_x, destination_y, checked_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (move_id, route.status, route.origin_address, route.destination_address,
+                         route.distance_m, route.duration_s, route.origin_x, route.origin_y,
+                         route.destination_x, route.destination_y, route.checked_at),
+                    )
             for role, lookup in (lookups or {}).items():
                 db.execute(
                     "DELETE FROM move_building_lookups WHERE move_id = ? AND role = ?",

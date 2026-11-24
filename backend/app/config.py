@@ -28,16 +28,27 @@ class Settings(BaseSettings):
     data_go_kr_service_key: SecretStr | None = None
     # Total time one building lookup may take, retries included.
     building_lookup_budget_seconds: PositiveFloat = 6.0
+    # Per request: good answers come back in under a second, while the register's 503
+    # SERVICETIMEOUT_ERROR takes about 6 s. Giving up early leaves time to retry.
+    building_register_request_timeout_seconds: PositiveFloat = 2.0
     building_register_url: str = (
         "https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo"
     )
+    # 카카오 디벨로퍼스 REST API 키: 주소 좌표(로컬)와 자동차 길찾기(카카오모빌리티).
+    kakao_rest_api_key: SecretStr | None = None
+    kakao_geocode_url: str = "https://dapi.kakao.com/v2/local/search/address.json"
+    kakao_directions_url: str = "https://apis-navi.kakaomobility.com/v1/directions"
+    # Total time one route calculation may take (two geocodes + directions, retries included).
+    route_lookup_budget_seconds: PositiveFloat = 6.0
 
     @field_validator("auth_db_path", "media_dir")
     @classmethod
     def resolve_backend_path(cls, path: Path) -> Path:
         return BACKEND_DIR / path
 
-    @field_validator("address_search_api_key", "data_go_kr_service_key", mode="before")
+    @field_validator(
+        "address_search_api_key", "data_go_kr_service_key", "kakao_rest_api_key", mode="before"
+    )
     @classmethod
     def blank_key_is_missing(cls, key: object) -> object:
         # `KEY=` left empty in .env means "not configured", not an empty key.
