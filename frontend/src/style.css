@@ -129,3 +129,8 @@ button { font: inherit; }
 .capture-preview { width: 100%; aspect-ratio: 3 / 4; max-height: 55dvh; border-radius: 18px; background: #17211f; object-fit: cover; }
 .capture-actions { display: grid; gap: 10px; margin-top: auto; }
 .capture-notice { padding: 14px; border-radius: 12px; background: #eef7f5; }
+
+.capture-actions input[type="file"] { width: 100%; font-size: 13px; color: #687286; }
+.capture-actions input[type="file"]::file-selector-button { margin-right: 12px; border: 1px solid #dce4dc; border-radius: 10px; padding: 10px; background: #fff; font: inherit; }
+.capture-success { padding: 14px; border-radius: 12px; background: #e9faf4; color: #08745f !important; }
+.capture-recording { color: #ae2934 !important; font-weight: 700; }
