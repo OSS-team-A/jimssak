@@ -12,6 +12,12 @@ MOVES = "/api/v1/moves"
 MP4 = b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 1000
 TODAY = datetime.now(KST).date()
 MOVE_DAY = (TODAY + timedelta(days=30)).isoformat()
+# Addresses sent without search codes are not looked up in the building register.
+NO_LOOKUP = {
+    "status": "not_requested", "building_name": None, "dong_name": None,
+    "above_ground_floors": None, "ride_elevators": None, "emergency_elevators": None,
+    "checked_at": None,
+}
 
 # The SC-06 example from the Figma design.
 ORIGIN = {
@@ -60,11 +66,12 @@ def test_sc06_form_completes_the_move(client):
     assert response.status_code == 200
     data = response.json()["data"]
     assert data["origin"] == {"status": "filled", "value": {
-        **ORIGIN, "elevator_source": "user",
+        **ORIGIN, "elevator_source": "user", "building": NO_LOOKUP,
     }}
     # Elevator not sent: shown as 확인 필요, with no source yet.
     assert data["destination"] == {"status": "filled", "value": {
         **DESTINATION, "detail_address": None, "elevator": "unknown", "elevator_source": None,
+        "building": NO_LOOKUP,
     }}
     assert data["schedule"] == {"status": "filled", "value": {
         "move_date": MOVE_DAY, "start_time": "09:00:00",
@@ -91,7 +98,7 @@ def test_only_sent_sections_change(client):
     }).json()["data"]["origin"]["value"]
     assert moved == {
         "road_address": "서울 중구 퇴계로36길 4", "detail_address": None, "floor": -1,
-        "elevator": "unknown", "elevator_source": None,
+        "elevator": "unknown", "elevator_source": None, "building": NO_LOOKUP,
     }
 
     cleared = client.patch(url, headers=headers, json={"destination": None}).json()

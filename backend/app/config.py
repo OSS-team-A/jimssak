@@ -24,13 +24,20 @@ class Settings(BaseSettings):
     address_search_api_key: SecretStr | None = None
     address_search_url: str = "https://business.juso.go.kr/addrlink/addrLinkApi.do"
     external_api_timeout_seconds: PositiveFloat = 5.0
+    # 공공데이터포털 일반 인증키(Decoding): 건축물대장 등. Without it, building lookups are skipped.
+    data_go_kr_service_key: SecretStr | None = None
+    # Total time one building lookup may take, retries included.
+    building_lookup_budget_seconds: PositiveFloat = 6.0
+    building_register_url: str = (
+        "https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo"
+    )
 
     @field_validator("auth_db_path", "media_dir")
     @classmethod
     def resolve_backend_path(cls, path: Path) -> Path:
         return BACKEND_DIR / path
 
-    @field_validator("address_search_api_key", mode="before")
+    @field_validator("address_search_api_key", "data_go_kr_service_key", mode="before")
     @classmethod
     def blank_key_is_missing(cls, key: object) -> object:
         # `KEY=` left empty in .env means "not configured", not an empty key.

@@ -21,6 +21,7 @@ Elevator = Literal["available", "unavailable", "unknown"]
 ElevatorSource = Literal["user", "building_register"]
 Address = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 DetailAddress = Annotated[str, StringConstraints(strip_whitespace=True, max_length=50)]
+BuildingName = Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)]
 # Item keys in the order the chat asks for them.
 Step = Literal["room_video", "origin", "destination", "schedule"]
 
@@ -79,6 +80,26 @@ class PlaceInput(BaseModel):
         ),
     )
 
+    # Copied as-is from the address search result the user picked. Without them the
+    # building register is not looked up (e.g. an address typed by hand).
+    building_name: BuildingName | None = Field(
+        default=None, description="주소 검색 후보의 building_name"
+    )
+    adm_cd: Annotated[str, StringConstraints(pattern=r"^\d{10}$")] | None = Field(
+        default=None, description="주소 검색 후보의 adm_cd (행정구역코드 10자리)"
+    )
+    mountain: bool = Field(default=False, description="주소 검색 후보의 mountain (산 지번)")
+    lot_main: int | None = Field(
+        default=None, ge=0, le=9999, description="주소 검색 후보의 lot_main"
+    )
+    lot_sub: int = Field(default=0, ge=0, le=9999, description="주소 검색 후보의 lot_sub")
+
+    @model_validator(mode="after")
+    def code_and_lot_together(self):
+        if (self.adm_cd is None) != (self.lot_main is None):
+            raise ValueError("adm_cd와 lot_main은 주소 검색 결과에서 함께 보내주세요.")
+        return self
+
     @field_validator("floor")
     @classmethod
     def no_zero_floor(cls, floor: int | None) -> int | None:
@@ -130,14 +151,33 @@ class MoveUpdate(BaseModel):
         return self
 
 
+class BuildingInfo(BaseModel):
+    """What the building register says about this address (SC-06 최종 확인)."""
+
+    status: Literal["found", "ambiguous", "not_found", "failed", "not_requested"] = Field(
+        description=(
+            "found: 건물을 찾음, ambiguous: 같은 지번에 건물이 여러 개라 특정 못 함(동 입력 필요), "
+            "not_found: 대장에 없음, failed: 조회 실패(다시 저장하면 재시도), "
+            "not_requested: 주소 검색 코드 없이 입력해 조회하지 않음"
+        )
+    )
+    building_name: str | None = None
+    dong_name: str | None = None
+    above_ground_floors: int | None = None
+    ride_elevators: int | None = Field(default=None, description="승용승강기 수")
+    emergency_elevators: int | None = Field(default=None, description="비상용승강기 수")
+    checked_at: datetime | None = None
+
+
 class Place(BaseModel):
     road_address: str
     detail_address: str | None
     floor: int | None
     elevator: Elevator
     elevator_source: ElevatorSource | None = Field(
-        description="user: 사용자 입력, building_register: 건축물대장 조회(후속). 모르면 null."
+        description="user: 사용자 입력, building_register: 건축물대장 조회. 모르면 null."
     )
+    building: BuildingInfo
 
 
 class PlaceSection(BaseModel):
