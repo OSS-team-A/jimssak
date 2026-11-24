@@ -15,6 +15,7 @@ from ..schemas.moves import (
     RoomVideos,
     Section,
 )
+from ..services.auth import AuthStore
 from ..services.media import MediaStorage, MediaTooLarge, UnsupportedMedia
 from ..services.moves import Media, Move, MoveStore
 from .auth import Store, bearer, unauthorized
@@ -23,34 +24,70 @@ from .auth import Store, bearer, unauthorized
 FORM_OVERHEAD_BYTES = 64 * 1024
 
 
-class BodyLimitRoute(APIRoute):
-    """Refuse an oversized upload from its Content-Length before the body is read.
+guest_header = APIKeyHeader(
+    name="X-Guest-Token", auto_error=False, description="POST /moves가 비회원에게 발급한 토큰"
+)
 
-    FastAPI parses the whole form before running dependencies, so this check
-    cannot live in the endpoint. Bodies without a length are still capped while
-    the file is written.
+
+def resolve_member(
+    store: AuthStore, credentials: HTTPAuthorizationCredentials | None
+) -> User | None:
+    """No header means guest; a header that does not verify is an error, not a guest."""
+    if credentials is None:
+        return None
+    user = store.current_user(credentials.credentials)
+    if user is None:
+        raise unauthorized("세션이 만료되었거나 유효하지 않습니다.")
+    return user
+
+
+def resolve_move(
+    moves: MoveStore, move_id: str, member: User | None, guest_token: str | None
+) -> Move:
+    """The one ownership rule for every /moves/{move_id} route."""
+    if member is not None:
+        move = moves.get_for_member(move_id, member.id)
+    elif guest_token:
+        move = moves.get_for_guest(move_id, guest_token)
+    else:
+        raise unauthorized("로그인하거나 비회원 토큰을 보내주세요.")
+    if move is None:
+        # Same answer for missing, expired and someone else's move.
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "이사를 찾을 수 없습니다.")
+    return move
+
+
+class GuardedRoute(APIRoute):
+    """Run size and access checks before the request body is read.
+
+    FastAPI parses the whole form before running dependencies, so an upload
+    would otherwise be received in full before a wrong token is refused. Both
+    checks only need headers and the path. Dependencies still run the same
+    access rule afterwards. Bodies without a length are capped while written.
     """
 
     def get_route_handler(self):
         handler = super().get_route_handler()
 
         async def handle(request: Request) -> Response:
-            limit = request.app.state.media_storage.max_bytes + FORM_OVERHEAD_BYTES
+            state = request.app.state
+            limit = state.media_storage.max_bytes + FORM_OVERHEAD_BYTES
             length = request.headers.get("content-length", "")
             if length.isdigit() and int(length) > limit:
                 return JSONResponse(
                     {"detail": "업로드 용량이 너무 큽니다."},
                     status_code=status.HTTP_413_CONTENT_TOO_LARGE,
                 )
+            move_id = request.path_params.get("move_id")
+            if move_id is not None and request.method != "GET":
+                member = resolve_member(state.auth_store, await bearer(request))
+                resolve_move(state.move_store, move_id, member, await guest_header(request))
             return await handler(request)
 
         return handle
 
 
-router = APIRouter(prefix="/api/v1/moves", tags=["moves"], route_class=BodyLimitRoute)
-guest_header = APIKeyHeader(
-    name="X-Guest-Token", auto_error=False, description="POST /moves가 비회원에게 발급한 토큰"
-)
+router = APIRouter(prefix="/api/v1/moves", tags=["moves"], route_class=GuardedRoute)
 
 
 def get_move_store(request: Request) -> MoveStore:
@@ -68,13 +105,7 @@ GuestToken = Annotated[str | None, Depends(guest_header)]
 
 
 def optional_member(credentials: Bearer, store: Store) -> User | None:
-    """No header means guest; a header that does not verify is an error, not a guest."""
-    if credentials is None:
-        return None
-    user = store.current_user(credentials.credentials)
-    if user is None:
-        raise unauthorized("세션이 만료되었거나 유효하지 않습니다.")
-    return user
+    return resolve_member(store, credentials)
 
 
 Member = Annotated[User | None, Depends(optional_member)]
@@ -83,17 +114,7 @@ Member = Annotated[User | None, Depends(optional_member)]
 def get_accessible_move(
     move_id: str, member: Member, guest_token: GuestToken, moves: MoveStoreDep
 ) -> Move:
-    """Shared ownership check for every /moves/{move_id} route."""
-    if member is not None:
-        move = moves.get_for_member(move_id, member.id)
-    elif guest_token:
-        move = moves.get_for_guest(move_id, guest_token)
-    else:
-        raise unauthorized("로그인하거나 비회원 토큰을 보내주세요.")
-    if move is None:
-        # Same answer for missing, expired and someone else's move.
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "이사를 찾을 수 없습니다.")
-    return move
+    return resolve_move(moves, move_id, member, guest_token)
 
 
 AccessibleMove = Annotated[Move, Depends(get_accessible_move)]
