@@ -178,3 +178,6 @@ button { font: inherit; }
 .capture-review h1 { font-size: 24px; }
 .capture-review video { width: 100%; max-height: 48dvh; aspect-ratio: 3 / 4; background: #17211f; object-fit: cover; border-radius: 18px; }
 .capture-review .capture-actions { margin-top: auto; }
+
+.capture-prep .capture-mascot { width: 224px; height: 132px; margin: 38px auto 28px; }
+.capture-prep .capture-mascot img { object-fit: fill; }

@@ -145,7 +145,7 @@ export function CapturePage() {
       <BrandHeader />
       <span className="capture-eyebrow">촬영 준비</span>
       <h1>방을 찍기 전에<br />이것만 확인해주세요</h1>
-      <img className="capture-mascot" src={mascot} alt="짐싹 캐릭터" />
+      <div className="mascot-window capture-mascot" role="img" aria-label="짐싹 캐릭터"><img src={mascot} alt="" /></div>
       <div className="capture-tips">
         <div className="capture-tip"><span className="capture-tip-icon">☀</span><div><strong>조명을 켜주세요</strong><p>밝을수록 물품을 확인하기 쉬워요.</p></div></div>
         <div className="capture-tip"><span className="capture-tip-icon">▣</span><div><strong>큰 가구부터, 빠짐없이</strong><p>가구 전체와 가려진 공간까지 담아주세요.</p></div></div>
