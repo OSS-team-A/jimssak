@@ -17,6 +17,17 @@ MIN_FLOOR, MAX_FLOOR = -5, 80
 
 Owner = Literal["member", "guest"]
 Elevator = Literal["available", "unavailable", "unknown"]
+ELEVATOR_DOC = (
+    "이삿날 승강기를 쓸 수 있는지. 화면에는 아래 문구로 바꿔 보여 준다.\n\n"
+    "| 값 | 화면 표시 | 언제 |\n"
+    "|---|---|---|\n"
+    "| `available` | 승강기 있음 | 대장에 승용 또는 비상용 승강기가 1대 이상, "
+    "또는 사용자가 ‘있음’을 고름 |\n"
+    "| `unavailable` | 승강기 없음 | 5층 이하이고 대장상 0대, 또는 사용자가 ‘없음’을 고름 |\n"
+    "| `unknown` | 승강기 확인 필요 | 아직 모름: 직접 입력한 주소(조회 안 함), 조회 실패, "
+    "건물 특정 실패(동 미입력), 대장 항목 누락, 6층 이상인데 대장상 0대, 주소 변경 직후 |\n\n"
+    "`unknown`이면 사용자에게 있음/없음을 골라 달라고 안내한다."
+)
 # Where the elevator value came from: the user, or the building register lookup (later).
 ElevatorSource = Literal["user", "building_register"]
 Address = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
@@ -75,8 +86,10 @@ class PlaceInput(BaseModel):
     elevator: Elevator | None = Field(
         default=None,
         description=(
-            "최종 확인에서 사용자가 승강기 값을 고칠 때만 보낸다. 보내지 않으면 주소가 같을 때 "
-            "기존 값을 유지하고, 주소가 바뀌면 unknown(확인 필요)으로 돌아간다."
+            "최종 확인에서 사용자가 승강기 값을 고칠 때만 보낸다(`available` 있음 / "
+            "`unavailable` 없음 / `unknown` 확인 필요). 보내지 않으면 주소가 같을 때 "
+            "기존 값을 유지하고, 주소가 바뀌면 `unknown`(확인 필요)으로 돌아간다. "
+            "사용자가 고친 값은 같은 주소인 동안 건축물대장 조회 결과로 덮어쓰지 않는다."
         ),
     )
 
@@ -173,9 +186,17 @@ class Place(BaseModel):
     road_address: str
     detail_address: str | None
     floor: int | None
-    elevator: Elevator
+    elevator: Elevator = Field(description=ELEVATOR_DOC)
     elevator_source: ElevatorSource | None = Field(
-        description="user: 사용자 입력, building_register: 건축물대장 조회. 모르면 null."
+        description=(
+            "승강기 값의 출처.\n\n"
+            "| 값 | 의미 | 최종 확인 화면 문구 예 |\n"
+            "|---|---|---|\n"
+            "| `building_register` | 건축물대장 조회로 채움 | 건물 정보에서 찾았어요 · "
+            "실제 조건과 다르면 수정해주세요 |\n"
+            "| `user` | 사용자가 직접 고름 | (사용자가 고른 값 그대로) |\n"
+            "| `null` | 아직 모름 (`elevator`가 `unknown`) | 승강기 확인 필요 |"
+        )
     )
     building: BuildingInfo
 
