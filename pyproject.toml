@@ -14,7 +14,9 @@ dynamic = ["dependencies"]
 dependencies = { file = ["backend/requirements.txt"] }
 
 [project.optional-dependencies]
-dev = ["pytest>=8,<10", "ruff>=0.11,<1"]
+vision = ["opencv-python-headless>=4.10,<5", "numpy>=2,<3"]
+depth = ["torch>=2.6,<3", "transformers>=4.57,<5", "safetensors>=0.5,<1", "Pillow>=10,<13"]
+dev = ["pytest>=8,<10", "httpx>=0.28,<1", "ruff>=0.11,<1"]
 
 [tool.setuptools.packages.find]
 include = ["backend*", "ai*"]

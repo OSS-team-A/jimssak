@@ -1,0 +1,24 @@
+{
+  "tracks": [
+    {
+      "video_id": "img3898-unanchored",
+      "track_id": "white-A",
+      "dimensions_cm": {
+        "top_width": 59,
+        "top_depth": 39,
+        "height": 73,
+        "overall_width": 95
+      }
+    },
+    {
+      "video_id": "img3898-width-anchor",
+      "track_id": "white-A",
+      "dimensions_cm": {
+        "top_width": 59,
+        "top_depth": 39,
+        "height": 73,
+        "overall_width": 95
+      }
+    }
+  ]
+}
