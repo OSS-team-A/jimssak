@@ -91,6 +91,16 @@ class RouteRecord:
 
 
 @dataclass(frozen=True)
+class MoveSummaryRecord:
+    id: str
+    created_at: int
+    move_date: str | None
+    start_time: str | None
+    origin_address: str | None
+    destination_address: str | None
+
+
+@dataclass(frozen=True)
 class DateInfoRecord:
     """What the move date falls on, judged when the date was saved."""
 
@@ -418,6 +428,48 @@ class MoveStore:
                 f"SELECT {MEDIA_COLUMNS} FROM move_videos WHERE move_id = ?", (move_id,)
             ).fetchone()
         return Media(**dict(row)) if row else None
+
+    def claim(self, move_id: str, guest_token: str, user_id: int) -> Move | None:
+        """Turn an unexpired guest move into the member's, keeping everything attached.
+
+        Both proofs are needed: the guest token shows it is this person's move, the
+        login shows whose account it goes to. Asking again once it is already that
+        member's succeeds, so a double tap or refresh is harmless.
+        """
+        now = int(time.time())
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute(
+                "UPDATE moves SET user_id = ?, guest_digest = NULL, last_used_at = ? "
+                "WHERE id = ? AND guest_digest = ? AND last_used_at > ? RETURNING *",
+                (user_id, now, move_id, _digest(guest_token), now - self.guest_ttl),
+            ).fetchone()
+            if row is None:
+                row = db.execute(
+                    "SELECT * FROM moves WHERE id = ? AND user_id = ?", (move_id, user_id)
+                ).fetchone()
+        return self._move(row) if row else None
+
+    def list_for_member(
+        self, user_id: int, limit: int, offset: int
+    ) -> tuple[list[MoveSummaryRecord], int]:
+        """The member's moves, newest first, with what a history card shows."""
+        with self._connect() as db:
+            total = db.execute(
+                "SELECT COUNT(*) FROM moves WHERE user_id = ?", (user_id,)
+            ).fetchone()[0]
+            rows = db.execute(
+                "SELECT m.id, m.created_at, s.move_date, s.start_time, "
+                "o.road_address AS origin_address, d.road_address AS destination_address "
+                "FROM moves AS m "
+                "LEFT JOIN move_schedules AS s ON s.move_id = m.id "
+                "LEFT JOIN move_places AS o ON o.move_id = m.id AND o.role = 'origin' "
+                "LEFT JOIN move_places AS d ON d.move_id = m.id AND d.role = 'destination' "
+                "WHERE m.user_id = ? ORDER BY m.created_at DESC, m.rowid DESC "
+                "LIMIT ? OFFSET ?",
+                (user_id, limit, offset),
+            ).fetchall()
+        return [MoveSummaryRecord(**dict(row)) for row in rows], total
 
     def get_for_guest(self, move_id: str, guest_token: str) -> Move | None:
         """Return an unexpired guest move and extend its inactivity deadline."""

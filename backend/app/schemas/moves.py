@@ -298,3 +298,29 @@ class MoveSnapshot(BaseModel):
     data: MoveData
     missing: list[Step] = Field(description="User inputs still empty, in asking order.")
     next_step: Step | None = Field(description="First item in missing, or null when complete.")
+
+
+class MoveSummary(BaseModel):
+    """One card in 나의 이사 기록 (SC-13)."""
+
+    move_id: UUID
+    created_at: datetime
+    move_date: date | None = Field(description="이사 날짜. 아직 안 정했으면 null")
+    start_time: time | None = None
+    origin_address: str | None = Field(description="출발지 도로명주소. 없으면 null")
+    destination_address: str | None = Field(description="도착지 도로명주소. 없으면 null")
+    stage: Literal["preparing"] = Field(
+        default="preparing",
+        description=(
+            "진행 상태. 지금은 preparing(이사 준비 중)만 있다. 이사 후 확인 기능이 생기면 "
+            "after_move(이사 후 확인 전), comparing(전후 비교 확인 중), done(이사 기록 완료)이 "
+            "추가된다."
+        ),
+    )
+
+
+class MoveList(BaseModel):
+    moves: list[MoveSummary] = Field(description="최신순")
+    total: int = Field(description="이 회원의 전체 이사 수")
+    limit: int
+    offset: int

@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import JSONResponse, Response
 from fastapi.routing import APIRoute
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials
@@ -17,7 +17,9 @@ from ..schemas.moves import (
     MediaInfo,
     MoveCreated,
     MoveData,
+    MoveList,
     MoveSnapshot,
+    MoveSummary,
     MoveUpdate,
     Place,
     PlaceInput,
@@ -102,6 +104,9 @@ class GuardedRoute(APIRoute):
 
     def get_route_handler(self):
         handler = super().get_route_handler()
+        # Claiming checks the guest token against a member login itself, and before it
+        # the move is not the member's yet, so the ownership pre-check would refuse it.
+        check_access = not self.path.endswith("/claim")
 
         async def handle(request: Request) -> Response:
             state = request.app.state
@@ -113,7 +118,7 @@ class GuardedRoute(APIRoute):
                     status_code=status.HTTP_413_CONTENT_TOO_LARGE,
                 )
             raw_move_id = request.path_params.get("move_id")
-            if raw_move_id is not None and request.method != "GET":
+            if raw_move_id is not None and request.method != "GET" and check_access:
                 try:
                     move_id = str(UUID(raw_move_id))
                 except ValueError:
@@ -217,6 +222,61 @@ def create_move(member: Member, moves: MoveStoreDep) -> MoveCreated:
     },
 )
 def get_move(move: AccessibleMove, moves: MoveStoreDep) -> MoveSnapshot:
+    return _snapshot(move, moves)
+
+
+@router.get(
+    "",
+    summary="나의 이사 기록",
+    description="로그인한 회원의 이사를 최신순으로 반환한다(SC-13). 비회원은 사용할 수 없다.",
+    responses={401: {"description": "로그인 필요"}},
+)
+def list_moves(
+    member: Member,
+    moves: MoveStoreDep,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> MoveList:
+    if member is None:
+        raise unauthorized("로그인이 필요합니다.")
+    found, total = moves.list_for_member(member.id, limit, offset)
+    return MoveList(
+        moves=[
+            MoveSummary(
+                move_id=item.id, created_at=_time(item.created_at), move_date=item.move_date,
+                start_time=item.start_time, origin_address=item.origin_address,
+                destination_address=item.destination_address,
+            )
+            for item in found
+        ],
+        total=total, limit=limit, offset=offset,
+    )
+
+
+@router.post(
+    "/{move_id}/claim",
+    summary="비회원 이사를 계정에 연결",
+    description=(
+        "SC-12. 로그인 토큰(Bearer)과 이 이사의 비회원 토큰(`X-Guest-Token`)을 함께 보내면 "
+        "비회원 이사를 로그인한 회원의 이사로 바꾼다. 영상·주소·건물·거리·날짜 정보는 그대로 "
+        "남고 만료 기한이 없어진다. 이후에는 회원 토큰으로만 조회한다. 이미 같은 회원에게 "
+        "연결된 이사를 다시 요청하면 그대로 성공한다."
+    ),
+    responses={
+        401: {"description": "로그인 토큰 또는 비회원 토큰 없음, 로그인 만료"},
+        404: {"description": "비회원 토큰이 틀림, 만료된 비회원 이사, 다른 회원의 이사"},
+    },
+)
+def claim_move(
+    move_id: UUID, member: Member, guest_token: GuestToken, moves: MoveStoreDep
+) -> MoveSnapshot:
+    if member is None:
+        raise unauthorized("로그인이 필요합니다.")
+    if not guest_token:
+        raise unauthorized("연결할 이사의 비회원 토큰을 보내주세요.")
+    move = moves.claim(str(move_id), guest_token, member.id)
+    if move is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "이사를 찾을 수 없습니다.")
     return _snapshot(move, moves)
 
 
