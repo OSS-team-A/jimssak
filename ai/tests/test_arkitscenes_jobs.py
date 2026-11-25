@@ -7,9 +7,12 @@ import pytest
 from ai.measurement.arkit_capture import verify_movie
 from ai.training.arkitscenes_jobs import (
     Frame,
+    annotation_mask,
     camera_to_world,
     choose_scans,
+    encode_rle,
     hull_polygon,
+    object_mask,
     plan_capture,
     project_box,
     relative_to_manifest,
@@ -197,3 +200,68 @@ def test_plan_skips_hidden_frames_and_gives_up_when_all_are_hidden():
     assert observed and not set(observed) & hidden
     assert plan_capture(frames, CORNERS, views=4, visibility=lambda i: 0.1) is None
     assert plan_capture(frames, CORNERS, views=4, visibility=lambda i: None) is None
+
+
+def box_item(lengths=(0.6, 0.4, 0.7), center=(0, 0, 0.35)):
+    return {"segments": {"obbAligned": {"centroid": list(center), "axesLengths": list(lengths),
+                                        "normalizedAxes": [1, 0, 0, 0, 1, 0, 0, 0, 1]}}}
+
+
+def render_depth(frame, item, wall_m=4.0):
+    """Sensor depth of the box's front faces in front of a far wall, by ray casting."""
+    height, width = 192, 256
+    v, u = np.mgrid[0:height, 0:width]
+    rays = np.linalg.inv(frame.intrinsics) @ np.vstack([u.ravel(), v.ravel(), np.ones(u.size)])
+    rays = frame.rotation.T @ rays  # world directions
+    origin = -frame.rotation.T @ frame.translation
+    center = np.asarray(item["segments"]["obbAligned"]["centroid"])
+    half = np.asarray(item["segments"]["obbAligned"]["axesLengths"]) / 2
+    with np.errstate(divide="ignore", invalid="ignore"):
+        t1 = (center - half - origin[:, None].T).T / rays
+        t2 = (center + half - origin[:, None].T).T / rays
+    near = np.nanmax(np.minimum(t1, t2), axis=0)
+    far = np.nanmin(np.maximum(t1, t2), axis=0)
+    hit = (near <= far) & (near > 0)
+    forward = frame.rotation[2] @ rays  # camera z per unit ray length
+    depth = np.where(hit, near * forward, wall_m)
+    return depth.reshape(height, width).astype(np.float32)
+
+
+def test_object_mask_keeps_the_box_and_drops_the_background():
+    frame = orbit()[10]
+    item = box_item()
+    depth = render_depth(frame, item)
+    mask = object_mask(item, frame, depth)
+    hull = np.zeros((192, 256), np.uint8)
+    pixels = project_box(CORNERS, frame)
+    cv2.fillPoly(hull, [cv2.convexHull(pixels.astype(np.float32)).round().astype(np.int32)], 1)
+    on_box = depth < 3.9
+    assert mask[on_box & (hull == 1)].mean() > 0.95
+    assert mask[~on_box].sum() == 0
+    assert object_mask(item, frame, None) is None
+
+
+def test_rle_round_trips_through_the_annotation_mask():
+    mask = np.zeros((4, 5), np.uint8)
+    mask[1:3, 2:4] = 1
+    big = annotation_mask(mask, 1)
+    assert big.shape == (10, 8)
+    runs = encode_rle(big)
+    decoded = np.repeat(np.arange(len(runs)) % 2, runs).reshape(big.shape)
+    assert (decoded == big).all()
+    full = np.ones((2, 2), np.uint8)
+    assert encode_rle(full) == [0, 4]
+
+
+def test_written_views_use_the_object_mask_when_given(tmp_path):
+    frames = orbit()
+    written, observed = plan_capture(frames, CORNERS, views=3)
+    native = np.zeros((192, 256), np.uint8)
+    native[80:120, 100:150] = 1
+    _, observations = write_capture(
+        tmp_path, "scan-abc", frames, written, observed, FakeSource(), "uid1", "table", CORNERS,
+        mask_for=lambda i: native,
+    )
+    width, height = observations.annotation_size_px
+    for view in observations.views:
+        assert view.mask_polygon_px is None and sum(view.mask_rle) == width * height

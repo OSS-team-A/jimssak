@@ -5,9 +5,10 @@ Each selected furniture box becomes one replayed capture in the iPhone recorder 
 then turns it into two videos of the same frames: ``<id>`` with the recorded ARKit poses and
 ``<id>-rgb`` with no poses, so both paths are scored on identical input.
 
-Masks are the convex hull of the projected 3D box. They are a stand-in for a recognition
-mask, so the scores isolate the size estimator from detection quality. Frames where LiDAR depth
-shows the box hidden behind nearer surfaces (a door, another sofa) are not used.
+Masks are the pixels whose LiDAR point lies inside the annotated 3D box: a stand-in for a
+recognition mask, so the scores isolate the size estimator from detection quality. (The box
+outline alone also covers the floor and walls behind the object.) Frames where the box is
+hidden behind nearer surfaces (a door, another sofa) are not used.
 
 Usage (repository root, needs network access to Apple's ARKitScenes server)::
 
@@ -48,6 +49,7 @@ CORNERS = np.array(list(product([-0.5, 0.5], repeat=3)))
 CV_TO_ARKIT_CAMERA = np.diag([1.0, -1.0, -1.0])
 ARKIT_WORLD_FROM_SCENE = np.array([[1.0, 0, 0], [0, 0, 1.0], [0, -1.0, 0]])
 ANNOTATION_SCALE = 2
+MIN_MASK_PIXELS = 150  # native 256x192 pixels
 STEP = 262144
 
 
@@ -235,6 +237,52 @@ def box_corners(item: dict) -> np.ndarray:
     return (CORNERS * np.asarray(box["axesLengths"])) @ axes + np.asarray(box["centroid"])
 
 
+def box_frame(item: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Center, axis rows and full lengths of an annotation's gravity-aligned box (meters)."""
+    box = item["segments"]["obbAligned"]
+    return (np.asarray(box["centroid"], float), np.reshape(box["normalizedAxes"], (3, 3)),
+            np.asarray(box["axesLengths"], float))
+
+
+def object_mask(item: dict, frame: Frame, depth: np.ndarray | None,
+                margin_m: float = 0.04) -> np.ndarray | None:
+    """Native-resolution mask of pixels whose LiDAR point lies inside the 3D box.
+
+    The projected box outline also covers floor, walls and the space between legs behind
+    the object; those pixels would add far background points to the measurement.
+    """
+    if depth is None:
+        return None
+    width, height = frame.size
+    if depth.shape != (height, width):
+        depth = cv2.resize(depth, (width, height), interpolation=cv2.INTER_NEAREST)
+    center, axes, lengths = box_frame(item)
+    v, u = np.nonzero(depth > 0)
+    z = depth[v, u]
+    rays = np.linalg.inv(frame.intrinsics) @ np.vstack([u + 0.0, v + 0.0, np.ones_like(z)])
+    camera = (rays * z).T
+    world = (camera - frame.translation) @ frame.rotation
+    local = (world - center) @ axes.T
+    inside = (np.abs(local) <= lengths / 2 + margin_m).all(axis=1)
+    mask = np.zeros((height, width), np.uint8)
+    mask[v[inside], u[inside]] = 1
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
+    return mask
+
+
+def encode_rle(mask: np.ndarray) -> list[int]:
+    """Row-major run lengths starting with background, as ObjectView.mask_rle expects."""
+    flat = mask.ravel().astype(np.uint8)
+    edges = np.flatnonzero(np.diff(flat)) + 1
+    runs = np.diff(np.r_[0, edges, flat.size]).tolist()
+    return ([0] + runs) if flat[0] else runs
+
+
+def annotation_mask(mask: np.ndarray, turns: int) -> np.ndarray:
+    upright = np.rot90(mask, turns)
+    return np.repeat(np.repeat(upright, ANNOTATION_SCALE, axis=0), ANNOTATION_SCALE, axis=1)
+
+
 def project_box(corners: np.ndarray, frame: Frame, margin: float = 4.0) -> np.ndarray | None:
     """Projected corners in native pixels when the whole box is in front and in view."""
     points = corners @ frame.rotation.T + frame.translation
@@ -349,7 +397,10 @@ def plan_capture(frames: list[Frame], corners: np.ndarray, *, views: int = 6,
 
 def write_capture(folder: Path, video_id: str, frames: list[Frame], written: list[int],
                   observed: list[int], source: SceneSource, track_id: str,
-                  label: str, corners: np.ndarray) -> tuple[ARCaptureMetadata, CaptureObservations]:
+                  label: str, corners: np.ndarray,
+                  mask_for=None) -> tuple[ARCaptureMetadata, CaptureObservations]:
+    """Write the replay. ``mask_for(index)`` gives a native object mask; without it, or when
+    it returns None, the view uses the projected box outline."""
     folder.mkdir(parents=True, exist_ok=True)
     size = frames[written[0]].size
     turns = upright_turns(frames[observed[len(observed) // 2]])
@@ -373,11 +424,13 @@ def write_capture(folder: Path, video_id: str, frames: list[Frame], written: lis
                 "intrinsics": frame.intrinsics.tolist(),
             })
             if i in observed:
-                pixels = project_box(corners, frame)
-                views.append({
-                    "frame_index": index, "track_id": track_id, "label": label,
-                    "mask_polygon_px": hull_polygon(pixels, turns, size),
-                })
+                native = mask_for(i) if mask_for is not None else None
+                view = {"frame_index": index, "track_id": track_id, "label": label}
+                if native is not None and native.any():
+                    view["mask_rle"] = encode_rle(annotation_mask(native, turns))
+                else:
+                    view["mask_polygon_px"] = hull_polygon(project_box(corners, frame), turns, size)
+                views.append(view)
     finally:
         writer.release()
     rotated = (size[1], size[0]) if turns % 2 else size
@@ -407,9 +460,14 @@ def build_scan(source: SceneSource, output: Path, *, objects_per_scan: int = 2,
     for uid, item in items.items():
         corners = box_corners(item)
 
-        def visibility(index, corners=corners):
+        def visibility(index, corners=corners, item=item):
             frame = frames[index]
-            return visible_fraction(corners, frame, source.depth(frame.stamp))
+            depth = source.depth(frame.stamp)
+            share = visible_fraction(corners, frame, depth)
+            mask = object_mask(item, frame, depth)
+            if share is None or mask is None or mask.sum() < MIN_MASK_PIXELS:
+                return None
+            return share
 
         plan = plan_capture(frames, corners, views=views, visibility=visibility)
         if plan is not None:
@@ -419,9 +477,12 @@ def build_scan(source: SceneSource, output: Path, *, objects_per_scan: int = 2,
     for _, uid, (written, observed) in plans[:objects_per_scan]:
         video_id = f"{source.scan}-{uid[:6]}"
         folder = output / video_id
+        item = items[uid]
         metadata, observations = write_capture(
             folder, video_id, frames, written, observed, source, uid,
-            truth[uid]["label"], box_corners(items[uid]),
+            truth[uid]["label"], box_corners(item),
+            mask_for=lambda i, item=item: object_mask(item, frames[i],
+                                                      source.depth(frames[i].stamp)),
         )
         job = make_job(metadata, observations, folder / "capture.avi", compare=True)
         videos.extend(job.videos)
