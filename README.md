@@ -239,7 +239,6 @@ python -m uvicorn backend.app.main:app --reload --port 8000
 
 - 상태: http://localhost:8000/health
 - API 문서: http://localhost:8000/docs
-- 데모: `curl -X POST http://localhost:8000/api/v1/analysis/demo`
 - backend 폴더에서 실행할 때: `python -m uvicorn app.main:app --reload`
 - backend 폴더 기준 requirements 설치: `python -m pip install -r requirements-dev.txt`
 

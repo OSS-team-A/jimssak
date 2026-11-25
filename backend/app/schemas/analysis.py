@@ -9,14 +9,11 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from ai.contracts import AnalysisResult
-
 __all__ = [
     "AnalysisError",
     "AnalysisItem",
     "AnalysisOut",
     "AnalysisProgress",
-    "AnalysisResult",
     "AnalysisResultV2",
     "AnalysisSection",
     "WorkerJob",

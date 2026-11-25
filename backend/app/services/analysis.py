@@ -242,10 +242,3 @@ def demo_result(job: AnalysisJob) -> dict:
         "error": None,
     }
 
-
-# --- the original fixed demo of the frame-level contract (POST /api/v1/analysis/demo) ---
-
-def analyze_demo():
-    from ai.pipeline import run_demo
-
-    return run_demo()

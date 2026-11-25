@@ -1,6 +1,6 @@
 # AI 공통 데이터 규격 v1.0
 
-정의: `ai/contracts.py`. API 응답과 AI 모듈이 같은 Pydantic 모델을 사용합니다.
+정의: `ai/contracts.py`. AI 모듈 안에서 쓰는 프레임 단위 규격입니다. 백엔드로 보내는 영상 분석 결과는 v2.0 형식이고, 백엔드는 이 모델을 가져다 쓰지 않고 따로 검증합니다.
 예시: `docs/examples/demo-analysis.json`, 생성: `python -m ai.pipeline`.
 
 | 필드 | 의미 |
