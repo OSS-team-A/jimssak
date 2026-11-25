@@ -4,7 +4,7 @@ np = pytest.importorskip("numpy")
 cv2 = pytest.importorskip("cv2")
 
 from ai.measurement.depth_geometry import table_dimensions  # noqa: E402
-from ai.measurement.moving_camera import relative_pose  # noqa: E402
+from ai.measurement.moving_camera import CameraTracker, relative_pose  # noqa: E402
 from ai.measurement.moving_contract import ObjectView, VideoInput  # noqa: E402
 from ai.measurement.moving_video import _calibrate  # noqa: E402
 
@@ -152,3 +152,45 @@ def test_job_routes_each_video_and_reuses_loaded_models(monkeypatch, tmp_path, o
     assert loaded == list(dict.fromkeys(expected))
     assert len({v.source_sha256 for v in result.videos}) == 1
     assert not job.videos[0].path.is_absolute()
+
+
+def _render_two_planes(offset_x, texture, focal=300.0, size=(320, 240)):
+    """Image and depth of a textured step (Z=2 m left, Z=3 m right) from x = offset_x."""
+    width, height = size
+    u, v = np.meshgrid(np.arange(width, dtype=np.float32), np.arange(height, dtype=np.float32))
+    cx, cy = width / 2, height / 2
+    near_x = (u - cx) * 2.0 / focal + offset_x
+    far_x = (u - cx) * 3.0 / focal + offset_x
+    use_near = near_x < 0
+    depth = np.where(use_near, 2.0, 3.0).astype(np.float32)
+    world_x = np.where(use_near, near_x, far_x)
+    world_y = (v - cy) * depth / focal
+    scale = texture[0].shape[1] / 6.0  # texture covers x, y in [-3, 3] m
+    map_x = ((world_x + 3.0) * scale).astype(np.float32)
+    map_y = ((world_y + 3.0) * scale).astype(np.float32)
+    plane = np.where(use_near, 0, 1).astype(np.uint8)
+    image = np.empty((height, width, 3), np.uint8)
+    for index in (0, 1):
+        warped = cv2.remap(texture[index], map_x, map_y, cv2.INTER_LINEAR)
+        image[plane == index] = warped[plane == index]
+    camera = np.array([[focal, 0, cx], [0, focal, cy], [0, 0, 1]])
+    return image, depth, camera
+
+
+@pytest.mark.parametrize("history, components", [(3, 2), (6, 1)])
+def test_longer_history_bridges_unmatched_frames(history, components):
+    rng = np.random.default_rng(4)
+    texture = [cv2.GaussianBlur(rng.integers(0, 255, (1200, 1200, 3), dtype=np.uint8),
+                                (0, 0), 1.2) for _ in range(2)]
+    tracker = CameraTracker(None, history=history)
+    poses = []
+    for index, offset in enumerate([0.0, 0.04, 0.08, 0.12, 0.16, 0.20, 0.24]):
+        image, depth, camera = _render_two_planes(offset, texture)
+        if index in (2, 3, 4):
+            image = np.zeros_like(image)  # frames that match nothing, e.g. motion blur
+        poses.append(tracker.add(index, image, depth, camera))
+    textured = [poses[i] for i in (0, 1, 5, 6)]
+    assert len({pose.component for pose in textured}) == components
+    if components == 1:
+        moved = poses[5].center - poses[0].center
+        assert np.allclose(moved, [0.20, 0, 0], atol=0.02)

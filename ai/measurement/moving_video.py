@@ -255,11 +255,13 @@ def depth_model_for_video(clip: VideoInput) -> str:
     return DEFAULT_DEPTH_FAMILY if clip.capture_poses else "depth-pro"
 
 
-def estimate_video(clip: VideoInput, model: MetricDepth | None = None) -> VideoResult:
+def estimate_video(
+    clip: VideoInput, model: MetricDepth | None = None, *, track_history: int = 3,
+) -> VideoResult:
     if model is None:
         model = MetricDepth(depth_model_for_video(clip))
     camera = _camera(clip)
-    tracker = CameraTracker(camera) if not clip.capture_poses else None
+    tracker = CameraTracker(camera, track_history) if not clip.capture_poses else None
     capture_poses = {}
     for item in clip.capture_poses:
         rotation = np.asarray(item.world_to_camera_rotation)
@@ -324,7 +326,7 @@ def estimate_video(clip: VideoInput, model: MetricDepth | None = None) -> VideoR
 
 def estimate_job(
     job: MeasurementJob, *, model_override: str | Path | None = None,
-    device: str = "auto", base_directory: Path | None = None,
+    device: str = "auto", base_directory: Path | None = None, track_history: int = 3,
 ) -> MeasurementResponse:
     """Process videos in input order, loading each selected model at most once."""
     cv2.setNumThreads(2)
@@ -339,7 +341,7 @@ def estimate_job(
             models[model_key] = model
         if not clip.path.is_absolute():
             clip = clip.model_copy(update={"path": base / clip.path})
-        result = estimate_video(clip, models[model_key])
+        result = estimate_video(clip, models[model_key], track_history=track_history)
         with clip.path.open("rb") as stream:
             result.source_sha256 = hashlib.file_digest(stream, "sha256").hexdigest()
         results.append(result)
@@ -355,10 +357,15 @@ def main():
     )
     parser.add_argument("--device", choices=("auto", "mps", "cpu", "cuda"), default="auto")
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument(
+        "--track-history", type=int, default=3,
+        help="RGB tracking: how many recent frames a new frame may chain to (default 3).",
+    )
     args = parser.parse_args()
     job = MeasurementJob.model_validate_json(args.manifest.read_text())
     results = estimate_job(
         job, model_override=args.model, device=args.device, base_directory=args.manifest.parent,
+        track_history=args.track_history,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(results.model_dump_json(indent=2) + "\n")

@@ -75,8 +75,13 @@ def relative_pose(source, target, depths, camera, target_camera=None):
 
 
 class CameraTracker:
-    def __init__(self, camera):
+    """Chain each frame to one of the last ``history`` frames that it matches well."""
+
+    def __init__(self, camera, history=3):
+        if history < 1:
+            raise ValueError("history must be at least 1")
         self.camera = camera
+        self.history = history
         self.sift = cv2.SIFT_create(nfeatures=1800)
         self.matcher = cv2.BFMatcher()
         self.recent = []
@@ -131,5 +136,5 @@ class CameraTracker:
             pose = CameraPose(np.eye(3), np.zeros(3), self.next_component)
             self.next_component += 1
         self.recent.append((frame_id, pose, pixels, descriptors, samples, camera))
-        self.recent = self.recent[-3:]
+        self.recent = self.recent[-self.history:]
         return pose
