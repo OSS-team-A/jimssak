@@ -37,53 +37,113 @@ DetailAddress = Annotated[str, StringConstraints(strip_whitespace=True, max_leng
 BuildingName = Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)]
 # Item keys in the order the chat asks for them.
 Step = Literal["room_video", "origin", "destination", "schedule"]
+STEP_DOC = (
+    "사용자가 아직 입력하지 않은 항목. 채팅·입력 화면이 다음에 물어볼 순서대로 나온다.\n\n"
+    "| 값 | 뜻 | 채우는 API |\n"
+    "|---|---|---|\n"
+    "| `room_video` | 방 영상 | `POST /moves/{move_id}/media` |\n"
+    "| `origin` | 출발지 주소와 층 | `PATCH /moves/{move_id}`의 `origin` |\n"
+    "| `destination` | 도착지 주소와 층 | `PATCH /moves/{move_id}`의 `destination` |\n"
+    "| `schedule` | 이사 날짜와 시작 시간 | `PATCH /moves/{move_id}`의 `schedule` |"
+)
 
 
 class MoveCreated(BaseModel):
-    move_id: UUID
-    owner: Owner
+    """이사 생성 결과."""
+
+    move_id: UUID = Field(description="이사 ID(UUID). 이후 `/moves/{move_id}` 경로에 쓴다.")
+    owner: Owner = Field(
+        description="member: 로그인한 회원의 이사(계정에 영구 저장), guest: 비회원 이사(임시)"
+    )
     guest_token: str | None = Field(
         default=None,
-        description="Guests only. Send it as X-Guest-Token on later requests for this move.",
+        description=(
+            "비회원만. 이 이사를 다시 열 때 `X-Guest-Token` 헤더로 보낸다. 프론트는 "
+            "`sessionStorage`에 보관하고, 로그인 후 `POST /moves/{move_id}/claim`으로 "
+            "계정에 연결하면 지운다. 회원 이사는 null."
+        ),
     )
     expires_at: datetime | None = Field(
-        default=None, description="Guests only. Extended on every request for this move."
+        default=None,
+        description=(
+            "비회원만. 이 시각이 지나면 이사를 열 수 없다(UTC). 이 이사에 요청할 때마다 "
+            "마지막 사용 시각 기준으로 다시 늘어난다(기본 24시간). 회원 이사는 null."
+        ),
     )
 
 
 class Section(BaseModel):
-    status: Literal["empty", "not_started"]
+    """아직 구현 전인 단계(영상 분석, 이삿짐 목록)의 자리."""
+
+    status: Literal["empty", "not_started"] = Field(
+        description=(
+            "analysis는 not_started(분석 시작 전), inventory는 empty(목록 없음). "
+            "영상 분석과 이삿짐 목록 기능이 생기면 상태와 결과가 추가된다."
+        )
+    )
 
 
 class MediaInfo(BaseModel):
-    media_id: UUID
-    filename: str
-    content_type: Literal["video/mp4", "video/quicktime"]
-    size_bytes: int
-    created_at: datetime
+    """업로드한 방 영상."""
+
+    media_id: UUID = Field(description="영상 ID(UUID)")
+    filename: str = Field(description="사용자가 올린 파일 이름(표시용). 저장 경로와는 무관하다.")
+    content_type: Literal["video/mp4", "video/quicktime"] = Field(
+        description="video/mp4(.mp4) 또는 video/quicktime(.mov)"
+    )
+    size_bytes: int = Field(description="파일 크기(바이트)")
+    created_at: datetime = Field(description="업로드 시각(UTC)")
 
 
 class UploadedVideo(MediaInfo):
-    replaced: bool = Field(description="True when this upload replaced an earlier video.")
+    """영상 업로드 결과."""
+
+    replaced: bool = Field(
+        description=(
+            "이사에 이미 있던 영상을 이번 업로드로 교체했으면 true(재촬영). 첫 업로드는 false."
+        )
+    )
 
 
 class RoomVideo(BaseModel):
-    """One video per move: small one-room moves are filmed in a single take."""
+    """방 영상. 원룸 이사라 이사 한 건에 영상은 하나이며, 다시 올리면 교체된다."""
 
-    status: Literal["empty", "uploaded"]
-    video: MediaInfo | None = None
+    status: Literal["empty", "uploaded"] = Field(
+        description="empty: 아직 영상 없음, uploaded: 영상 있음"
+    )
+    video: MediaInfo | None = Field(default=None, description="영상 정보. 없으면 null")
 
 
 class PlaceInput(BaseModel):
-    """One end of the move as the SC-06 form sends it."""
+    """출발지 또는 도착지 입력(SC-06).
+
+    주소 검색(`GET /addresses`)에서 고른 후보의 `road_address`, `building_name`,
+    `adm_cd`, `mountain`, `lot_main`, `lot_sub`에 사용자가 입력한 `detail_address`,
+    `floor`를 더해 보낸다. 주소 검색 코드가 있으면 건축물대장을 조회해 건물 정보와
+    승강기를 채운다. 보낸 항목은 통째로 저장되며 알 수 없는 칸은 422다.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    road_address: Address = Field(description="선택한 도로명주소, 예: 서울 중구 퇴계로36길 2")
-    detail_address: DetailAddress | None = Field(default=None, description="동·호, 예: 302호")
+    road_address: Address = Field(
+        description=(
+            "주소 검색 후보의 road_address(1~200자). "
+            "예: 서울특별시 중구 퇴계로36길 2 (필동2가)"
+        )
+    )
+    detail_address: DetailAddress | None = Field(
+        default=None,
+        description=(
+            "사용자가 입력한 상세주소(50자 이하). 예: 302호, 101동 502호. 아파트는 동까지 "
+            "넣어야 같은 지번의 여러 동 중 해당 건물을 찾는다. 빈 문자열은 null로 저장된다."
+        ),
+    )
     floor: int | None = Field(
         default=None, ge=MIN_FLOOR, le=MAX_FLOOR,
-        description="이사하는 층. 지하는 음수(지하 1층 = -1). 0은 없다.",
+        description=(
+            "이사하는 층(-5~80). 지하는 음수(지하 1층 = -1)이고 0은 없다. "
+            "보내지 않으면 주소만 저장되고 상태가 partial로 남는다."
+        ),
     )
     elevator: Elevator | None = Field(
         default=None,
@@ -129,9 +189,13 @@ class PlaceInput(BaseModel):
 
 
 class ScheduleInput(BaseModel):
+    """이사 일정 입력(SC-06 일정 선택). 저장하면 그 날짜의 할증 조건을 판정한다."""
+
     model_config = ConfigDict(extra="forbid")
 
-    move_date: date = Field(description="이사 날짜, 예: 2026-12-20")
+    move_date: date = Field(
+        description="이사 날짜(YYYY-MM-DD). 한국 시간 기준 오늘부터 365일 이내. 예: 2026-12-20"
+    )
     start_time: time = Field(description="이사 시작 시간. 1시간 단위(정시), 예: 09:00, 13:00")
 
     @field_validator("move_date")
@@ -155,13 +219,13 @@ class ScheduleInput(BaseModel):
 
 
 class MoveUpdate(BaseModel):
-    """Send only the sections that changed. A section sent as null is cleared."""
+    """이사 기본정보 저장 본문. 바뀐 항목만 보내고, null로 보낸 항목은 지운다. 하나 이상 필요."""
 
     model_config = ConfigDict(extra="forbid")
 
-    origin: PlaceInput | None = None
-    destination: PlaceInput | None = None
-    schedule: ScheduleInput | None = None
+    origin: PlaceInput | None = Field(default=None, description="출발지. null이면 지움")
+    destination: PlaceInput | None = Field(default=None, description="도착지. null이면 지움")
+    schedule: ScheduleInput | None = Field(default=None, description="이사 일정. null이면 지움")
 
     @model_validator(mode="after")
     def something_to_change(self):
@@ -171,7 +235,7 @@ class MoveUpdate(BaseModel):
 
 
 class BuildingInfo(BaseModel):
-    """What the building register says about this address (SC-06 최종 확인)."""
+    """건축물대장(표제부) 조회 결과. SC-06 최종 확인 화면의 건물 정보."""
 
     status: Literal["found", "ambiguous", "not_found", "failed", "not_requested"] = Field(
         description=(
@@ -180,18 +244,32 @@ class BuildingInfo(BaseModel):
             "not_requested: 주소 검색 코드 없이 입력해 조회하지 않음"
         )
     )
-    building_name: str | None = None
-    dong_name: str | None = None
-    above_ground_floors: int | None = None
-    ride_elevators: int | None = Field(default=None, description="승용승강기 수")
-    emergency_elevators: int | None = Field(default=None, description="비상용승강기 수")
-    checked_at: datetime | None = None
+    building_name: str | None = Field(
+        default=None, description="대장의 건물명. 예: 대치아파트209동. 없으면 null"
+    )
+    dong_name: str | None = Field(
+        default=None, description="대장의 동명칭. 예: 209, 717동. 단독 건물은 보통 null"
+    )
+    above_ground_floors: int | None = Field(
+        default=None, description="지상층수(옥탑 제외). 사용자가 입력한 층과 비교할 수 있다."
+    )
+    ride_elevators: int | None = Field(default=None, description="대장상 승용승강기 수")
+    emergency_elevators: int | None = Field(default=None, description="대장상 비상용승강기 수")
+    checked_at: datetime | None = Field(
+        default=None,
+        description=(
+            "건축물대장을 조회한 시각(UTC). 같은 지번은 다시 조회하지 않으므로, 층·상세주소만 "
+            "바꿔 저장하면 이 값이 그대로다."
+        ),
+    )
 
 
 class Place(BaseModel):
-    road_address: str
-    detail_address: str | None
-    floor: int | None
+    """저장된 출발지 또는 도착지."""
+
+    road_address: str = Field(description="도로명주소")
+    detail_address: str | None = Field(description="상세주소(동·호). 없으면 null")
+    floor: int | None = Field(description="이사하는 층. 지하는 음수. 아직 없으면 null")
     elevator: Elevator = Field(description=ELEVATOR_DOC)
     elevator_source: ElevatorSource | None = Field(
         description=(
@@ -204,29 +282,40 @@ class Place(BaseModel):
             "| `null` | 아직 모름 (`elevator`가 `unknown`) | 승강기 확인 필요 |"
         )
     )
-    building: BuildingInfo
+    building: BuildingInfo = Field(description="건축물대장 조회 결과")
 
 
 class PlaceSection(BaseModel):
+    """출발지 또는 도착지 입력 상태."""
+
     status: Literal["empty", "partial", "filled"] = Field(
-        description="partial: 주소는 있지만 층이 아직 없음"
+        description=(
+            "empty: 입력 없음, partial: 주소는 있지만 층이 아직 없음, filled: 주소와 층 있음"
+        )
     )
-    value: Place | None = None
+    value: Place | None = Field(default=None, description="저장된 값. empty면 null")
 
 
 class Schedule(BaseModel):
-    move_date: date
-    start_time: time
+    """저장된 이사 일정."""
+
+    move_date: date = Field(description="이사 날짜(YYYY-MM-DD)")
+    start_time: time = Field(description="시작 시간(HH:MM:SS, 정시)")
 
 
 class LunarDateOut(BaseModel):
-    month: int
-    day: int
+    """이사 날짜의 음력."""
+
+    month: int = Field(description="음력 월")
+    day: int = Field(description="음력 일. 9·10·19·20·29·30이면 손 없는 날")
     leap: bool = Field(description="윤달이면 true")
 
 
 class DayInfoOut(BaseModel):
-    """Price-raising conditions the move date falls on, for the quote."""
+    """이사 날짜가 해당하는 할증 조건. 견적에서 날짜 요금을 고를 때 쓴다.
+
+    공휴일·음력은 한국천문연구원 자료로 판정한다. 모르는 값은 false가 아니라 null이다.
+    """
 
     weekend: bool = Field(description="토·일")
     friday: bool = Field(description="금요일 (업체에 따라 주말 요금)")
@@ -236,7 +325,7 @@ class DayInfoOut(BaseModel):
     son_eomneun: bool | None = Field(
         description="손 없는 날: 음력 9·10·19·20·29·30일. 음력을 못 구하면 null"
     )
-    lunar: LunarDateOut | None = None
+    lunar: LunarDateOut | None = Field(default=None, description="음력 날짜. 못 구하면 null")
     pre_holiday: bool | None = Field(
         description=(
             "연휴 전날: 공휴일이 하나 이상 낀 이틀 이상 쉬는 날의 전날(평범한 주말은 제외). "
@@ -249,20 +338,27 @@ class DayInfoOut(BaseModel):
             "failed: 조회 실패(같은 본문으로 다시 저장하면 재조회)"
         )
     )
-    lunar_status: Literal["found", "failed"]
-    checked_at: datetime
+    lunar_status: Literal["found", "failed"] = Field(
+        description="found: 음력 확인됨, failed: 조회 실패(같은 본문으로 다시 저장하면 재조회)"
+    )
+    checked_at: datetime = Field(description="판정한 시각(UTC). 날짜가 바뀔 때만 다시 판정한다.")
 
 
 class ScheduleSection(BaseModel):
-    status: Literal["empty", "filled"]
-    value: Schedule | None = None
+    """이사 일정 입력 상태."""
+
+    status: Literal["empty", "filled"] = Field(description="empty: 일정 없음, filled: 일정 있음")
+    value: Schedule | None = Field(default=None, description="저장된 일정. empty면 null")
     day: DayInfoOut | None = Field(
         default=None, description="이사 날짜가 해당하는 할증 조건. 일정을 저장하면 채워진다."
     )
 
 
 class RouteSection(BaseModel):
-    """Road distance between origin and destination, for the quote's distance rules."""
+    """출발지와 도착지 사이 자동차 도로거리. 견적의 기본거리 조건(예: 10km 이내) 판정에 쓴다.
+
+    두 도로명주소 중 하나가 바뀔 때만 다시 계산한다. 직선거리로 대신하지 않는다.
+    """
 
     status: Literal["not_ready", "found", "not_found", "failed"] = Field(
         description=(
@@ -276,37 +372,48 @@ class RouteSection(BaseModel):
     basis: Literal["kakao_car_recommend"] | None = Field(
         default=None, description="거리 기준: 카카오 자동차 길찾기 추천 경로"
     )
-    checked_at: datetime | None = None
+    checked_at: datetime | None = Field(default=None, description="계산한 시각(UTC)")
 
 
 class MoveData(BaseModel):
-    room_video: RoomVideo
-    analysis: Section
-    inventory: Section
-    origin: PlaceSection
-    destination: PlaceSection
-    route: RouteSection
-    schedule: ScheduleSection
+    """이사 한 건의 항목별 상태. 각 항목은 status와 값으로 이루어진다."""
+
+    room_video: RoomVideo = Field(description="방 영상(SC-05)")
+    analysis: Section = Field(description="영상 분석(SC-06 분석 대기). 아직 구현 전")
+    inventory: Section = Field(description="이삿짐 목록(SC-07). 아직 구현 전")
+    origin: PlaceSection = Field(description="출발지(SC-06)")
+    destination: PlaceSection = Field(description="도착지(SC-06)")
+    route: RouteSection = Field(description="출발지→도착지 자동차 거리")
+    schedule: ScheduleSection = Field(description="이사 일정과 날짜 할증 조건(SC-06)")
 
 
 class MoveSnapshot(BaseModel):
-    move_id: UUID
-    owner: Owner
-    created_at: datetime
-    expires_at: datetime | None
-    stage: Literal["collecting"] = "collecting"
-    data: MoveData
-    missing: list[Step] = Field(description="User inputs still empty, in asking order.")
-    next_step: Step | None = Field(description="First item in missing, or null when complete.")
+    """이사 한 건의 현재 상태. 조회·저장·연결 응답이 모두 이 형태다."""
+
+    move_id: UUID = Field(description="이사 ID(UUID)")
+    owner: Owner = Field(description="member: 회원 이사, guest: 비회원 이사")
+    created_at: datetime = Field(description="이사를 만든 시각(UTC)")
+    expires_at: datetime | None = Field(
+        description="비회원 이사만. 이 시각이 지나면 열 수 없다(UTC). 회원 이사는 null."
+    )
+    stage: Literal["collecting"] = Field(
+        default="collecting",
+        description="진행 단계. 지금은 collecting(이사 정보 모으는 중)만 있다.",
+    )
+    data: MoveData = Field(description="항목별 상태와 값")
+    missing: list[Step] = Field(description=STEP_DOC)
+    next_step: Step | None = Field(
+        description="missing의 첫 항목. 채팅 화면이 다음에 물어볼 것. 모두 입력했으면 null."
+    )
 
 
 class MoveSummary(BaseModel):
-    """One card in 나의 이사 기록 (SC-13)."""
+    """나의 이사 기록(SC-13)의 카드 하나."""
 
-    move_id: UUID
-    created_at: datetime
+    move_id: UUID = Field(description="이사 ID. 상세는 `GET /moves/{move_id}`")
+    created_at: datetime = Field(description="이사를 만든 시각(UTC)")
     move_date: date | None = Field(description="이사 날짜. 아직 안 정했으면 null")
-    start_time: time | None = None
+    start_time: time | None = Field(default=None, description="시작 시간. 없으면 null")
     origin_address: str | None = Field(description="출발지 도로명주소. 없으면 null")
     destination_address: str | None = Field(description="도착지 도로명주소. 없으면 null")
     stage: Literal["preparing"] = Field(
@@ -320,7 +427,9 @@ class MoveSummary(BaseModel):
 
 
 class MoveList(BaseModel):
+    """나의 이사 기록 목록."""
+
     moves: list[MoveSummary] = Field(description="최신순")
-    total: int = Field(description="이 회원의 전체 이사 수")
-    limit: int
-    offset: int
+    total: int = Field(description="이 회원의 전체 이사 수(페이지와 무관)")
+    limit: int = Field(description="요청한 최대 개수")
+    offset: int = Field(description="건너뛴 개수")

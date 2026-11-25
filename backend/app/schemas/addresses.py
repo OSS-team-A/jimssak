@@ -2,6 +2,9 @@ from pydantic import BaseModel, Field
 
 
 class AddressCandidateOut(BaseModel):
+    """주소 후보 하나. 사용자가 고르면 이사 저장(`PATCH /moves/{move_id}`)의 출발지·도착지에
+    `road_address`, `building_name`, `adm_cd`, `mountain`, `lot_main`, `lot_sub`를 넣는다."""
+
     road_address: str = Field(description="도로명주소, 예: 서울특별시 중구 퇴계로36길 2 (필동3가)")
     jibun_address: str = Field(description="지번주소")
     building_name: str | None = Field(description="건물명. 없으면 null")
@@ -17,7 +20,11 @@ class AddressCandidateOut(BaseModel):
 
 
 class AddressSearchResult(BaseModel):
-    results: list[AddressCandidateOut]
+    """주소 검색 결과."""
+
+    results: list[AddressCandidateOut] = Field(
+        description="이번 페이지의 후보. 사용자가 고른 후보는 이사 저장에 그대로 쓴다."
+    )
     total: int = Field(description="검색된 전체 주소 수")
-    page: int
-    per_page: int
+    page: int = Field(description="현재 페이지(1부터)")
+    per_page: int = Field(description="한 페이지 후보 수")
