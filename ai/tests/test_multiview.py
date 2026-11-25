@@ -105,3 +105,15 @@ def test_geometric_depth_can_use_two_elevated_views_without_lateral_cover():
 
     centers[-1] = (0, -2, .5)
     assert multiview._supported_geometric_depth(surfaces, centers) is None
+
+
+def test_geometric_depth_rejects_extent_only_supported_below_upper_surface():
+    x, y = np.meshgrid(np.linspace(-.5, .5, 45), np.linspace(-.36, .36, 24))
+    bottom = np.c_[x.ravel(), y.ravel(), np.zeros(x.size)]
+    narrow_top = bottom * [1, .6, 1] + [0, 0, .6]
+    wide_top = bottom + [0, 0, .6]
+    centers = [(-1, -2, 1), (0, -2, 1), (1, -2, 1)]
+    table = np.vstack([bottom, narrow_top])
+    solid = np.vstack([bottom, wide_top])
+    assert multiview._supported_geometric_depth([table] * 3, centers) is None
+    assert multiview._supported_geometric_depth([solid] * 3, centers) == pytest.approx(72)

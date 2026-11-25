@@ -259,16 +259,21 @@ def _recover_silhouette_edges(filtered, geometry, views):
     return geometry[votes >= 2]
 
 
-def sizes(points):
-    # Use the identical bounding-box rule for both variants. The 1% tail trim
-    # limits isolated mask/depth artifacts while preserving the observed extents.
+def _footprint_coordinates(points):
     xy = points[:, :2]
     _, _, angle = cv2.minAreaRect(xy.astype(np.float32))
     rad = np.deg2rad(angle)
     directions = np.array([[np.cos(rad), -np.sin(rad)], [np.sin(rad), np.cos(rad)]])
-    axes = np.c_[xy @ directions, points[:, 2]]
-    span = np.diff(np.percentile(axes, [1, 99], axis=0), axis=0)[0] * 100
-    return tuple(sorted(span[:2], reverse=True))
+    return xy @ directions
+
+
+def _extent_cm(coordinates):
+    # Trim isolated mask/depth artifacts before measuring the observed extents.
+    return np.ptp(np.percentile(coordinates, [1, 99], axis=0), axis=0) * 100
+
+
+def sizes(points):
+    return tuple(sorted(_extent_cm(_footprint_coordinates(points)), reverse=True))
 
 
 def _supported_geometric_depth(surfaces, centers):
@@ -290,10 +295,22 @@ def _supported_geometric_depth(surfaces, centers):
         if np.count_nonzero(overhead) < 2:
             return None
         surfaces = [points for points, visible in zip(surfaces, overhead) if visible]
-    depths = [sizes(points)[1] for points in surfaces]
+    depths = []
+    upper_depths = []
+    for points in surfaces:
+        xy = _footprint_coordinates(points)
+        extents = _extent_cm(xy)
+        short_axis = np.argmin(extents)
+        upper = points[:, 2] >= np.median(points[:, 2])
+        depths.append(extents[short_axis])
+        upper_depths.append(_extent_cm(xy[upper, short_axis]))
+
     depth = float(np.median(depths))
     spread = np.ptp(np.percentile(depths, [25, 75]))
-    if depth <= 0 or spread > max(2 * GRID_METERS * 100, 0.1 * depth):
+    tolerance = max(2 * GRID_METERS * 100, 0.1 * depth)
+    # Agreement between views can repeat the same phantom volume under a tabletop.
+    # A depth override needs support in the upper surface on the same horizontal axis.
+    if depth <= 0 or spread > tolerance or depth - np.median(upper_depths) > tolerance:
         return None
     return depth
 
@@ -391,8 +408,8 @@ def measure_track(
                             for frame, _, _ in geometry_observations]
         geometric_depth = _supported_geometric_depth(geometry_surfaces, geometry_centers)
         # A stable silhouette volume can retain a rear edge lost in aligned front surfaces.
-        if geometric_depth is not None and geometric_depth - depth > 2 * GRID_METERS * 100:
-            depth = min(width, geometric_depth)
+        if geometric_depth is not None and depth + 2 * GRID_METERS * 100 < geometric_depth <= width:
+            depth = geometric_depth
     if scales and (metric_capture_poses or len(heights) < 2):
         # A single per-view depth scale does not preserve both tabletop and floor level.
         # With a measured trajectory, prioritize contact rays from silhouette geometry.
