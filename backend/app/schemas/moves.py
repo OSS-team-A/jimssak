@@ -11,6 +11,8 @@ from pydantic import (
     model_validator,
 )
 
+from .analysis import AnalysisSection
+
 # Moves happen in Korea, which has no daylight saving time.
 KST = timezone(timedelta(hours=9))
 MIN_FLOOR, MAX_FLOOR = -5, 80
@@ -73,13 +75,10 @@ class MoveCreated(BaseModel):
 
 
 class Section(BaseModel):
-    """아직 구현 전인 단계(영상 분석, 이삿짐 목록)의 자리."""
+    """아직 구현 전인 단계(이삿짐 목록)의 자리."""
 
-    status: Literal["empty", "not_started"] = Field(
-        description=(
-            "analysis는 not_started(분석 시작 전), inventory는 empty(목록 없음). "
-            "영상 분석과 이삿짐 목록 기능이 생기면 상태와 결과가 추가된다."
-        )
+    status: Literal["empty"] = Field(
+        description="empty(목록 없음). 이삿짐 목록 편집 기능이 생기면 상태와 결과가 추가된다."
     )
 
 
@@ -379,7 +378,7 @@ class MoveData(BaseModel):
     """이사 한 건의 항목별 상태. 각 항목은 status와 값으로 이루어진다."""
 
     room_video: RoomVideo = Field(description="방 영상(SC-05)")
-    analysis: Section = Field(description="영상 분석(SC-06 분석 대기). 아직 구현 전")
+    analysis: AnalysisSection = Field(description="영상 분석(SC-06 분석 대기·완료·실패)")
     inventory: Section = Field(description="이삿짐 목록(SC-07). 아직 구현 전")
     origin: PlaceSection = Field(description="출발지(SC-06)")
     destination: PlaceSection = Field(description="도착지(SC-06)")

@@ -2,14 +2,16 @@ import json
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime
+from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.routing import APIRoute
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials
 
+from ..schemas.analysis import AnalysisOut, AnalysisSection
 from ..schemas.auth import User
 from ..schemas.moves import (
     BuildingInfo,
@@ -31,6 +33,7 @@ from ..schemas.moves import (
     Section,
     UploadedVideo,
 )
+from ..services.analysis import DEMO_PHOTOS, AnalysisJob, AnalysisStore
 from ..services.auth import AuthStore
 from ..services.building_register import (
     BuildingLookupFailed,
@@ -56,6 +59,7 @@ from ..services.moves import (
 from ..services.route import AddressNotLocated, RouteLookupFailed, Router
 from .auth import Store, bearer, unauthorized
 
+DEMO_PHOTO_DIR = Path(__file__).resolve().parents[1] / "demo"
 # Room for multipart boundaries and small form fields around the video.
 FORM_OVERHEAD_BYTES = 64 * 1024
 
@@ -162,6 +166,13 @@ def get_router(request: Request) -> Router:
 RouterDep = Annotated[Router, Depends(get_router)]
 
 
+def get_analysis_store(request: Request) -> AnalysisStore:
+    return request.app.state.analysis_store
+
+
+AnalysisDep = Annotated[AnalysisStore, Depends(get_analysis_store)]
+
+
 def get_calendar(request: Request) -> Calendar:
     return request.app.state.calendar
 
@@ -237,8 +248,8 @@ def create_move(member: Member, moves: MoveStoreDep) -> MoveCreated:
         404: {"description": "없거나, 만료되었거나, 다른 사용자의 이사"},
     },
 )
-def get_move(move: AccessibleMove, moves: MoveStoreDep) -> MoveSnapshot:
-    return _snapshot(move, moves)
+def get_move(move: AccessibleMove, moves: MoveStoreDep, analyses: AnalysisDep) -> MoveSnapshot:
+    return _snapshot(move, moves, analyses)
 
 
 @router.get(
@@ -284,7 +295,8 @@ def list_moves(
     },
 )
 def claim_move(
-    move_id: UUID, member: Member, guest_token: GuestToken, moves: MoveStoreDep
+    move_id: UUID, member: Member, guest_token: GuestToken, moves: MoveStoreDep,
+    analyses: AnalysisDep,
 ) -> MoveSnapshot:
     if member is None:
         raise unauthorized("로그인이 필요합니다.")
@@ -293,7 +305,7 @@ def claim_move(
     move = moves.claim(str(move_id), guest_token, member.id)
     if move is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "이사를 찾을 수 없습니다.")
-    return _snapshot(move, moves)
+    return _snapshot(move, moves, analyses)
 
 
 @router.patch(
@@ -322,7 +334,7 @@ def claim_move(
 )
 def update_move(
     update: MoveUpdate, move: AccessibleMove, moves: MoveStoreDep, register: RegisterDep,
-    router: RouterDep, calendar: CalendarDep,
+    router: RouterDep, calendar: CalendarDep, analyses: AnalysisDep,
 ) -> MoveSnapshot:
     sent = update.model_fields_set
     current, _ = moves.get_details(move.id)
@@ -368,7 +380,7 @@ def update_move(
         route=route_future.result() if route_future else None, route_sent=route_sent,
         date_info=date_future.result() if date_future else None, date_info_sent=date_sent,
     )
-    return _snapshot(move, moves)
+    return _snapshot(move, moves, analyses)
 
 
 def _date_plan(
@@ -525,7 +537,7 @@ def _place_section(record: PlaceRecord | None, lookup: LookupRecord | None) -> P
     )
 
 
-def _snapshot(move: Move, moves: MoveStore) -> MoveSnapshot:
+def _snapshot(move: Move, moves: MoveStore, analyses: AnalysisStore) -> MoveSnapshot:
     video = moves.get_video(move.id)
     places, schedule = moves.get_details(move.id)
     lookups = moves.get_lookups(move.id)
@@ -536,7 +548,7 @@ def _snapshot(move: Move, moves: MoveStore) -> MoveSnapshot:
             status="uploaded" if video else "empty",
             video=_media_info(video) if video else None,
         ),
-        analysis=Section(status="not_started"),
+        analysis=_analysis_section(analyses.current(move.id)),
         inventory=Section(status="empty"),
         origin=_place_section(places.get("origin"), lookups.get("origin")),
         destination=_place_section(places.get("destination"), lookups.get("destination")),
@@ -585,6 +597,8 @@ def upload_media(
     file: Annotated[UploadFile, File(description="방 촬영 영상 (mp4, mov)")],
     moves: MoveStoreDep,
     storage: MediaStorageDep,
+    analyses: AnalysisDep,
+    request: Request,
 ) -> UploadedVideo:
     try:
         media = storage.save_video(move.id, file.file, file.filename, file.content_type)
@@ -600,6 +614,11 @@ def upload_media(
     # The database no longer points at the old file, so it can go.
     if replaced is not None:
         storage.discard(replaced)
+    # Every new video gets a fresh analysis; the previous one's late result is refused.
+    analyses.start(
+        move.id, media.id, demo=request.app.state.analysis_demo,
+        demo_fail=media.filename.lower().startswith("fail"),
+    )
     return UploadedVideo(**_media_info(media).model_dump(), replaced=replaced is not None)
 
 
@@ -608,3 +627,60 @@ def _media_info(media: Media) -> MediaInfo:
         media_id=media.id, filename=media.filename, content_type=media.content_type,
         size_bytes=media.size_bytes, created_at=_time(media.created_at),
     )
+
+
+def _analysis_section(job: AnalysisJob | None) -> AnalysisSection:
+    if job is None:
+        return AnalysisSection(status="not_started")
+    items = json.loads(job.result_json)["items"] if job.result_json else None
+    return AnalysisSection(
+        status=job.status, analysis_id=job.analysis_id, progress=job.progress,
+        item_count=len(items) if items is not None else None, demo=job.demo,
+        error=json.loads(job.error_json) if job.error_json else None,
+        updated_at=_time(job.updated_at),
+    )
+
+
+@router.get(
+    "/{move_id}/analysis",
+    summary="영상 분석 결과",
+    description=(
+        "AI와 합의한 분석 결과 v2.0 형식 그대로 반환하고 `demo`만 덧붙인다. 완료 전에는 "
+        "`items`가 빈 목록이다. SC-06에서 `status`가 `completed`가 될 때까지 몇 초마다 "
+        "`GET /moves/{move_id}`로 확인한 뒤 이 API로 목록을 받는다. `demo`가 true면 "
+        "데모 분석기의 가짜 결과다."
+    ),
+    responses={
+        401: {"description": "인증 정보 없음"},
+        404: {"description": "없거나, 만료되었거나, 다른 사용자의 이사"},
+    },
+)
+def get_analysis(move: AccessibleMove, analyses: AnalysisDep) -> AnalysisOut:
+    job = analyses.current(move.id)
+    if job is None:
+        return AnalysisOut(status="not_started")
+    if job.result_json:
+        # Completed: the stored v2.0 result as the analyzer sent it.
+        return AnalysisOut(**json.loads(job.result_json), demo=job.demo)
+    return AnalysisOut(
+        analysis_id=job.analysis_id, status=job.status, progress=job.progress,
+        video={"video_id": job.media_id},
+        error=json.loads(job.error_json) if job.error_json else None, demo=job.demo,
+    )
+
+
+@router.get(
+    "/{move_id}/analysis/photos/{name}",
+    summary="데모 분석 물품 사진",
+    description=(
+        "데모 분석 결과의 `snapshots[].image_url`이 가리키는 샘플 사진. 이 이사를 열 수 "
+        "있는 사용자만 받을 수 있다."
+    ),
+    response_class=FileResponse,
+    responses={404: {"description": "없는 사진이거나 다른 사용자의 이사"}},
+)
+def get_analysis_photo(name: str, move: AccessibleMove) -> FileResponse:
+    if name not in DEMO_PHOTOS.values():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "사진을 찾을 수 없습니다.")
+    return FileResponse(DEMO_PHOTO_DIR / name, media_type="image/jpeg")
+
