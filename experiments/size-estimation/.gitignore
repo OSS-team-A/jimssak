@@ -1,0 +1,9 @@
+/arkitscenes/data/
+/arkitscenes/downloads.json
+/arkitscenes/frame-collection.json
+/arkitscenes/metrics.json
+/arkitscenes/model.json
+/arkitscenes/held-out-predictions.csv
+/synthetic-height/results.json
+/youtube-calibration/model.json
+/youtube-calibration/results.json

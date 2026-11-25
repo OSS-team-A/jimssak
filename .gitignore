@@ -244,6 +244,7 @@ datasets/
 data/raw/
 data/processed/
 uploads/
+backend/data/media/
 outputs/
 *.mp4
 *.mov
@@ -252,6 +253,16 @@ outputs/
 *.db
 *.sqlite
 *.sqlite3
+# SQLite sidecar files
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
 .DS_Store
 Thumbs.db
 .idea/
