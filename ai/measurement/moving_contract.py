@@ -138,6 +138,8 @@ class DimensionEstimate(Contract):
     method: Literal["metric_depth_view_median", "registered_multiview"]
     scale_source: Literal["pretrained_depth", "capture_poses", "reference_dimension"]
     views: int = Field(gt=0)
+    # Set when results from several depth models are combined per dimension.
+    depth_model_family: str | None = None
 
 
 class MeasuredTrack(Contract):
