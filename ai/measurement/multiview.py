@@ -271,6 +271,27 @@ def sizes(points):
     return tuple(sorted(span[:2], reverse=True))
 
 
+def _supported_geometric_depth(surfaces, centers):
+    """Estimate the short horizontal extent when the masks constrain it across viewpoints."""
+    if len(surfaces) < 3:
+        return None
+    object_center = np.median(np.concatenate(surfaces)[:, :2], axis=0)
+    directions = np.asarray(centers)[:, :2] - object_center
+    lengths = np.linalg.norm(directions, axis=1)
+    if np.any(lengths <= GRID_METERS):
+        return None
+    directions /= lengths[:, None]
+    # Moving toward an object changes its apparent size without revealing its side.
+    if np.min(directions @ directions.T) > np.cos(np.deg2rad(15)):
+        return None
+    depths = [sizes(points)[1] for points in surfaces]
+    depth = float(np.median(depths))
+    spread = np.ptp(np.percentile(depths, [25, 75]))
+    if depth <= 0 or spread > max(2 * GRID_METERS * 100, 0.1 * depth):
+        return None
+    return depth
+
+
 def _surface_height(mask, pixels, points, turns):
     height, width = mask.shape
     x, y = pixels.T
@@ -291,7 +312,9 @@ def is_complete_mask(mask):
     )
 
 
-def measure_track(track_id: str, label: str, frames: list[MaskView]) -> TrackMeasurement:
+def measure_track(
+    track_id: str, label: str, frames: list[MaskView], *, metric_capture_poses: bool = False
+) -> TrackMeasurement:
     """Fuse complete masks of one stationary object and estimate its size in cm."""
     if len({frame.frame_id for frame in frames}) != len(frames):
         raise ValueError("Each view must have a unique frame ID")
@@ -355,15 +378,28 @@ def measure_track(track_id: str, label: str, frames: list[MaskView]) -> TrackMea
     width, depth = sizes(footprint_points)
     if min(width, depth) <= 0 or not np.isfinite((width, depth)).all():
         return TrackMeasurement(**options, status="unavailable", frame_ids=frame_ids)
-    if len(heights) < 2 and scales:
-        # Filtering the depth map may leave too few tabletop or floor rays.
-        # Estimate height separately from the unfiltered geometric surfaces.
-        heights = {}
+    if metric_capture_poses and scales:
+        geometry_surfaces = [points for _, _, points in geometry_observations]
+        centers_by_frame = dict(zip((frame.frame_id for frame in complete), centers))
+        geometry_centers = [centers_by_frame[frame.frame_id]
+                            for frame, _, _ in geometry_observations]
+        geometric_depth = _supported_geometric_depth(geometry_surfaces, geometry_centers)
+        # A stable silhouette volume can retain a rear edge lost in aligned front surfaces.
+        if geometric_depth is not None and geometric_depth - depth > 2 * GRID_METERS * 100:
+            depth = min(width, geometric_depth)
+    if scales and (metric_capture_poses or len(heights) < 2):
+        # A single per-view depth scale does not preserve both tabletop and floor level.
+        # With a measured trajectory, prioritize contact rays from silhouette geometry.
+        geometry_heights = {}
         for frame, pixels, geometry in geometry_observations:
             try:
-                heights[frame.frame_id] = _surface_height(frame.mask, pixels, geometry, frame.turns)
+                geometry_heights[frame.frame_id] = _surface_height(
+                    frame.mask, pixels, geometry, frame.turns
+                )
             except ValueError:
                 continue
+        if len(geometry_heights) >= 2 or len(heights) < 2:
+            heights = geometry_heights
     height = float(np.median(list(heights.values()))) if len(heights) >= 2 else None
     return TrackMeasurement(
         **options, status="estimated" if height is not None else "partial",

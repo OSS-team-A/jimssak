@@ -55,3 +55,41 @@ def test_recovers_a_filtered_edge_only_if_two_masks_support_it():
             narrow, geometry, [(camera, mask, None) for mask in (full, second, clipped)]
         )
         assert not len(recovered)
+
+
+def test_geometric_depth_needs_lateral_views_with_agreeing_short_spans():
+    x, y = np.meshgrid(np.linspace(-.5, .5, 45), np.linspace(-.18, .18, 24))
+    surface = np.c_[x.ravel(), y.ravel(), np.zeros(x.size)]
+    spread = [(-1, -2, 1), (0, -2, 1), (1, -2, 1)]
+    forward = [(0, -3, 1), (0, -2, 1), (0, -1, 1)]
+    assert multiview._supported_geometric_depth([surface] * 3, spread) == pytest.approx(36)
+    assert multiview._supported_geometric_depth([surface] * 3, forward) is None
+
+    inconsistent = surface * [1, 2, 1]
+    assert multiview._supported_geometric_depth([surface, surface, inconsistent], spread) is None
+
+
+def test_measured_camera_height_keeps_geometric_contacts(monkeypatch):
+    mask = np.zeros((36, 36), np.uint8)
+    mask[5:30, 6:30] = 1
+    y, x = np.where(mask)
+    pixels = np.c_[x, y]
+    geometry = np.c_[x * .03, y * .025, (29 - y) * .04]
+    learned = geometry * [1, 1, .8]
+    valid = np.ones(len(pixels), bool)
+    frames = [
+        multiview.MaskView(i, mask, np.c_[np.eye(3), [-x, 2, 0]])
+        for i, x in enumerate((-.6, 0, .6))
+    ]
+    monkeypatch.setattr(multiview, "visual_hull", lambda *args: geometry)
+    paired = (pixels, geometry, (learned, 1, valid))
+    monkeypatch.setattr(multiview, "same_rays", lambda *args: paired)
+    monkeypatch.setattr(multiview, "_consistent_depth", lambda *args: valid)
+    monkeypatch.setattr(multiview, "_recover_silhouette_edges", lambda *args: geometry[:0])
+
+    before = multiview.measure_track("cabinet", "cabinet", frames)
+    after = multiview.measure_track("cabinet", "cabinet", frames, metric_capture_poses=True)
+    assert after.width_cm == before.width_cm
+    assert after.depth_cm == before.depth_cm
+    assert before.height_cm == pytest.approx(.8 * after.height_cm, abs=.02)
+    assert after.height_frame_ids == [0, 1, 2]

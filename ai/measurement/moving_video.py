@@ -154,7 +154,7 @@ def _table_from_motion(observations):
     return {"top_width": float(np.mean(edges[::2])), "top_depth": float(np.mean(edges[1::2]))}
 
 
-def _registered_mask_size(items):
+def _registered_mask_size(items, has_capture_poses):
     candidates = [item for item in items if item.view.has_mask and item.view.complete]
     if len(candidates) < 3:
         return {}
@@ -172,7 +172,9 @@ def _registered_mask_size(items):
         for item in candidates
     ]
     first = candidates[0].view
-    result = measure_track(first.track_id, first.label, registered)
+    result = measure_track(
+        first.track_id, first.label, registered, metric_capture_poses=has_capture_poses
+    )
     return {
         key: {"cm": value, "method": "registered_multiview", "views": len(ids)}
         for key, value, ids in (
@@ -198,7 +200,7 @@ def _estimate_track(observations, has_capture_poses):
                   for key, values in per_dimension.items()}
     best_first = sorted(component_views.values(), key=len, reverse=True)
     for items in best_first:
-        registered = _registered_mask_size(items)
+        registered = _registered_mask_size(items, has_capture_poses)
         tabletop = _table_from_motion(items)
         if registered or tabletop:
             if "height" in dimensions and any(item.view.floor_contacts_px for item in items):
