@@ -275,15 +275,21 @@ def _supported_geometric_depth(surfaces, centers):
     """Estimate the short horizontal extent when the masks constrain it across viewpoints."""
     if len(surfaces) < 3:
         return None
-    object_center = np.median(np.concatenate(surfaces)[:, :2], axis=0)
-    directions = np.asarray(centers)[:, :2] - object_center
-    lengths = np.linalg.norm(directions, axis=1)
-    if np.any(lengths <= GRID_METERS):
-        return None
-    directions /= lengths[:, None]
-    # Moving toward an object changes its apparent size without revealing its side.
-    if np.min(directions @ directions.T) > np.cos(np.deg2rad(15)):
-        return None
+    from_object = np.asarray(centers) - np.median(np.concatenate(surfaces), axis=0)
+    horizontal = np.linalg.norm(from_object[:, :2], axis=1)
+    off_axis = horizontal > GRID_METERS
+    directions = from_object[off_axis, :2] / horizontal[off_axis, None]
+    has_side_views = len(directions) >= 2 and (
+        np.min(directions @ directions.T) <= np.cos(np.deg2rad(15))
+    )
+    if not has_side_views:
+        # Two elevated observations also expose the front-to-back extent.
+        # At 35 degrees of elevation over half its length projects onto the image plane.
+        elevation = np.arctan2(from_object[:, 2], horizontal)
+        overhead = elevation >= np.deg2rad(35)
+        if np.count_nonzero(overhead) < 2:
+            return None
+        surfaces = [points for points, visible in zip(surfaces, overhead) if visible]
     depths = [sizes(points)[1] for points in surfaces]
     depth = float(np.median(depths))
     spread = np.ptp(np.percentile(depths, [25, 75]))

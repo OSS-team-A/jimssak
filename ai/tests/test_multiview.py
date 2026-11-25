@@ -93,3 +93,15 @@ def test_measured_camera_height_keeps_geometric_contacts(monkeypatch):
     assert after.depth_cm == before.depth_cm
     assert before.height_cm == pytest.approx(.8 * after.height_cm, abs=.02)
     assert after.height_frame_ids == [0, 1, 2]
+
+
+def test_geometric_depth_can_use_two_elevated_views_without_lateral_cover():
+    x, y = np.meshgrid(np.linspace(-.5, .5, 45), np.linspace(-.18, .18, 24))
+    surface = np.c_[x.ravel(), y.ravel(), np.zeros(x.size)]
+    shallow = surface * [1, .5, 1]
+    surfaces = [shallow, surface, surface]
+    centers = [(0, -3, 1), (0, -2, 2), (0, -1.5, 2)]
+    assert multiview._supported_geometric_depth(surfaces, centers) == pytest.approx(36)
+
+    centers[-1] = (0, -2, .5)
+    assert multiview._supported_geometric_depth(surfaces, centers) is None
