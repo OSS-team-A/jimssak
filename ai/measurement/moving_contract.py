@@ -174,6 +174,7 @@ class DepthTiming(Contract):
 class VideoResult(Contract):
     video_id: str
     device: str
+    depth_model_family: str | None = None
     pose_source: Literal["rgb_metric_depth_pnp", "capture_poses"]
     intrinsics_source: Literal[
         "provided", "provided_approximate", "approximate_phone_fov", "provided_per_frame"

@@ -18,7 +18,7 @@ from ai.measurement.depth_geometry import (
     table_dimensions,
     upright_basis,
 )
-from ai.measurement.metric_depth import MetricDepth
+from ai.measurement.metric_depth import DEFAULT_DEPTH_FAMILY, MetricDepth
 from ai.measurement.moving_camera import CameraPose, CameraTracker, rays
 from ai.measurement.moving_contract import (
     MeasurementJob,
@@ -308,6 +308,7 @@ def estimate_video(clip: VideoInput, model: MetricDepth) -> VideoResult:
         source = "provided_approximate" if clip.intrinsics.approximate else "provided"
     return VideoResult(
         video_id=clip.video_id, device=model.device, intrinsics_source=source,
+        depth_model_family=getattr(model, "family", None),
         pose_source="capture_poses" if capture_poses else "rgb_metric_depth_pnp",
         scale=calibration, objects=objects, poses=poses,
         depth_timing={"frames": len(timings), "total_s": sum(timings),
@@ -318,7 +319,10 @@ def estimate_video(clip: VideoInput, model: MetricDepth) -> VideoResult:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("manifest", type=Path)
-    parser.add_argument("--model", required=True, type=Path, help="Local metric checkpoint")
+    parser.add_argument(
+        "--model",
+        help=f"Model family, local checkpoint or cached ID (default: {DEFAULT_DEPTH_FAMILY})",
+    )
     parser.add_argument("--device", choices=("auto", "mps", "cpu", "cuda"), default="auto")
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
