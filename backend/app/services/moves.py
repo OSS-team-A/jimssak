@@ -90,6 +90,29 @@ class RouteRecord:
     checked_at: int | None = None
 
 
+@dataclass(frozen=True)
+class DateInfoRecord:
+    """What the move date falls on, judged when the date was saved."""
+
+    move_date: str
+    # confirmed / unpublished (the year's holidays are not out yet) / failed
+    holiday_status: str
+    # found / failed
+    lunar_status: str
+    # calendar.DayInfo as JSON
+    info_json: str
+    checked_at: int
+
+
+@dataclass(frozen=True)
+class CalendarEntry:
+    """Shared KASI data: a year of holidays or a month of lunar dates."""
+
+    status: str
+    data_json: str
+    fetched_at: int
+
+
 MEDIA_COLUMNS ="id, move_id, filename, content_type, size_bytes, storage_path, created_at"
 
 
@@ -168,6 +191,21 @@ class MoveStore:
                     destination_x REAL,
                     destination_y REAL,
                     checked_at INTEGER
+                );
+                CREATE TABLE IF NOT EXISTS move_date_info (
+                    move_id TEXT PRIMARY KEY NOT NULL REFERENCES moves(id) ON DELETE CASCADE,
+                    move_date TEXT NOT NULL,
+                    holiday_status TEXT NOT NULL,
+                    lunar_status TEXT NOT NULL,
+                    info_json TEXT NOT NULL,
+                    checked_at INTEGER NOT NULL
+                );
+                -- Shared by every move: 'holidays:2026', 'lunar:2026-11'.
+                CREATE TABLE IF NOT EXISTS calendar_cache (
+                    key TEXT PRIMARY KEY NOT NULL,
+                    status TEXT NOT NULL,
+                    data_json TEXT NOT NULL,
+                    fetched_at INTEGER NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS move_schedules (
                     move_id TEXT PRIMARY KEY NOT NULL REFERENCES moves(id) ON DELETE CASCADE,
@@ -258,6 +296,31 @@ class MoveStore:
             for row in rows
         }
 
+    def get_calendar(self, key: str) -> CalendarEntry | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT status, data_json, fetched_at FROM calendar_cache WHERE key = ?", (key,)
+            ).fetchone()
+        return CalendarEntry(**dict(row)) if row else None
+
+    def put_calendar(self, key: str, entry: CalendarEntry) -> None:
+        with self._connect() as db:
+            db.execute(
+                "INSERT INTO calendar_cache(key, status, data_json, fetched_at) "
+                "VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET status = excluded.status, "
+                "data_json = excluded.data_json, fetched_at = excluded.fetched_at",
+                (key, entry.status, entry.data_json, entry.fetched_at),
+            )
+
+    def get_date_info(self, move_id: str) -> DateInfoRecord | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT move_date, holiday_status, lunar_status, info_json, checked_at "
+                "FROM move_date_info WHERE move_id = ?", (move_id,)
+            ).fetchone()
+        return DateInfoRecord(**dict(row)) if row else None
+
     def get_route(self, move_id: str) -> RouteRecord | None:
         with self._connect() as db:
             row = db.execute("SELECT * FROM move_routes WHERE move_id = ?", (move_id,)).fetchone()
@@ -276,13 +339,24 @@ class MoveStore:
         lookups: dict[str, LookupRecord | None] | None = None,
         route: RouteRecord | None = None,
         route_sent: bool = False,
+        date_info: DateInfoRecord | None = None,
+        date_info_sent: bool = False,
     ) -> None:
         """Replace only the sections that were sent, all in one transaction.
 
-        A place, schedule, lookup or route given as None is cleared.
+        A place, schedule, lookup, route or date info given as None is cleared.
         """
         now = int(time.time())
         with self._connect() as db:
+            if date_info_sent:
+                db.execute("DELETE FROM move_date_info WHERE move_id = ?", (move_id,))
+                if date_info is not None:
+                    db.execute(
+                        "INSERT INTO move_date_info(move_id, move_date, holiday_status, "
+                        "lunar_status, info_json, checked_at) VALUES (?, ?, ?, ?, ?, ?)",
+                        (move_id, date_info.move_date, date_info.holiday_status,
+                         date_info.lunar_status, date_info.info_json, date_info.checked_at),
+                    )
             if route_sent:
                 db.execute("DELETE FROM move_routes WHERE move_id = ?", (move_id,))
                 if route is not None:

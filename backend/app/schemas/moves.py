@@ -14,6 +14,8 @@ from pydantic import (
 # Moves happen in Korea, which has no daylight saving time.
 KST = timezone(timedelta(hours=9))
 MIN_FLOOR, MAX_FLOOR = -5, 80
+# A move date may be at most this many days ahead.
+MAX_DAYS_AHEAD = 365
 
 Owner = Literal["member", "guest"]
 Elevator = Literal["available", "unavailable", "unknown"]
@@ -134,9 +136,13 @@ class ScheduleInput(BaseModel):
 
     @field_validator("move_date")
     @classmethod
-    def not_in_past(cls, move_date: date) -> date:
-        if move_date < datetime.now(KST).date():
+    def within_a_year(cls, move_date: date) -> date:
+        today = datetime.now(KST).date()
+        if move_date < today:
             raise ValueError("지난 날짜는 선택할 수 없습니다.")
+        if move_date > today + timedelta(days=MAX_DAYS_AHEAD):
+            # Holidays further out may not be published, and price tables change.
+            raise ValueError(f"이사 날짜는 오늘부터 {MAX_DAYS_AHEAD}일 이내로 선택해 주세요.")
         return move_date
 
     @field_validator("start_time")
@@ -213,9 +219,46 @@ class Schedule(BaseModel):
     start_time: time
 
 
+class LunarDateOut(BaseModel):
+    month: int
+    day: int
+    leap: bool = Field(description="윤달이면 true")
+
+
+class DayInfoOut(BaseModel):
+    """Price-raising conditions the move date falls on, for the quote."""
+
+    weekend: bool = Field(description="토·일")
+    friday: bool = Field(description="금요일 (업체에 따라 주말 요금)")
+    month_end: bool = Field(description="월말: 그달 마지막 3일")
+    holiday: bool | None = Field(description="공휴일·대체공휴일. 그해 공휴일을 모르면 null")
+    holiday_name: str | None = Field(default=None, description="예: 기독탄신일")
+    son_eomneun: bool | None = Field(
+        description="손 없는 날: 음력 9·10·19·20·29·30일. 음력을 못 구하면 null"
+    )
+    lunar: LunarDateOut | None = None
+    pre_holiday: bool | None = Field(
+        description=(
+            "연휴 전날: 공휴일이 하나 이상 낀 이틀 이상 쉬는 날의 전날(평범한 주말은 제외). "
+            "공휴일을 모르면 null"
+        )
+    )
+    holiday_status: Literal["confirmed", "unpublished", "failed"] = Field(
+        description=(
+            "confirmed: 공휴일 확인됨, unpublished: 그해 공휴일 자료가 아직 없음(공휴일 미확정), "
+            "failed: 조회 실패(같은 본문으로 다시 저장하면 재조회)"
+        )
+    )
+    lunar_status: Literal["found", "failed"]
+    checked_at: datetime
+
+
 class ScheduleSection(BaseModel):
     status: Literal["empty", "filled"]
     value: Schedule | None = None
+    day: DayInfoOut | None = Field(
+        default=None, description="이사 날짜가 해당하는 할증 조건. 일정을 저장하면 채워진다."
+    )
 
 
 class RouteSection(BaseModel):

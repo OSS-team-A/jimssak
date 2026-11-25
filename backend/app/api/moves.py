@@ -1,7 +1,7 @@
 import json
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -13,6 +13,7 @@ from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials
 from ..schemas.auth import User
 from ..schemas.moves import (
     BuildingInfo,
+    DayInfoOut,
     MediaInfo,
     MoveCreated,
     MoveData,
@@ -37,8 +38,11 @@ from ..services.building_register import (
     decide_elevator,
     select_building,
 )
+from ..services.calendar import Calendar
+from ..services.date_info import is_complete, judge_move_date
 from ..services.media import MediaStorage, MediaTooLarge, UnsupportedMedia
 from ..services.moves import (
+    DateInfoRecord,
     LookupRecord,
     Media,
     Move,
@@ -151,6 +155,13 @@ def get_router(request: Request) -> Router:
 
 
 RouterDep = Annotated[Router, Depends(get_router)]
+
+
+def get_calendar(request: Request) -> Calendar:
+    return request.app.state.calendar
+
+
+CalendarDep = Annotated[Calendar, Depends(get_calendar)]
 Bearer = Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]
 GuestToken = Annotated[str | None, Depends(guest_header)]
 
@@ -235,7 +246,7 @@ def get_move(move: AccessibleMove, moves: MoveStoreDep) -> MoveSnapshot:
 )
 def update_move(
     update: MoveUpdate, move: AccessibleMove, moves: MoveStoreDep, register: RegisterDep,
-    router: RouterDep,
+    router: RouterDep, calendar: CalendarDep,
 ) -> MoveSnapshot:
     sent = update.model_fields_set
     current, _ = moves.get_details(move.id)
@@ -254,13 +265,17 @@ def update_move(
         else:
             addresses[role] = current[role].road_address if role in current else None
     route_sent, route_job = _route_plan(addresses, moves.get_route(move.id))
+    date_sent, date_job = _date_plan(update, sent, moves.get_date_info(move.id))
     # External calls can be slow and are retried, so they all run at the same time.
-    with ThreadPoolExecutor(max_workers=3) as pool:
+    with ThreadPoolExecutor(max_workers=4) as pool:
         pending = {
             role: pool.submit(_look_up, register, place, known.get(role))
             for role, place in sent_places.items() if place is not None
         }
         route_future = pool.submit(_find_route, router, *route_job) if route_job else None
+        date_future = (
+            pool.submit(judge_move_date, moves, calendar, date_job) if date_job else None
+        )
     for role, place in sent_places.items():
         if place is None:
             places[role] = lookups[role] = None
@@ -275,8 +290,34 @@ def update_move(
     moves.update_details(
         move.id, places, schedule, schedule_sent="schedule" in sent, lookups=lookups,
         route=route_future.result() if route_future else None, route_sent=route_sent,
+        date_info=date_future.result() if date_future else None, date_info_sent=date_sent,
     )
     return _snapshot(move, moves)
+
+
+def _date_plan(
+    update: MoveUpdate, sent: set[str], known: DateInfoRecord | None
+) -> tuple[bool, date | None]:
+    """Whether the stored date info changes, and which date to judge if any."""
+    if "schedule" not in sent:
+        return False, None
+    if update.schedule is None:
+        return known is not None, None
+    day = update.schedule.move_date
+    if known is not None and known.move_date == day.isoformat() and is_complete(known):
+        return False, None
+    # A new date, or one whose holidays or lunar date could not be read before.
+    return True, day
+
+
+def _day_info(record: DateInfoRecord | None) -> DayInfoOut | None:
+    if record is None:
+        return None
+    info = json.loads(record.info_json)
+    return DayInfoOut(
+        **info, holiday_status=record.holiday_status, lunar_status=record.lunar_status,
+        checked_at=_time(record.checked_at),
+    )
 
 
 def _route_plan(
@@ -413,6 +454,7 @@ def _snapshot(move: Move, moves: MoveStore) -> MoveSnapshot:
     places, schedule = moves.get_details(move.id)
     lookups = moves.get_lookups(move.id)
     route = moves.get_route(move.id)
+    date_info = moves.get_date_info(move.id)
     data = MoveData(
         room_video=RoomVideo(
             status="uploaded" if video else "empty",
@@ -427,6 +469,7 @@ def _snapshot(move: Move, moves: MoveStore) -> MoveSnapshot:
             status="filled" if schedule else "empty",
             value=Schedule(move_date=schedule.move_date, start_time=schedule.start_time)
             if schedule else None,
+            day=_day_info(date_info) if schedule else None,
         ),
     )
     # Anything not yet complete still needs asking; partial places count as missing.

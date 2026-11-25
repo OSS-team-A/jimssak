@@ -40,6 +40,15 @@ class Settings(BaseSettings):
     kakao_directions_url: str = "https://apis-navi.kakaomobility.com/v1/directions"
     # Total time one route calculation may take (two geocodes + directions, retries included).
     route_lookup_budget_seconds: PositiveFloat = 6.0
+    # 한국천문연구원 특일(공휴일)·음양력 정보, also with DATA_GO_KR_SERVICE_KEY.
+    kasi_holiday_url: str = (
+        "https://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService/getRestDeInfo"
+    )
+    kasi_lunar_url: str = (
+        "https://apis.data.go.kr/B090041/openapi/service/LrsrCldInfoService/getLunCalInfo"
+    )
+    calendar_request_timeout_seconds: PositiveFloat = 3.0
+    calendar_lookup_budget_seconds: PositiveFloat = 6.0
 
     @field_validator("auth_db_path", "media_dir")
     @classmethod
