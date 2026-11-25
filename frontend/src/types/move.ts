@@ -15,12 +15,20 @@ export type MoveUpdate = {
   origin?: PlaceInput; destination?: PlaceInput;
   schedule?: { move_date: string; start_time: string };
 };
+// The analysis and inventory fields below describe the contract the UI needs.
+// The current server only returns not_started/empty; no result is synthesized.
+export type InventoryItem = {
+  id: string; name: string; quantity: number;
+  estimated_size?: string | null; estimated_weight?: string | null;
+  disassembly?: string | null; location?: string | null;
+  photo_url?: string | null; excluded?: boolean; note?: string | null;
+};
 export type MoveSnapshot = {
   move_id: string; owner: 'member' | 'guest'; stage: 'collecting';
   data: {
     room_video: { status: 'empty' | 'uploaded'; video: { media_id: string; filename: string } | null };
-    analysis: { status: 'not_started' | 'empty' };
-    inventory: { status: 'not_started' | 'empty' };
+    analysis: { status: 'not_started' | 'empty' | 'queued' | 'running' | 'completed' | 'failed'; error?: string | null };
+    inventory: { status: 'not_started' | 'empty' | 'ready'; items?: InventoryItem[]; version?: string };
     origin: { status: 'empty' | 'partial' | 'filled'; value: (PlaceInput & { building: { status: string }; elevator: string }) | null };
     destination: { status: 'empty' | 'partial' | 'filled'; value: (PlaceInput & { building: { status: string }; elevator: string }) | null };
     route: { status: 'not_ready' | 'found' | 'not_found' | 'failed'; distance_m: number | null };

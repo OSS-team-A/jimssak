@@ -1,40 +1,30 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { BrandHeader } from '../components/common/BrandHeader';
 import { Button } from '../components/common/Button';
-import { getMove } from '../api/moves';
 import { navigate, routes } from '../app/routes';
+import { useCurrentMove } from '../hooks/useCurrentMove';
 import mascot from '../assets/analysis-mascot.webp';
-import type { MoveSnapshot } from '../types/move';
 
 export function AnalysisPage() {
-  const [snapshot, setSnapshot] = useState<MoveSnapshot | null>(null);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const saved = sessionStorage.getItem('jimssak-member-move') || sessionStorage.getItem('jimssak-guest-move');
-  let move: { move_id: string; guest_token: string } | null = null;
-  try { move = saved ? JSON.parse(saved) : null; } catch { /* Bad local data is handled as missing. */ }
-  const moveId = move?.move_id;
-  const guestToken = move?.guest_token;
-  const refresh = () => {
-    if (!moveId) return;
-    setLoading(true); setError('');
-    void getMove(moveId, guestToken).then(setSnapshot)
-      .catch(() => setError('상태를 불러오지 못했어요. 다시 시도해주세요.'))
-      .finally(() => setLoading(false));
-  };
-  useEffect(() => { refresh(); }, [moveId, guestToken]);
+  const { snapshot, loading, error, refresh } = useCurrentMove();
+  const status = snapshot?.data.analysis.status;
+  const completed = status === 'completed' && snapshot?.data.inventory.status === 'ready';
+  useEffect(() => { if (completed) navigate(routes.chat); }, [completed]);
+  useEffect(() => {
+    if (status !== 'queued' && status !== 'running') return;
+    const timer = window.setInterval(() => void refresh(), 5000);
+    return () => window.clearInterval(timer);
+  }, [status, refresh]);
   return <main className="app-page analysis-page">
     <BrandHeader />
-    <h1>이사 정보가 저장됐어요</h1>
-    <p>이사 정보를 저장했어요.<br />영상 분석 기능이 연결되면 목록을 확인할 수 있어요.</p>
-    <img className="analysis-mascot" src={mascot} alt="" />
-    <div className="analysis-state" role="status">{loading ? '이사 상태 확인 중' :
-      snapshot?.data.analysis.status === 'not_started' ? '영상 분석 기능이 아직 연결되지 않았어요.' :
-      error || '영상 분석 대기 중'}</div>
-    <p className="analysis-detail">입력한 정보는 그대로 유지돼요.</p>
-    <div className="analysis-actions">
-      <Button variant="secondary" onClick={() => navigate(routes.moveInfo)}>이사 정보 확인하기</Button>
-      <Button onClick={refresh} disabled={loading}>상태 다시 확인하기</Button>
+    <div className="analysis-content">
+      <h1>이사 정보가 저장됐어요</h1>
+      <p>이삿짐 목록을 마무리하고 있어요.<br />분석이 끝나면 목록 확인으로 이동해요.</p>
+      <img className="analysis-mascot" src={mascot} alt="" />
+      {loading && !snapshot ? <div className="analysis-state" role="status">이사 상태 확인 중</div> : error ? <div className="analysis-state analysis-state--failed" role="alert">{error}</div> : status === 'failed' ? <div className="analysis-state analysis-state--failed" role="alert">영상 분석 실패!{snapshot?.data.analysis.error && <small>{snapshot.data.analysis.error}</small>}</div> : completed ? <div className="analysis-state analysis-state--done" role="status">영상 분석 완료</div> : status === 'queued' || status === 'running' ? <div className="analysis-state" role="status">영상 분석 중이에요.</div> : <div className="analysis-state" role="status">영상 분석 기능이 아직 연결되지 않았어요.</div>}
+      {(status === 'not_started' || status === 'empty' || !snapshot) && <p className="analysis-detail">입력한 정보는 그대로 유지돼요.</p>}
+      {status === 'failed' && <p className="analysis-detail">다시 분석 요청하는 기능은 아직 연결되지 않았어요.</p>}
+      <div className="analysis-actions"><Button variant="secondary" onClick={() => navigate(routes.moveInfo)}>이사 정보 확인하기</Button><Button onClick={() => void refresh()} disabled={loading}>상태 다시 확인하기</Button></div>
     </div>
   </main>;
 }
