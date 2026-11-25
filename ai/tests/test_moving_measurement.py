@@ -100,3 +100,55 @@ def test_video_emits_typed_result_from_mock_box_and_capture_pose(monkeypatch):
     assert result.objects[0].dimensions["depth"] is None
     assert result.objects[0].dimensions["width"].scale_source == "pretrained_depth"
     assert "bounding_box_is_approximate" in result.objects[0].qualifiers
+
+
+@pytest.mark.parametrize("override", [None, "zoedepth"])
+def test_job_routes_each_video_and_reuses_loaded_models(monkeypatch, tmp_path, override):
+    from ai.measurement import moving_video
+
+    loaded = []
+
+    class MockDepth:
+        device = "cpu"
+
+        def __init__(self, family, *, device):
+            self.family = family
+            self.torch = self
+            loaded.append(family)
+
+        def set_num_threads(self, count):
+            pass
+
+        def __call__(self, image, turns):
+            return np.full(image.shape[:2], 2.0)
+
+    monkeypatch.setattr(moving_video, "MetricDepth", MockDepth)
+    image = np.zeros((100, 100, 3), dtype=np.uint8)
+    monkeypatch.setattr(moving_video, "_video_frames", lambda *args: [(0, image)])
+    (tmp_path / "clip.avi").write_bytes(b"mock video bytes")
+    clip = {
+        "path": "clip.avi", "annotation_size_px": [100, 100],
+        "views": [{"frame_index": 0, "track_id": "box", "label": "box",
+                   "bbox": {"x1": 20, "y1": 20, "x2": 70, "y2": 70}, "camera_up": [0, -1, 0]}],
+    }
+    capture = {
+        "intrinsics": {"fx": 100, "fy": 100, "cx": 50, "cy": 50},
+        "capture_poses": [{
+            "frame_index": 0, "world_to_camera_rotation": np.eye(3).tolist(),
+            "world_to_camera_translation_m": [0, 0, 0],
+        }],
+    }
+    job = moving_video.MeasurementJob.model_validate({"videos": [
+        dict(clip, video_id="first"),
+        dict(clip | capture, video_id="arkit"),
+        dict(clip, video_id="last"),
+    ]})
+    result = moving_video.estimate_job(
+        job, model_override=override, device="cpu", base_directory=tmp_path
+    )
+    assert [v.video_id for v in result.videos] == ["first", "arkit", "last"]
+    expected = [override] * 3 if override else ["depth-pro", "depth-anything-v2", "depth-pro"]
+    assert [v.depth_model_family for v in result.videos] == expected
+    assert loaded == list(dict.fromkeys(expected))
+    assert len({v.source_sha256 for v in result.videos}) == 1
+    assert not job.videos[0].path.is_absolute()

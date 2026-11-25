@@ -251,7 +251,13 @@ def _calibrate(clip, objects):
     return {"status": "reference_scaled", "reference": reference.model_dump(), "factor": factor}
 
 
-def estimate_video(clip: VideoInput, model: MetricDepth) -> VideoResult:
+def depth_model_for_video(clip: VideoInput) -> str:
+    return DEFAULT_DEPTH_FAMILY if clip.capture_poses else "depth-pro"
+
+
+def estimate_video(clip: VideoInput, model: MetricDepth | None = None) -> VideoResult:
+    if model is None:
+        model = MetricDepth(depth_model_for_video(clip))
     camera = _camera(clip)
     tracker = CameraTracker(camera) if not clip.capture_poses else None
     capture_poses = {}
@@ -316,30 +322,46 @@ def estimate_video(clip: VideoInput, model: MetricDepth) -> VideoResult:
     )
 
 
+def estimate_job(
+    job: MeasurementJob, *, model_override: str | Path | None = None,
+    device: str = "auto", base_directory: Path | None = None,
+) -> MeasurementResponse:
+    """Process videos in input order, loading each selected model at most once."""
+    cv2.setNumThreads(2)
+    base = Path.cwd() if base_directory is None else base_directory
+    models = {}
+    results = []
+    for clip in job.videos:
+        model_key = depth_model_for_video(clip) if model_override is None else model_override
+        if model_key not in models:
+            model = MetricDepth(model_key, device=device)
+            model.torch.set_num_threads(4)
+            models[model_key] = model
+        if not clip.path.is_absolute():
+            clip = clip.model_copy(update={"path": base / clip.path})
+        result = estimate_video(clip, models[model_key])
+        with clip.path.open("rb") as stream:
+            result.source_sha256 = hashlib.file_digest(stream, "sha256").hexdigest()
+        results.append(result)
+    return MeasurementResponse(videos=results)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("manifest", type=Path)
     parser.add_argument(
         "--model",
-        help=f"Model family, local checkpoint or cached ID (default: {DEFAULT_DEPTH_FAMILY})",
+        help="Override the automatic model (Depth Anything V2 with poses, Depth Pro without).",
     )
     parser.add_argument("--device", choices=("auto", "mps", "cpu", "cuda"), default="auto")
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
     job = MeasurementJob.model_validate_json(args.manifest.read_text())
-    cv2.setNumThreads(2)
-    model = MetricDepth(args.model, device=args.device)
-    model.torch.set_num_threads(4)
-    results = []
-    for clip in job.videos:
-        if not clip.path.is_absolute():
-            clip.path = args.manifest.parent / clip.path
-        result = estimate_video(clip, model)
-        with clip.path.open("rb") as stream:
-            result.source_sha256 = hashlib.file_digest(stream, "sha256").hexdigest()
-        results.append(result)
+    results = estimate_job(
+        job, model_override=args.model, device=args.device, base_directory=args.manifest.parent,
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(MeasurementResponse(videos=results).model_dump_json(indent=2) + "\n")
+    args.output.write_text(results.model_dump_json(indent=2) + "\n")
 
 
 if __name__ == "__main__":
