@@ -9,6 +9,8 @@ import { AnalysisPage } from '../pages/AnalysisPage';
 import { ChatPage } from '../pages/ChatPage';
 import { InventoryPage } from '../pages/InventoryPage';
 import { ResultPage } from '../pages/ResultPage';
+import { PostMovePage } from '../pages/PostMovePage';
+import { ComparisonPage } from '../pages/ComparisonPage';
 import { routes } from './routes';
 
 export function App() {
@@ -25,6 +27,8 @@ export function App() {
   if (path === routes.chat) return <ChatPage />;
   if (path === routes.inventory) return <InventoryPage />;
   if (path === routes.result) return <ResultPage />;
+  if (path === routes.postmove) return <PostMovePage />;
+  if (path === routes.comparison) return <ComparisonPage />;
   if (path === routes.home) return <HomePage />;
   if (path === routes.guide) return <GuidePage />;
   if (path === routes.login) return <AuthPage mode="login" />;
