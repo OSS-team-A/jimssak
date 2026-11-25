@@ -281,3 +281,16 @@ def test_plan_prefers_the_widest_sweep_and_skips_narrow_ones():
     assert np.ptp(angles) > 60
     assert np.diff(angles).max() < 2 * np.diff(angles).min()  # roughly even by angle
     assert plan_capture(still, CORNERS, views=5) is None
+
+
+def test_plan_measures_the_sweep_among_unoccluded_frames():
+    frames = orbit(count=60, start_deg=-40, sweep_deg=100)
+    # The first half of the sweep is hidden behind a door; the rest still spans 50 degrees.
+    hidden = set(range(30))
+    written, observed = plan_capture(
+        frames, CORNERS, views=5, visibility=lambda i: 0.1 if i in hidden else 0.9
+    )
+    assert observed and min(observed) >= 30
+    centers = [-frames[i].rotation.T @ frames[i].translation for i in observed]
+    angles = np.degrees(np.unwrap([np.arctan2(c[1], c[0]) for c in centers]))
+    assert np.ptp(angles) > 40

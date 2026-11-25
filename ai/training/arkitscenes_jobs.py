@@ -354,7 +354,7 @@ def _azimuths(frames: list[Frame], indices: list[int], center: np.ndarray) -> np
 
 def plan_capture(frames: list[Frame], corners: np.ndarray, *, views: int = 6,
                  step_s: float = 0.2, max_frames: int = 90, window_s: float = 20.0,
-                 min_spread_deg: float = 15.0,
+                 min_spread_deg: float = 15.0, max_checks: int = 60,
                  visibility=None, min_visible: float = 0.7) -> tuple[list[int], list[int]] | None:
     """Pick observed frames that see the box from the widest range of directions.
 
@@ -367,11 +367,19 @@ def plan_capture(frames: list[Frame], corners: np.ndarray, *, views: int = 6,
     The in-between frames let RGB camera tracking chain the observed ones as a phone video
     would. With ``visibility`` (frame index -> visible share or None), observed frames whose
     box is hidden behind nearer surfaces are skipped; a frame without sensor depth is not
-    trusted either.
+    trusted either. At most ``max_checks`` in-view frames, spread over the video, are checked.
     """
     visible = [i for i, frame in enumerate(frames) if project_box(corners, frame) is not None]
     if len(visible) < 3:
         return None
+    if visibility is not None:
+        # Drop hidden views first, so the widest sweep is chosen among frames that see the box.
+        sample = sorted({visible[j] for j in np.linspace(0, len(visible) - 1,
+                                                         min(max_checks, len(visible)))
+                         .round().astype(int)})
+        visible = [i for i in sample if (visibility(i) or 0.0) >= min_visible]
+        if len(visible) < 3:
+            return None
     center = corners.mean(axis=0)
     times = np.array([float(frames[i].stamp) for i in visible])
     azimuth = _azimuths(frames, visible, center)
@@ -389,20 +397,8 @@ def plan_capture(frames: list[Frame], corners: np.ndarray, *, views: int = 6,
     _, a, b = best
     window = visible[a:b]
     angles = azimuth[a:b]
-    # Candidate frames spread evenly by angle, then filtered for occlusion.
-    targets = np.linspace(angles.min(), angles.max(), min(3 * views, len(window)))
-    spread_pick = sorted({window[int(np.argmin(np.abs(angles - t)))] for t in targets})
-    if visibility is None:
-        candidates = spread_pick
-    else:
-        candidates = [i for i in spread_pick if (visibility(i) or 0.0) >= min_visible]
-    if len(candidates) < 3:
-        return None
-    chosen_angles = _azimuths(frames, candidates, center)
-    if float(np.ptp(chosen_angles)) < min_spread_deg:
-        return None
-    targets = np.linspace(chosen_angles.min(), chosen_angles.max(), min(views, len(candidates)))
-    observed = sorted({candidates[int(np.argmin(np.abs(chosen_angles - t)))] for t in targets})
+    targets = np.linspace(angles.min(), angles.max(), min(views, len(window)))
+    observed = sorted({window[int(np.argmin(np.abs(angles - t)))] for t in targets})
     if len(observed) < 3:
         return None
     written, last = [], None
