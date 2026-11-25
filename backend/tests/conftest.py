@@ -10,6 +10,9 @@ EXTERNAL_KEYS = ("ADDRESS_SEARCH_API_KEY", "DATA_GO_KR_SERVICE_KEY", "KAKAO_REST
 def no_real_api_keys(monkeypatch):
     for name in EXTERNAL_KEYS:
         monkeypatch.setenv(name, "")
+    # Developers turn on ANALYSIS_DEMO in backend/.env for frontend work; tests that need the
+    # demo analyzer pass analysis_demo=True themselves.
+    monkeypatch.setenv("ANALYSIS_DEMO", "false")
 
 
 @pytest.fixture(autouse=True)

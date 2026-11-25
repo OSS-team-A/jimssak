@@ -1,0 +1,12 @@
+# Build context is backend/. Never bake secrets, local data, virtualenvs or caches
+# into the image.
+.env
+.env.*
+.venv/
+data/
+tests/
+requirements-dev.txt
+**/__pycache__/
+**/*.py[co]
+.pytest_cache/
+.ruff_cache/
