@@ -23,6 +23,10 @@ export type InventoryItem = {
   disassembly?: string | null; location?: string | null;
   photo_url?: string | null; excluded?: boolean; note?: string | null;
 };
+export type QuoteOption = {
+  type: 'general' | 'partial' | 'full'; min_amount: number; max_amount: number;
+  description: string;
+};
 export type MoveSnapshot = {
   move_id: string; owner: 'member' | 'guest'; stage: 'collecting';
   data: {
@@ -35,4 +39,5 @@ export type MoveSnapshot = {
     schedule: { status: 'empty' | 'filled'; value: { move_date: string; start_time: string } | null };
   };
   missing: MoveStep[]; next_step: MoveStep | null;
+  quote?: { status: 'not_started' | 'calculating' | 'ready' | 'failed'; options?: QuoteOption[]; inventory_version?: string; calculated_at?: string };
 };

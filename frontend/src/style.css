@@ -295,3 +295,18 @@ input.move-field { margin-top: 8px; color: #191f28; }
 .inventory-feedback { display: grid; gap: 12px; margin: 24px 0; padding: 20px; border-radius: 16px; background: #f7f8fa; color: #6b7684; font-size: 14px; line-height: 22px; }
 .inventory-feedback button { background: #20c5a1; color: #102f27; font-size: 14px; }
 @media (max-width: 340px) { .chat-page { padding-left: 16px; padding-right: 16px; } .inventory-body { padding-left: 16px; padding-right: 16px; } .chat-shortcuts button { font-size: 10px; } .inventory-columns, .inventory-row { grid-template-columns: 30px minmax(0, 1fr) 36px 90px; } }
+
+/* SC-09 comparison; amounts are rendered only from a real server response. */
+.quote-page { height: 100dvh; min-height: 0; display: flex; flex-direction: column; padding-top: max(12px, env(safe-area-inset-top)); padding-bottom: max(18px, env(safe-area-inset-bottom)); }
+.quote-page .brand-header { margin-bottom: 16px; }
+.quote-scroll { min-height: 0; flex: 1; overflow: auto; padding-bottom: 20px; }
+.quote-panel { margin-top: 16px; padding: 20px; border-radius: 20px; background: #f7f8fa; }
+.quote-panel h1 { margin-bottom: 16px; font-size: 18px; line-height: 27px; }
+.quote-option { width: 100%; display: grid; gap: 7px; margin: 0 0 10px; padding: 16px; border: 2px solid transparent; border-radius: 18px; background: #fff; color: #333d4b; text-align: left; }
+.quote-option--selected { border-color: #20c5a1; }
+.quote-option strong { display: flex; justify-content: space-between; gap: 8px; font-size: 16px; line-height: 23px; }
+.quote-option strong span { text-align: right; }
+.quote-option small { font-size: 13px; line-height: 20px; color: #6b7684; }
+.quote-panel > p { margin: 20px 0 !important; font-size: 13px; line-height: 20px; color: #6b7684; }
+.quote-history-link { width: 100%; margin-top: 12px; padding: 10px; background: transparent; color: #3182f6; font-size: 13px; }
+@media (max-width: 340px) { .quote-page { padding-left: 16px; padding-right: 16px; } .quote-panel { padding: 14px; } .quote-option strong { flex-direction: column; } }
