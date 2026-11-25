@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import os
 import random
 import re
 import urllib.request
@@ -361,6 +362,15 @@ def build_scan(source: SceneSource, output: Path, *, objects_per_scan: int = 2,
     return videos, tracks
 
 
+def relative_to_manifest(videos: list, manifest_folder: Path) -> list:
+    """Video paths relative to the folder of job.json, which moving_video resolves against."""
+    return [
+        clip.model_copy(update={"path": Path(os.path.relpath(clip.path, manifest_folder))})
+        if not Path(clip.path).is_absolute() else clip
+        for clip in videos
+    ]
+
+
 def choose_scans(split: dict, metadata: dict, count: int, seed: int) -> list[str]:
     """Development-side Validation scans that no earlier experiment touched."""
     holdout = set(split["holdout_scans"])
@@ -412,6 +422,7 @@ def main(argv: list[str] | None = None) -> int:
     if not videos:
         raise SystemExit("No scan produced a measurable object")
     args.output.mkdir(parents=True, exist_ok=True)
+    videos = relative_to_manifest(videos, args.output)
     job_path = args.output / "job.json"
     job_path.write_text(json.dumps(
         {"videos": [json.loads(v.model_dump_json(exclude_none=True)) for v in videos]},

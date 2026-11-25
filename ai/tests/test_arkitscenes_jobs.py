@@ -12,6 +12,7 @@ from ai.training.arkitscenes_jobs import (
     hull_polygon,
     plan_capture,
     project_box,
+    relative_to_manifest,
     rotate_points,
     upright_turns,
     write_capture,
@@ -155,3 +156,20 @@ def test_choose_scans_skips_holdout_and_used(seed):
     assert len(chosen) == 10 and len(set(chosen)) == 10
     assert not {"40000001", "40000002", "40000003", "49999999"} & set(chosen)
     assert chosen == choose_scans(split, metadata, 10, seed)
+
+
+def test_job_paths_resolve_from_the_manifest_folder(tmp_path, monkeypatch):
+    from ai.measurement.arkit_capture import make_job
+
+    monkeypatch.chdir(tmp_path)
+    output = tmp_path.relative_to(tmp_path) / "outputs" / "dev-eval"
+    frames = orbit()
+    written, observed = plan_capture(frames, CORNERS, views=3)
+    folder = output / "scan-abc"
+    metadata, observations = write_capture(
+        folder, "scan-abc", frames, written, observed, FakeSource(), "uid1", "table", CORNERS
+    )
+    videos = make_job(metadata, observations, folder / "capture.avi", compare=True).videos
+    fixed = relative_to_manifest(videos, output)
+    assert {str(clip.path) for clip in fixed} == {"scan-abc/capture.avi"}
+    assert all((output / clip.path).exists() for clip in fixed)
