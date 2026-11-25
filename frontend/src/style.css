@@ -337,3 +337,7 @@ input.move-field { margin-top: 8px; color: #191f28; }
 .comparison-decisions { display: flex; flex-wrap: wrap; gap: 8px; }
 .comparison-decisions button { padding: 8px 10px; border-radius: 8px; background: white; color: #333d4b; font-size: 12px; }
 @media (max-width: 340px) { .postmove-page, .comparison-page { padding-left: 16px; padding-right: 16px; } .comparison-document .inventory-body { padding-left: 16px; padding-right: 16px; } }
+.analysis-content .analysis-state--failed { flex-direction: row; align-items: center; justify-content: flex-start; gap: 7px; }
+.analysis-state--failed img { width: 22px; height: 22px; flex: none; }
+.analysis-state--failed small { flex-basis: 100%; }
+.analysis-content .analysis-mascot[src*="analysis-failed"] { width: 144px; height: 144px; object-fit: contain; }
