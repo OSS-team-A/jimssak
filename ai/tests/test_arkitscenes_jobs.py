@@ -15,6 +15,7 @@ from ai.training.arkitscenes_jobs import (
     relative_to_manifest,
     rotate_points,
     upright_turns,
+    visible_fraction,
     write_capture,
 )
 
@@ -173,3 +174,26 @@ def test_job_paths_resolve_from_the_manifest_folder(tmp_path, monkeypatch):
     fixed = relative_to_manifest(videos, output)
     assert {str(clip.path) for clip in fixed} == {"scan-abc/capture.avi"}
     assert all((output / clip.path).exists() for clip in fixed)
+
+
+def test_visible_fraction_detects_a_nearer_occluder():
+    frame = orbit()[10]
+    corners_cam = CORNERS @ frame.rotation.T + frame.translation
+    nearest = corners_cam[:, 2].min()
+    behind = np.full((192, 256), nearest + 1.0, np.float32)
+    assert visible_fraction(CORNERS, frame, behind) == 1.0
+    door = np.full((192, 256), nearest - 0.5, np.float32)
+    assert visible_fraction(CORNERS, frame, door) == 0.0
+    assert visible_fraction(CORNERS, frame, None) is None
+    assert visible_fraction(CORNERS, frame, np.zeros((192, 256), np.float32)) is None
+
+
+def test_plan_skips_hidden_frames_and_gives_up_when_all_are_hidden():
+    frames = orbit()
+    hidden = set(range(0, 20))
+    written, observed = plan_capture(
+        frames, CORNERS, views=4, visibility=lambda i: 0.2 if i in hidden else 0.95
+    )
+    assert observed and not set(observed) & hidden
+    assert plan_capture(frames, CORNERS, views=4, visibility=lambda i: 0.1) is None
+    assert plan_capture(frames, CORNERS, views=4, visibility=lambda i: None) is None

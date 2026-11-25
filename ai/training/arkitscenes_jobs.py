@@ -6,7 +6,8 @@ then turns it into two videos of the same frames: ``<id>`` with the recorded ARK
 ``<id>-rgb`` with no poses, so both paths are scored on identical input.
 
 Masks are the convex hull of the projected 3D box. They are a stand-in for a recognition
-mask, so the scores isolate the size estimator from detection quality.
+mask, so the scores isolate the size estimator from detection quality. Frames where LiDAR depth
+shows the box hidden behind nearer surfaces (a door, another sofa) are not used.
 
 Usage (repository root, needs network access to Apple's ARKitScenes server)::
 
@@ -117,6 +118,8 @@ class SceneSource:
         self.scan, self.fold, self.download = scan, fold, download
         self._zip = None
         self._names = None
+        self._depth_zip = None
+        self._depth_names = None
 
     def file(self, name: str) -> Path:
         path = self.root / name
@@ -153,6 +156,33 @@ class SceneSource:
         if image is None:
             raise ValueError(f"Cannot read {path}")
         return image
+
+
+    def depth(self, stamp: str, max_gap_s: float = 0.02) -> np.ndarray | None:
+        """LiDAR depth in meters for the frame at ``stamp`` (0 where missing), or None."""
+        path = self.root / "depth" / f"{stamp}.png"
+        if not path.exists():
+            if not self.download:
+                return None
+            if self._depth_zip is None:
+                self._depth_zip = zipfile.ZipFile(
+                    RemoteZip(f"{BASE}/{self.fold}/{self.scan}/lowres_depth.zip")
+                )
+                self._depth_names = {
+                    float(Path(n).stem.rsplit("_", 1)[1]): n
+                    for n in self._depth_zip.namelist() if re.search(r"_\d+\.\d+\.png$", n)
+                }
+            if not self._depth_names:
+                return None
+            nearest = min(self._depth_names, key=lambda t: abs(t - float(stamp)))
+            if abs(nearest - float(stamp)) > max_gap_s:
+                return None
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(self._depth_zip.read(self._depth_names[nearest]))
+        raw = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+        if raw is None:
+            return None
+        return raw.astype(np.float32) / 1000.0
 
 
 def _near(stamp: str) -> list[str]:
@@ -221,6 +251,28 @@ def project_box(corners: np.ndarray, frame: Frame, margin: float = 4.0) -> np.nd
     return pixels
 
 
+def visible_fraction(corners: np.ndarray, frame: Frame, depth: np.ndarray | None,
+                     margin_m: float = 0.10) -> float | None:
+    """Share of the box outline not hidden behind something nearer, from LiDAR depth.
+
+    A pixel is occluded when the sensor sees a surface nearer than the box's nearest corner
+    by more than ``margin_m``. None when there is no usable depth for the frame.
+    """
+    pixels = project_box(corners, frame)
+    if pixels is None or depth is None:
+        return None
+    width, height = frame.size
+    scale = np.array([depth.shape[1] / width, depth.shape[0] / height])
+    mask = np.zeros(depth.shape, np.uint8)
+    hull = cv2.convexHull((pixels * scale).astype(np.float32)).round().astype(np.int32)
+    cv2.fillPoly(mask, [hull], 1)
+    values = depth[(mask == 1) & (depth > 0)]
+    if values.size < 30:
+        return None
+    nearest = float((corners @ frame.rotation.T + frame.translation)[:, 2].min())
+    return float(np.mean(values >= nearest - margin_m))
+
+
 def rotate_points(pixels: np.ndarray, turns: int, size: tuple[int, int]) -> np.ndarray:
     """Native pixel coordinates in the image after ``np.rot90(image, turns)``."""
     width, height = size
@@ -243,12 +295,15 @@ def hull_polygon(pixels: np.ndarray, turns: int, size: tuple[int, int]) -> list[
 
 
 def plan_capture(frames: list[Frame], corners: np.ndarray, *, views: int = 6,
-                 step_s: float = 0.2, max_frames: int = 90) -> tuple[list[int], list[int]] | None:
+                 step_s: float = 0.2, max_frames: int = 90,
+                 visibility=None, min_visible: float = 0.7) -> tuple[list[int], list[int]] | None:
     """Pick observed frames spread over the box's full-view span and the frames between them.
 
     Returns (frame indices written to the replay, indices among them that carry a mask).
     The in-between frames let RGB camera tracking chain the observed ones as a phone video
-    would, instead of jumping a second or more between views.
+    would, instead of jumping a second or more between views. With ``visibility`` (frame index
+    -> visible share or None), observed frames whose box is hidden behind nearer surfaces are
+    skipped; a frame without sensor depth is not trusted either.
     """
     visible = [i for i, frame in enumerate(frames) if project_box(corners, frame) is not None]
     if len(visible) < 3:
@@ -265,7 +320,16 @@ def plan_capture(frames: list[Frame], corners: np.ndarray, *, views: int = 6,
     run = max(runs, key=lambda r: (len(r), -float(frames[r[0]].stamp)))
     if len(run) < 3:
         return None
-    observed = sorted({run[j] for j in np.linspace(0, len(run) - 1, min(views, len(run)))
+    if visibility is None:
+        candidates = run
+    else:
+        spread = sorted({run[j] for j in np.linspace(0, len(run) - 1, min(3 * views, len(run)))
+                         .round().astype(int)})
+        candidates = [i for i in spread if (visibility(i) or 0.0) >= min_visible]
+        if len(candidates) < 3:
+            return None
+    observed = sorted({candidates[j] for j in np.linspace(0, len(candidates) - 1,
+                                                          min(views, len(candidates)))
                        .round().astype(int)})
     written, last = [], None
     for i in range(observed[0], observed[-1] + 1):
@@ -341,7 +405,13 @@ def build_scan(source: SceneSource, output: Path, *, objects_per_scan: int = 2,
     frames = load_frames(source)
     plans = []
     for uid, item in items.items():
-        plan = plan_capture(frames, box_corners(item), views=views)
+        corners = box_corners(item)
+
+        def visibility(index, corners=corners):
+            frame = frames[index]
+            return visible_fraction(corners, frame, source.depth(frame.stamp))
+
+        plan = plan_capture(frames, corners, views=views, visibility=visibility)
         if plan is not None:
             plans.append((len(plan[1]), uid, plan))
     plans.sort(key=lambda row: (-row[0], row[1]))
