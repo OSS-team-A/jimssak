@@ -1,0 +1,989 @@
+{
+  "version": 1,
+  "rule": "ARKitScenes Validation fold with 3DOD annotations, grouped by visit_id. Rooms with any scan in used_scans stay in development. Other rooms go to holdout when sha256('jimssak-arkitscenes-holdout-v1:<visit_id>') falls below holdout_fraction.",
+  "holdout_fraction": 0.4,
+  "counts": {
+    "validation_rooms": 183,
+    "validation_scans": 549,
+    "contaminated_rooms": 40,
+    "holdout_rooms": 58,
+    "holdout_scans": 169,
+    "used_scans": 155
+  },
+  "holdout_rooms": [
+    "381868",
+    "381875",
+    "381893",
+    "382319",
+    "382320",
+    "382851",
+    "384651",
+    "421372",
+    "421378",
+    "421380",
+    "422012",
+    "422014",
+    "422024",
+    "422381",
+    "422391",
+    "422785",
+    "422829",
+    "423441",
+    "426161",
+    "426167",
+    "435340",
+    "435728",
+    "435733",
+    "435735",
+    "460420",
+    "466193",
+    "466628",
+    "467293",
+    "467306",
+    "467314",
+    "468137",
+    "468141",
+    "468286",
+    "468646",
+    "468709",
+    "469011",
+    "469017",
+    "469259",
+    "469266",
+    "470102",
+    "470352",
+    "470362",
+    "470507",
+    "470508",
+    "470516",
+    "470541",
+    "470661",
+    "470806",
+    "470811",
+    "471198",
+    "472479",
+    "472483",
+    "482083",
+    "482321",
+    "483311",
+    "483621",
+    "483957",
+    "483966"
+  ],
+  "holdout_scans": [
+    "41125718",
+    "41125722",
+    "41125731",
+    "41125756",
+    "41125760",
+    "41125763",
+    "41142278",
+    "41142280",
+    "41142281",
+    "41159503",
+    "41159504",
+    "41159508",
+    "41159529",
+    "41159530",
+    "41159534",
+    "41159538",
+    "41159540",
+    "41159541",
+    "41254432",
+    "41254435",
+    "41254441",
+    "42445021",
+    "42445022",
+    "42445026",
+    "42445028",
+    "42445029",
+    "42445031",
+    "42445429",
+    "42445441",
+    "42445448",
+    "42445984",
+    "42445991",
+    "42445998",
+    "42446056",
+    "42446079",
+    "42446083",
+    "42446163",
+    "42446165",
+    "42446167",
+    "42446517",
+    "42446519",
+    "42446522",
+    "42446540",
+    "42446541",
+    "42446546",
+    "42897521",
+    "42897526",
+    "42897528",
+    "42897561",
+    "42897564",
+    "42897566",
+    "42897672",
+    "42897678",
+    "42897688",
+    "42898486",
+    "42898497",
+    "42898508",
+    "42898519",
+    "42898521",
+    "42898527",
+    "42899720",
+    "42899723",
+    "42899725",
+    "42899726",
+    "42899729",
+    "42899731",
+    "42899734",
+    "42899736",
+    "42899737",
+    "42899739",
+    "44358435",
+    "44358436",
+    "44358440",
+    "45260854",
+    "45260856",
+    "45260857",
+    "45261121",
+    "45261128",
+    "45261129",
+    "45261615",
+    "45261619",
+    "45261620",
+    "45662921",
+    "45662924",
+    "45662926",
+    "45662942",
+    "45662943",
+    "45662944",
+    "45663099",
+    "45663105",
+    "45663107",
+    "45663164",
+    "45663165",
+    "45663175",
+    "47115452",
+    "47115460",
+    "47115463",
+    "47331061",
+    "47331063",
+    "47331064",
+    "47331068",
+    "47331069",
+    "47331071",
+    "47331319",
+    "47331322",
+    "47331324",
+    "47331988",
+    "47331989",
+    "47331990",
+    "47332000",
+    "47332004",
+    "47332005",
+    "47332893",
+    "47332895",
+    "47332899",
+    "47332901",
+    "47332904",
+    "47332905",
+    "47333898",
+    "47333899",
+    "47333904",
+    "47333923",
+    "47333924",
+    "47333925",
+    "47334234",
+    "47334237",
+    "47334238",
+    "47334360",
+    "47334361",
+    "47334362",
+    "47334367",
+    "47334368",
+    "47334372",
+    "47429998",
+    "47430001",
+    "47430002",
+    "47430023",
+    "47430024",
+    "47430026",
+    "47430038",
+    "47430043",
+    "47430045",
+    "47430047",
+    "47430048",
+    "47430051",
+    "47430475",
+    "47430479",
+    "47430483",
+    "47895364",
+    "47895365",
+    "47895367",
+    "47895371",
+    "47895374",
+    "47895552",
+    "47895554",
+    "47895556",
+    "47895743",
+    "47895745",
+    "47895750",
+    "48018382",
+    "48018386",
+    "48018387",
+    "48018559",
+    "48018560",
+    "48018562",
+    "48018956",
+    "48018966",
+    "48018970",
+    "48018972"
+  ],
+  "used_scans": {
+    "40777060": [
+      "outputs/furniture-dimensions-200",
+      "outputs/furniture-dimensions-50",
+      "outputs/metric-depth-pilot",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "40777065": [
+      "outputs/furniture-dimensions-200",
+      "outputs/furniture-dimensions-50",
+      "outputs/metric-depth-pilot",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "40777073": [
+      "outputs/furniture-dimensions-200",
+      "outputs/furniture-dimensions-50",
+      "outputs/metric-depth-pilot",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "40809740": [
+      "outputs/metric-depth-pilot",
+      "outputs/room-video-depth-v1"
+    ],
+    "40958733": [
+      "outputs/furniture-dimensions-200",
+      "outputs/furniture-dimensions-50",
+      "outputs/metric-depth-pilot",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "40958748": [
+      "outputs/furniture-dimensions-200",
+      "outputs/furniture-dimensions-50",
+      "outputs/metric-depth-pilot",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "40958754": [
+      "outputs/room-video-depth-v1"
+    ],
+    "40958764": [
+      "outputs/furniture-dimensions-200",
+      "outputs/furniture-dimensions-50",
+      "outputs/metric-depth-pilot",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "41007603": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "41069021": [
+      "outputs/height-learning",
+      "outputs/mask-geometry-comparison",
+      "outputs/metric-depth-pilot",
+      "outputs/metric-furniture-v1",
+      "outputs/multiview-width-fix",
+      "outputs/room-video-depth-v1"
+    ],
+    "41069042": [
+      "outputs/height-learning",
+      "outputs/mask-geometry-comparison",
+      "outputs/metric-depth-pilot",
+      "outputs/metric-furniture-v1",
+      "outputs/multiview-width-fix",
+      "outputs/room-video-depth-v1"
+    ],
+    "41069048": [
+      "outputs/multiview-coverage-fix",
+      "outputs/room-video-depth-v1"
+    ],
+    "41069050": [
+      "outputs/depth-auto-benchmark"
+    ],
+    "41098139": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "41125438": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "41125564": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "41125709": [
+      "outputs/furniture-dimensions-200",
+      "outputs/furniture-dimensions-50",
+      "outputs/mask-geometry-comparison",
+      "outputs/multiview-app-test",
+      "outputs/multiview-coverage-fix",
+      "outputs/multiview-measurement-check",
+      "outputs/multiview-width-fix",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "41126678": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "41126722": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "41127101": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "41159410": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "41159488": [
+      "outputs/furniture-dimensions-200",
+      "outputs/furniture-dimensions-50",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "41159519": [
+      "outputs/multiview-coverage-fix"
+    ],
+    "41159566": [
+      "outputs/arkit-depth-fix"
+    ],
+    "41254246": [
+      "outputs/depth-auto-benchmark"
+    ],
+    "41291637": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "42444770": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "42444789": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "42444954": [
+      "outputs/arkit-depth-fix"
+    ],
+    "42445584": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "42445784": [
+      "outputs/room-video-depth-v1"
+    ],
+    "42445865": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "42445894": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "42446038": [
+      "outputs/depth-auto-benchmark"
+    ],
+    "42446536": [
+      "outputs/arkit-depth-fix"
+    ],
+    "42897550": [
+      "outputs/multiview-coverage-fix",
+      "outputs/room-video-depth-v1"
+    ],
+    "42897607": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "42897743": [
+      "outputs/room-video-depth-v1"
+    ],
+    "42897849": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "42898007": [
+      "outputs/room-video-depth-v1"
+    ],
+    "42898037": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "42898100": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "42898132": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "42898236": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "42898538": [
+      "outputs/arkit-depth-fix",
+      "outputs/arkit-folding-fix",
+      "outputs/depth-model-benchmark"
+    ],
+    "42898715": [
+      "outputs/room-video-depth-v1"
+    ],
+    "42898816": [
+      "outputs/depth-auto-benchmark"
+    ],
+    "42898862": [
+      "outputs/furniture-dimensions-200",
+      "outputs/mask-geometry-comparison",
+      "outputs/multiview-app-test",
+      "outputs/multiview-coverage-fix",
+      "outputs/multiview-measurement-check",
+      "outputs/multiview-width-fix",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "42898899": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "42898937": [
+      "outputs/room-video-depth-v1"
+    ],
+    "42899162": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "42899362": [
+      "outputs/room-video-depth-v1"
+    ],
+    "42899567": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "42899663": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "42899679": [
+      "outputs/arkit-folding-fix",
+      "outputs/depth-model-benchmark"
+    ],
+    "42899680": [
+      "outputs/multiview-coverage-fix"
+    ],
+    "42899814": [
+      "outputs/room-video-depth-v1"
+    ],
+    "42899822": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "42899912": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "43649589": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "43649605": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "43649647": [
+      "outputs/room-video-depth-v1"
+    ],
+    "43649720": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "43649722": [
+      "outputs/furniture-dimensions-200",
+      "outputs/furniture-dimensions-50",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "43828311": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "43895895": [
+      "outputs/room-video-depth-v1"
+    ],
+    "43895912": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "43896122": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "43896205": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "43896234": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "43896327": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "43896416": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "44358112": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "44796190": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "44796432": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "45260899": [
+      "outputs/arkit-folding-fix"
+    ],
+    "45261025": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "45261143": [
+      "outputs/multiview-coverage-fix",
+      "outputs/room-video-depth-v1"
+    ],
+    "45261355": [
+      "outputs/furniture-dimensions-200",
+      "outputs/furniture-dimensions-50",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "45261632": [
+      "outputs/multiview-coverage-fix"
+    ],
+    "45663154": [
+      "outputs/mask-geometry-comparison",
+      "outputs/multiview-coverage-fix",
+      "outputs/multiview-width-fix",
+      "outputs/room-video-depth-v1"
+    ],
+    "47115132": [
+      "outputs/room-video-depth-v1"
+    ],
+    "47115165": [
+      "outputs/room-video-depth-v1"
+    ],
+    "47115448": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47115474": [
+      "outputs/multiview-coverage-fix",
+      "outputs/room-video-depth-v1"
+    ],
+    "47115548": [
+      "outputs/multiview-coverage-fix"
+    ],
+    "47204408": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47204559": [
+      "outputs/mask-geometry-comparison",
+      "outputs/multiview-coverage-fix",
+      "outputs/room-video-depth-v1"
+    ],
+    "47204830": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47331627": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47331972": [
+      "outputs/multiview-coverage-fix"
+    ],
+    "47332083": [
+      "outputs/room-video-depth-v1"
+    ],
+    "47332152": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47332549": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47332886": [
+      "outputs/arkit-axis-fix",
+      "outputs/arkit-capture",
+      "outputs/arkit-depth-fix",
+      "outputs/arkit-folding-fix",
+      "outputs/depth-model-benchmark",
+      "outputs/multiview-coverage-fix"
+    ],
+    "47332954": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47332990": [
+      "outputs/furniture-dimensions-200",
+      "outputs/furniture-dimensions-50",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47333164": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47333239": [
+      "outputs/room-video-depth-v1"
+    ],
+    "47333275": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47333283": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47333369": [
+      "outputs/room-video-depth-v1"
+    ],
+    "47333441": [
+      "outputs/depth-auto-benchmark"
+    ],
+    "47333637": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47333674": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47333803": [
+      "outputs/furniture-dimensions-200",
+      "outputs/furniture-dimensions-50",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47333810": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47333863": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47333934": [
+      "outputs/arkit-depth-fix",
+      "outputs/arkit-folding-fix",
+      "outputs/depth-model-benchmark"
+    ],
+    "47334005": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47334055": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47334109": [
+      "outputs/depth-auto-benchmark"
+    ],
+    "47334115": [
+      "outputs/arkit-axis-fix",
+      "outputs/arkit-depth-fix",
+      "outputs/arkit-folding-fix",
+      "outputs/depth-model-benchmark",
+      "outputs/multiview-coverage-fix"
+    ],
+    "47334208": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47334241": [
+      "outputs/depth-auto-benchmark"
+    ],
+    "47334284": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47334621": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47429835": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47429860": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47429992": [
+      "outputs/arkit-folding-fix"
+    ],
+    "47430005": [
+      "outputs/depth-auto-benchmark"
+    ],
+    "47430033": [
+      "outputs/mask-geometry-comparison",
+      "outputs/multiview-coverage-fix",
+      "outputs/room-video-depth-v1"
+    ],
+    "47430424": [
+      "outputs/arkit-folding-fix"
+    ],
+    "47430468": [
+      "outputs/mask-geometry-comparison",
+      "outputs/multiview-coverage-fix",
+      "outputs/multiview-width-fix",
+      "outputs/room-video-depth-v1"
+    ],
+    "47430489": [
+      "outputs/multiview-coverage-fix",
+      "outputs/room-video-depth-v1"
+    ],
+    "47430751": [
+      "outputs/room-video-depth-v1"
+    ],
+    "47430828": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47430854": [
+      "outputs/furniture-dimensions-200",
+      "outputs/furniture-dimensions-50",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47430966": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47431071": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47431155": [
+      "outputs/room-video-depth-v1"
+    ],
+    "47431173": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47669896": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47669939": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47669960": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47670250": [
+      "outputs/furniture-dimensions-200",
+      "outputs/furniture-dimensions-50",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47895312": [
+      "outputs/room-video-depth-v1"
+    ],
+    "47895348": [
+      "outputs/multiview-coverage-fix"
+    ],
+    "47895521": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47895702": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47895736": [
+      "outputs/arkit-folding-fix"
+    ],
+    "47895811": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "47895829": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "48018153": [
+      "outputs/room-video-depth-v1"
+    ],
+    "48018407": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "48018415": [
+      "outputs/room-video-depth-v1"
+    ],
+    "48018462": [
+      "outputs/room-video-depth-v1"
+    ],
+    "48018585": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "48018643": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "48018962": [
+      "outputs/arkit-depth-fix"
+    ],
+    "48458500": [
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "48458654": [
+      "outputs/multiview-coverage-fix",
+      "outputs/multiview-width-fix",
+      "outputs/room-video-depth-v1"
+    ],
+    "48458657": [
+      "outputs/arkit-folding-fix"
+    ],
+    "48458704": [
+      "outputs/furniture-dimensions-200",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ],
+    "48458732": [
+      "outputs/arkit-axis-fix",
+      "outputs/arkit-capture",
+      "outputs/arkit-depth-fix",
+      "outputs/arkit-folding-fix",
+      "outputs/depth-auto-benchmark",
+      "outputs/depth-model-benchmark",
+      "outputs/furniture-dimensions-200",
+      "outputs/furniture-dimensions-50",
+      "outputs/mask-geometry-comparison",
+      "outputs/moving-video",
+      "outputs/multiview-app-test",
+      "outputs/multiview-coverage-fix",
+      "outputs/multiview-measurement-check",
+      "outputs/multiview-width-fix",
+      "outputs/room-video-depth-v1",
+      "outputs/sensor-depth-aligned",
+      "outputs/sensor-depth-aligned-400"
+    ]
+  }
+}
