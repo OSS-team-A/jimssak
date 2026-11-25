@@ -268,7 +268,7 @@ npm run build
 
 AI 핵심 규격/데모는 기본 Python 의존성만 사용합니다.
 GPU 모델 패키지와 가중치는 모델 선정 및 라이선스 확인 후 별도로 추가합니다.
-Python 직접 의존성은 `pyproject.toml`에서 관리하며 requirements 파일은 이를 참조합니다.
+백엔드 의존성은 `backend/requirements.txt` 한 곳에서 관리합니다. `pyproject.toml`과 Docker 이미지가 모두 이 파일을 읽습니다.
 Python 의존성은 호환 범위 지정이며 완전한 lock 파일은 아직 없습니다.
 프론트엔드는 커밋한 package-lock.json과 `npm ci`를 사용합니다.
 
