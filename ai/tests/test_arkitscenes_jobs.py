@@ -265,3 +265,19 @@ def test_written_views_use_the_object_mask_when_given(tmp_path):
     width, height = observations.annotation_size_px
     for view in observations.views:
         assert view.mask_polygon_px is None and sum(view.mask_rle) == width * height
+
+
+def test_plan_prefers_the_widest_sweep_and_skips_narrow_ones():
+    still = orbit(count=40, start_deg=-5, sweep_deg=6)  # barely moves: 6 degrees
+    sweep = orbit(count=40, start_deg=10, sweep_deg=70)
+    frames = still + [
+        Frame(f"{200 + i * 0.1:.3f}", f.rotation, f.translation, f.intrinsics, f.size)
+        for i, f in enumerate(sweep)
+    ]
+    written, observed = plan_capture(frames, CORNERS, views=5)
+    assert min(observed) >= len(still)
+    centers = [-frames[i].rotation.T @ frames[i].translation for i in observed]
+    angles = np.degrees(np.unwrap([np.arctan2(c[1], c[0]) for c in centers]))
+    assert np.ptp(angles) > 60
+    assert np.diff(angles).max() < 2 * np.diff(angles).min()  # roughly even by angle
+    assert plan_capture(still, CORNERS, views=5) is None
