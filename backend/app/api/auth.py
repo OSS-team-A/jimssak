@@ -57,6 +57,11 @@ Token = Annotated[str, Depends(get_token)]
 @router.post(
     "/signup",
     status_code=status.HTTP_201_CREATED,
+    summary="회원가입",
+    description=(
+        "이메일과 비밀번호(8~128자)로 가입한다(SC-02B). 이메일은 대소문자를 구분하지 않는다. "
+        "가입만으로는 로그인되지 않으므로 이어서 `POST /auth/login`을 호출한다."
+    ),
     responses={409: {"description": "이미 가입한 이메일"}},
 )
 def signup(payload: SignupRequest, store: Store) -> User:
@@ -66,7 +71,15 @@ def signup(payload: SignupRequest, store: Store) -> User:
     return user
 
 
-@router.post("/login", responses={401: {"description": "이메일 또는 비밀번호 불일치"}})
+@router.post(
+    "/login",
+    summary="로그인",
+    description=(
+        "이메일과 비밀번호로 로그인해 액세스 토큰과 리프레시 토큰을 받는다(SC-02A). "
+        "비회원으로 진행하던 이사가 있으면 로그인 후 `POST /moves/{move_id}/claim`으로 연결한다."
+    ),
+    responses={401: {"description": "이메일 또는 비밀번호 불일치"}},
+)
 def login(payload: LoginRequest, store: Store, response: Response) -> LoginResponse:
     session = store.login(payload.email, payload.password.get_secret_value())
     if session is None:
@@ -78,7 +91,11 @@ def login(payload: LoginRequest, store: Store, response: Response) -> LoginRespo
 @router.post(
     "/refresh",
     summary="토큰 갱신",
-    description="리프레시 토큰으로 새 토큰 쌍을 발급하고 이전 토큰 쌍을 폐기합니다.",
+    description=(
+        "액세스 토큰이 만료되면(401) 리프레시 토큰으로 새 토큰 쌍을 받는다. 이전 액세스·리프레시 "
+        "토큰은 폐기되므로 두 값을 함께 바꾼다. 같은 리프레시 토큰으로 동시에 요청하면 하나만 "
+        "성공한다. 최초 로그인부터 14일이 지나면 다시 로그인해야 한다."
+    ),
     responses={401: {"description": "만료되었거나 유효하지 않은 리프레시 토큰"}},
 )
 def refresh(payload: RefreshRequest, store: Store, response: Response) -> LoginResponse:
@@ -96,7 +113,12 @@ def get_current_user(token: Token, store: Store) -> User:
     return user
 
 
-@router.get("/me", responses={401: {"description": "Bearer 토큰 누락, 만료 또는 무효"}})
+@router.get(
+    "/me",
+    summary="내 정보",
+    description="Bearer 액세스 토큰으로 로그인한 회원의 ID와 이메일을 조회한다.",
+    responses={401: {"description": "Bearer 토큰 누락, 만료 또는 무효"}},
+)
 def me(user: Annotated[User, Depends(get_current_user)]) -> User:
     return user
 
@@ -105,6 +127,11 @@ def me(user: Annotated[User, Depends(get_current_user)]) -> User:
     "/logout",
     status_code=status.HTTP_204_NO_CONTENT,
     response_class=Response,
+    summary="로그아웃",
+    description=(
+        "현재 로그인의 액세스 토큰과 리프레시 토큰을 함께 폐기한다. 다른 기기의 로그인은 "
+        "유지된다. 이후 같은 토큰으로 요청하면 401이다."
+    ),
     responses={401: {"description": "Bearer 인증 헤더가 없거나 형식이 올바르지 않음"}},
 )
 def logout(token: Token, store: Store) -> None:

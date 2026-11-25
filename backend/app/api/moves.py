@@ -216,6 +216,22 @@ def create_move(member: Member, moves: MoveStoreDep) -> MoveCreated:
 @router.get(
     "/{move_id}",
     summary="이사 상태 조회",
+    description=(
+        "이사 한 건의 현재 상태를 반환한다. 새로고침이나 다시 열었을 때 화면을 복원하는 데 "
+        "쓴다. 회원 이사는 `Authorization: Bearer`, 비회원 이사는 `X-Guest-Token`으로 연다. "
+        "비회원 이사는 조회할 때마다 만료 시각이 다시 늘어난다.\n\n"
+        "**`data`의 항목**\n\n"
+        "| 항목 | 화면 | status 값 |\n"
+        "|---|---|---|\n"
+        "| `room_video` | SC-05 영상 | empty / uploaded |\n"
+        "| `analysis` | SC-06 분석 대기 | not_started (구현 전) |\n"
+        "| `inventory` | SC-07 이삿짐 목록 | empty (구현 전) |\n"
+        "| `origin`, `destination` | SC-06 주소·층, 최종 확인 | empty / partial / filled |\n"
+        "| `route` | 견적 거리 | not_ready / found / not_found / failed |\n"
+        "| `schedule` | SC-06 일정 | empty / filled (`day`에 날짜 할증 조건) |\n\n"
+        "`missing`은 아직 입력하지 않은 항목을 물어볼 순서대로, `next_step`은 그 첫 항목을 "
+        "준다. 둘 다 비면(`[]`, null) SC-06까지 입력이 끝난 것이다."
+    ),
     responses={
         401: {"description": "인증 정보 없음"},
         404: {"description": "없거나, 만료되었거나, 다른 사용자의 이사"},
