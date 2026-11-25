@@ -66,7 +66,7 @@ def test_guest_move_needs_its_token(client):
     data = snapshot.json()
     assert data["owner"] == "guest"
     assert data["data"]["room_video"] == {"status": "empty", "video": None}
-    assert data["data"]["analysis"] == {"status": "not_started"}
+    assert data["data"]["analysis"]["status"] == "not_started"
     assert data["missing"] == ["room_video", "origin", "destination", "schedule"]
     assert data["next_step"] == "room_video"
 

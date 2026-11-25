@@ -49,6 +49,15 @@ class Settings(BaseSettings):
     )
     calendar_request_timeout_seconds: PositiveFloat = 3.0
     calendar_lookup_budget_seconds: PositiveFloat = 6.0
+    # Video analysis. The AI analyzer authenticates with this key on the internal API;
+    # without it the internal API is off.
+    analysis_worker_key: SecretStr | None = None
+    # A job with no result after this long is failed as timed out.
+    analysis_timeout_seconds: PositiveInt = 600
+    # Until the AI analyzer exists: finish every upload with a fixed sample result
+    # (marked demo) so the front end can build its screens. Off by default.
+    analysis_demo: bool = False
+    analysis_demo_seconds: PositiveFloat = 6.0
 
     @field_validator("auth_db_path", "media_dir")
     @classmethod
@@ -56,7 +65,8 @@ class Settings(BaseSettings):
         return BACKEND_DIR / path
 
     @field_validator(
-        "address_search_api_key", "data_go_kr_service_key", "kakao_rest_api_key", mode="before"
+        "address_search_api_key", "data_go_kr_service_key", "kakao_rest_api_key",
+        "analysis_worker_key", mode="before"
     )
     @classmethod
     def blank_key_is_missing(cls, key: object) -> object:

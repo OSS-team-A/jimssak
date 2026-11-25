@@ -4,11 +4,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api.addresses import router as addresses_router
+from .api.analysis_worker import router as analysis_worker_router
 from .api.auth import router as auth_router
 from .api.moves import router as moves_router
 from .api.routes import router
 from .config import Settings
 from .services.address_search import JusoAddressSearch
+from .services.analysis import AnalysisStore
 from .services.auth import AuthStore
 from .services.building_register import HubBuildingRegister
 from .services.calendar import KasiCalendar
@@ -34,6 +36,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         move_store.initialize()
         app.state.move_store = move_store
         app.state.media_storage = MediaStorage(settings.media_dir, settings.media_max_bytes)
+        analysis_store = AnalysisStore(
+            settings.auth_db_path,
+            settings.analysis_timeout_seconds,
+            settings.analysis_demo_seconds,
+        )
+        analysis_store.initialize()
+        app.state.analysis_store = analysis_store
+        app.state.analysis_demo = settings.analysis_demo
+        worker_key = settings.analysis_worker_key
+        app.state.analysis_worker_key = worker_key.get_secret_value() if worker_key else None
         key = settings.address_search_api_key
         app.state.address_search = JusoAddressSearch(
             settings.address_search_url,
@@ -76,6 +88,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth_router)
     app.include_router(moves_router)
     app.include_router(addresses_router)
+    app.include_router(analysis_worker_router)
     return app
 
 
