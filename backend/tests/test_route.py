@@ -83,7 +83,7 @@ def test_route_is_computed_and_kept(client, move):
 
     # Floors, detail addresses and the date do not move either end.
     save(client, move, origin=place(GAEPO, floor=5, detail_address="101동 502호"))
-    save(client, move, schedule={"move_date": "2099-01-01", "start_time": "09:00"})
+    save(client, move, schedule={"move_date": soon(), "start_time": "09:00"})
     url, headers = move
     assert client.get(url, headers=headers).json()["data"]["route"] == route
     assert len(router.calls) == 1
@@ -231,3 +231,11 @@ def test_time_budget(monkeypatch):
 def test_query_text():
     assert query_text(GAEPO) == "서울특별시 강남구 개포로109길 5"
     assert query_text("서울 중구  퇴계로36길 2") == "서울 중구 퇴계로36길 2"
+
+
+def soon() -> str:
+    """A move date the one-year limit accepts."""
+    from datetime import datetime, timedelta
+
+    from backend.app.schemas.moves import KST
+    return (datetime.now(KST).date() + timedelta(days=30)).isoformat()

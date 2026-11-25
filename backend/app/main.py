@@ -11,6 +11,7 @@ from .config import Settings
 from .services.address_search import JusoAddressSearch
 from .services.auth import AuthStore
 from .services.building_register import HubBuildingRegister
+from .services.calendar import KasiCalendar
 from .services.media import MediaStorage
 from .services.moves import MoveStore
 from .services.route import KakaoRouter
@@ -53,6 +54,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             kakao_key.get_secret_value() if kakao_key else None,
             settings.external_api_timeout_seconds,
             settings.route_lookup_budget_seconds,
+        )
+        app.state.calendar = KasiCalendar(
+            settings.kasi_holiday_url,
+            settings.kasi_lunar_url,
+            data_key.get_secret_value() if data_key else None,
+            settings.calendar_request_timeout_seconds,
+            settings.calendar_lookup_budget_seconds,
         )
         yield
 

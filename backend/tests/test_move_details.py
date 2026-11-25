@@ -73,9 +73,10 @@ def test_sc06_form_completes_the_move(client):
         **DESTINATION, "detail_address": None, "elevator": "unknown", "elevator_source": None,
         "building": NO_LOOKUP,
     }}
-    assert data["schedule"] == {"status": "filled", "value": {
-        "move_date": MOVE_DAY, "start_time": "09:00:00",
-    }}
+    assert data["schedule"]["status"] == "filled"
+    assert data["schedule"]["value"] == {"move_date": MOVE_DAY, "start_time": "09:00:00"}
+    # Date conditions are judged on save; without a key the KASI lookups are failed.
+    assert data["schedule"]["day"]["holiday_status"] == "failed"
     assert response.json()["missing"] == []
     assert response.json()["next_step"] is None
 

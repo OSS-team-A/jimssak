@@ -109,7 +109,7 @@ def test_same_lot_is_not_fetched_again(client, register, move):
     again = save(client, move, origin={**TOEGYE_PLACE, "floor": 5, "detail_address": "502호"})
     assert again["origin"]["value"]["building"]["status"] == "found"
     assert again["origin"]["value"]["floor"] == 5
-    save(client, move, schedule={"move_date": "2099-01-01", "start_time": "09:00"})
+    save(client, move, schedule={"move_date": soon(), "start_time": "09:00"})
     assert len(register.calls) == 1
 
 
@@ -360,3 +360,11 @@ def test_app_uses_short_register_timeout(tmp_path):
         register = client.app.state.building_register
         assert register.timeout == 2.0
         assert register.budget == 6.0
+
+
+def soon() -> str:
+    """A move date the one-year limit accepts."""
+    from datetime import datetime, timedelta
+
+    from backend.app.schemas.moves import KST
+    return (datetime.now(KST).date() + timedelta(days=30)).isoformat()
