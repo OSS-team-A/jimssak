@@ -1,0 +1,15 @@
+# Only pyproject.toml and backend/ go into the API image.
+*
+!pyproject.toml
+!backend/
+
+# Never bake secrets, local data, virtualenvs or caches into the image.
+**/.env
+**/.env.*
+**/.venv/
+backend/data/
+**/__pycache__/
+**/*.py[co]
+**/.pytest_cache/
+**/.ruff_cache/
+backend/tests/

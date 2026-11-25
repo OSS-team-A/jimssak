@@ -1,0 +1,18 @@
+# API server only; the frontend is deployed separately.
+#   cp .env.deploy.example .env.deploy   # then fill in the values
+#   docker compose up -d --build
+services:
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: jimssak-api
+    env_file: .env.deploy
+    ports:
+      - "8000:8000"
+    volumes:
+      - jimssak-data:/data
+    restart: unless-stopped
+
+volumes:
+  jimssak-data:
