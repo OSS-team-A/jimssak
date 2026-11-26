@@ -4,7 +4,7 @@ import { ApiError } from '../api/client';
 import { navigate, routes } from '../app/routes';
 import { BrandHeader } from '../components/common/BrandHeader';
 import { Button } from '../components/common/Button';
-import mascot from '../assets/capture-mascot-final.png';
+import mascot from '../assets/capture-mascot-prep.png';
 import analysisMascot from '../assets/analysis-mascot.webp';
 import bulbIcon from '../assets/capture-bulb.svg';
 import cameraIcon from '../assets/capture-camera.svg';
@@ -13,18 +13,24 @@ import permissionCameraIcon from '../assets/capture-permission-camera.svg';
 import doubleArrowIcon from '../assets/capture-double-arrow.svg';
 import levelEllipse from '../assets/capture-level-ellipse.svg';
 import levelLine from '../assets/capture-level-line.svg';
+import tiltedLevelLine from '../assets/capture-level-tilted.svg';
 
-type Screen = 'prep' | 'camera' | 'status';
+type Screen = 'prep' | 'camera' | 'review' | 'status';
 const cameraPermissionKey = 'jimssak-camera-permission-granted';
 const acceptedVideo = (file: File) => /\.(mp4|mov)$/i.test(file.name)
   && ['video/mp4', 'video/quicktime', 'application/octet-stream', ''].includes(file.type);
 
 export function CapturePage() {
+  const params = new URLSearchParams(window.location.search);
+  const afterMove = params.get('mode') === 'after';
+  const preview = import.meta.env.DEV && params.get('preview') === '1';
+  const previewState = params.get('state');
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const reviewUrlRef = useRef<string | null>(null);
   const cancelledRef = useRef(false);
   const moveRef = useRef<{ move_id: string; guest_token: string } | null>((() => {
     try {
@@ -32,9 +38,11 @@ export function CapturePage() {
       return saved ? JSON.parse(saved) : null;
     } catch { return null; }
   })());
-  const [screen, setScreen] = useState<Screen>('prep');
+  const [screen, setScreen] = useState<Screen>(preview && previewState === 'review' ? 'review' : preview && (previewState === 'camera' || previewState === 'recording' || previewState === 'tilted') ? 'camera' : 'prep');
   const [permissionOpen, setPermissionOpen] = useState(false);
-  const [recording, setRecording] = useState(false);
+  const [recording, setRecording] = useState(preview && (previewState === 'recording' || previewState === 'tilted'));
+  const [reviewFile, setReviewFile] = useState<File | null>(null);
+  const [reviewUrl, setReviewUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploaded, setUploaded] = useState(false);
   const [error, setError] = useState('');
@@ -44,6 +52,7 @@ export function CapturePage() {
     cancelledRef.current = true;
     if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
     streamRef.current?.getTracks().forEach(track => track.stop());
+    if (reviewUrlRef.current) URL.revokeObjectURL(reviewUrlRef.current);
   }, []);
 
   useEffect(() => {
@@ -56,6 +65,7 @@ export function CapturePage() {
   async function openCamera() {
     setPermissionOpen(false);
     setError('');
+    if (preview) { setScreen('camera'); return; }
     if (!mp4Recording) {
       fileRef.current?.click();
       return;
@@ -72,7 +82,27 @@ export function CapturePage() {
     }
   }
 
+  function showReview(file: File) {
+    if (!acceptedVideo(file)) { setError('MP4 또는 MOV 영상만 업로드할 수 있어요.'); return; }
+    if (reviewUrlRef.current) URL.revokeObjectURL(reviewUrlRef.current);
+    const url = URL.createObjectURL(file);
+    reviewUrlRef.current = url;
+    setReviewFile(file);
+    setReviewUrl(url);
+    streamRef.current?.getTracks().forEach(track => track.stop());
+    streamRef.current = null;
+    setError('');
+    setScreen('review');
+  }
+
   async function upload(file: File) {
+    if (afterMove) {
+      if (preview) {
+        window.history.pushState({}, '', `${routes.analysis}?mode=after&preview=1&state=waiting`);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      } else setError('이사 후 영상 업로드 API가 아직 연결되지 않았어요. 이사 전 영상은 그대로 보관돼요.');
+      return;
+    }
     setScreen('status');
     setUploading(true);
     setUploaded(false);
@@ -115,7 +145,7 @@ export function CapturePage() {
         setRecording(false);
         if (cancelledRef.current) return;
         if (!chunksRef.current.length) { setError('촬영된 영상이 없어요. 다시 시도해주세요.'); return; }
-        void upload(new File(chunksRef.current, 'room-video.mp4', { type: 'video/mp4' }));
+        showReview(new File(chunksRef.current, 'room-video.mp4', { type: 'video/mp4' }));
       };
       recorder.start();
       setRecording(true);
@@ -128,7 +158,7 @@ export function CapturePage() {
   function chooseFile(event: ChangeEvent<HTMLInputElement>) {
     const selected = event.target.files?.[0];
     event.target.value = '';
-    if (selected) void upload(selected);
+    if (selected) showReview(selected);
   }
 
   async function startCapture() {
@@ -161,8 +191,8 @@ export function CapturePage() {
         <div className="capture-tip"><img className="capture-tip-icon" src={shoesIcon} alt="" /><div><strong>이동하며 방 전체를 촬영해 주세요</strong><p>천천히 이동하면서 방 구석구석 빠짐없이 담기도록<br/>충분히 촬영해 주세요.</p></div></div>
       </div>
       {error && <p role="alert">{error}</p>}
-      <div className="capture-prep-actions"><Button onClick={() => void startCapture()}>촬영 시작하기</Button></div>
-      <input ref={fileRef} type="file" accept=".mp4,.mov,video/mp4,video/quicktime" capture="environment" onChange={chooseFile} hidden aria-label="카메라로 영상 촬영" />
+      <div className="capture-prep-actions"><Button onClick={() => void startCapture()}>촬영 시작하기</Button><Button variant="secondary" onClick={() => fileRef.current?.click()}>영상 업로드하기</Button></div>
+      <input ref={fileRef} type="file" accept=".mp4,.mov,video/mp4,video/quicktime" onChange={chooseFile} hidden aria-label="MP4 또는 MOV 영상 선택" />
       {permissionOpen && <div className="capture-permission-backdrop" onClick={() => setPermissionOpen(false)}>
         <div className="capture-permission" role="dialog" aria-modal="true" aria-label="카메라 사용 안내" onClick={event => event.stopPropagation()}>
           <img src={permissionCameraIcon} width="40" height="40" alt="" />
@@ -173,11 +203,22 @@ export function CapturePage() {
       </div>}
     </div>}
     {screen === 'camera' && <div className="capture-camera">
-      <video ref={videoRef} autoPlay muted playsInline aria-label="카메라 미리보기" />
-      <div className="capture-camera-guide" aria-hidden="true"><img src={levelEllipse} alt="" /><img src={levelLine} alt="" /></div>
-      <p className="capture-camera-hint">{recording ? <>한 방향으로 천천히 이동해주세요 <img className="capture-double-arrow" src={doubleArrowIcon} alt="" /></> : '수평을 맞추고 천천히 움직여주세요'}</p>
+      {preview ? <img className="capture-camera-preview" src="/capture-preview-room.png" alt="촬영 화면 미리보기" /> : <video ref={videoRef} autoPlay muted playsInline aria-label="카메라 미리보기" />}
+      <div className={`capture-camera-guide${preview && previewState === 'tilted' ? ' capture-camera-guide--tilted' : ''}`} aria-hidden="true"><img src={levelEllipse} alt="" /><img src={preview && previewState === 'tilted' ? tiltedLevelLine : levelLine} alt="" /></div>
+      <p className="capture-camera-hint">{recording ? <>화면 안에 가구가 담겨야 정확도가 높아요 <img className="capture-double-arrow" src={doubleArrowIcon} alt="" /></> : '이동하며 방 전체를 충분히 촬영해주세요'}</p>
       {error && <p role="alert" className="capture-camera-error">{error}</p>}
-      <div className="capture-camera-controls"><button type="button" className={recording ? 'capture-shutter capture-shutter--recording' : 'capture-shutter'} onClick={() => recording ? recorderRef.current?.stop() : start()} aria-label={recording ? '촬영 종료' : '촬영 시작'} /></div>
+      <div className="capture-camera-controls"><button type="button" className={recording ? 'capture-shutter capture-shutter--recording' : 'capture-shutter'} onClick={() => { if (preview) { if (recording) setScreen('review'); setRecording(!recording); } else if (recording) recorderRef.current?.stop(); else start(); }} aria-label={recording ? '촬영 종료' : '촬영 시작'} /></div>
+    </div>}
+    {screen === 'review' && <div className="capture-review">
+      <BrandHeader />
+      <div className="capture-review-content">
+        <h1>촬영한 영상을 확인해주세요</h1>
+        <p>가구와 가려진 공간이 빠짐없이 담겼는지 확인해주세요.</p>
+        {reviewUrl ? <video src={reviewUrl} controls playsInline preload="metadata" aria-label="촬영한 영상" /> : preview ? <img className="capture-review-placeholder" src="/capture-preview-room.png" alt="촬영 영상 미리보기 예시" /> : <div className="capture-review-placeholder" role="img" aria-label="영상 미리보기" />}
+        <div className="capture-review-note">촬영한 영상을 확인하고 영상을 다시 업로드할 수 있어요.</div>
+        {error && <p role="alert" className="capture-review-error">{error}</p>}
+      </div>
+      <div className="capture-review-actions"><Button onClick={() => { if (reviewFile) void upload(reviewFile); else if (preview) { window.history.pushState({}, '', afterMove ? `${routes.analysis}?mode=after&preview=1&state=waiting` : `${routes.moveInfo}?preview=1`); window.dispatchEvent(new PopStateEvent('popstate')); } }}>이 영상으로 분석 시작하기</Button><Button variant="secondary" onClick={() => { setError(''); setReviewFile(null); setReviewUrl(null); if (reviewUrlRef.current) URL.revokeObjectURL(reviewUrlRef.current); reviewUrlRef.current = null; setScreen('prep'); }}>다시 촬영하기</Button></div>
     </div>}
     {screen === 'status' && <div className="capture-status">
       <BrandHeader />

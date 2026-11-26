@@ -129,7 +129,7 @@ export function HistoryDetailPage() {
   const moveId = new URLSearchParams(location.search).get('moveId');
   const [loaded, setLoaded] = useState(preview);
   const [error, setError] = useState(!preview && !moveId ? '이사 기록을 찾을 수 없어요.' : '');
-  const [notice, setNotice] = useState<'capture' | 'review' | 'pdf' | null>(null);
+  const [notice, setNotice] = useState<'review' | 'pdf' | null>(null);
   useEffect(() => {
     if (preview || !moveId) return;
     let active = true;
@@ -154,7 +154,7 @@ export function HistoryDetailPage() {
         <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
         <h1>{stage === 'after_move' ? '이사는 잘 마치셨나요?' : stage === 'comparing' ? '물품을 함께 확인해요' : '이사 기록을 확인해요'}</h1>
         <p>{stage === 'after_move' ? <>이사 후 방을 촬영하면 이사 전에 찍어둔 영상과<br />비교해드려요. 상태가 달라 보이거나<br />영상에서 찾지 못한 물품을 알려드릴게요.<br />결과를 보고 직접 확인할 수 있어요.</> : stage === 'comparing' ? '이사 전후 물품의 상태를 검토해 주세요.' : '확인한 물품과 이사 기록을 다시 살펴볼 수 있어요.'}</p>
-        <Button onClick={() => setNotice(stage === 'after_move' ? 'capture' : 'review')}>{stage === 'after_move' ? '이사 후 물품 확인하기' : copy[stage].button}</Button>
+        <Button onClick={() => { if (stage === 'after_move') { window.history.pushState({}, '', `${routes.capture}?mode=after${preview ? '&preview=1' : ''}`); window.dispatchEvent(new PopStateEvent('popstate')); } else setNotice('review'); }}>{stage === 'after_move' ? '이사 후 물품 확인하기' : copy[stage].button}</Button>
       </>}
     </div>
     <div className="review-chat-bottom history-detail-bottom">
@@ -162,6 +162,6 @@ export function HistoryDetailPage() {
       <div className="review-chat-input"><span>수정할 내용을 알려주세요</span><button type="button" aria-label="채팅으로 돌아가기" onClick={() => { if (preview) { window.history.pushState({}, '', `${routes.chat}?preview=1`); window.dispatchEvent(new PopStateEvent('popstate')); } else navigate(routes.chat); }}><img src={sendIcon} alt="" /></button></div>
       <p>문서는 목록과 이사 조건을 확인한 뒤 만들 수 있어요</p>
     </div>
-    {notice && <div className="review-dialog-backdrop" onClick={() => setNotice(null)}><div className="review-dialog" role="dialog" aria-modal="true" aria-label="안내" onClick={event => event.stopPropagation()}><h2>{notice === 'capture' ? '이사 후 촬영은 준비 중이에요' : notice === 'review' ? '물품 검토는 준비 중이에요' : '이삿짐 명세서를 받았어요'}</h2><p>{notice === 'capture' ? '이사 전 영상은 보관됩니다. 이사 후 영상 비교 기능이 연결되면 이 기록에서 촬영을 시작할 수 있어요.' : notice === 'review' ? '이사 후 영상 비교 결과를 받으면 이 기록에서 물품 검토를 이어갈 수 있어요.' : '명세서를 업체에 보내 견적을 문의해보세요.'}</p><Button onClick={() => setNotice(null)}>확인</Button></div></div>}
+    {notice && <div className="review-dialog-backdrop" onClick={() => setNotice(null)}><div className="review-dialog" role="dialog" aria-modal="true" aria-label="안내" onClick={event => event.stopPropagation()}><h2>{notice === 'review' ? '물품 검토는 준비 중이에요' : '이삿짐 명세서를 받았어요'}</h2><p>{notice === 'review' ? '이사 후 영상 비교 결과를 받으면 이 기록에서 물품 검토를 이어갈 수 있어요.' : '명세서를 업체에 보내 견적을 문의해보세요.'}</p><Button onClick={() => setNotice(null)}>확인</Button></div></div>}
   </main>;
 }

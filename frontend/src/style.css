@@ -148,8 +148,8 @@ button { font: inherit; }
 .capture-prep .brand-header { margin-bottom: 30px; }
 .capture-eyebrow { color: #00a58d; font-size: 13px; font-weight: 700; }
 .capture-prep h1 { margin: 20px 0 0; font-size: 25px; line-height: 1.4; letter-spacing: -.04em; }
-.capture-mascot { width: 155px; height: 132px; align-self: center; margin: 67px 0 13px; flex: none; overflow: hidden; }
-.capture-mascot img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.capture-mascot { width: 162px; height: 152px; align-self: center; margin: 44px 0 13px; flex: none; overflow: hidden; }
+.capture-mascot img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .capture-tips { display: grid; gap: 29px; margin-top: 12px; }
 .capture-tip { display: flex; align-items: flex-start; gap: 14px; }
 .capture-tip-icon { width: 42px; height: 42px; border-radius: 50%; flex: none; display: grid; place-items: center; background: #e8f2ff; color: #3280ed; font-size: 23px; }
@@ -157,7 +157,7 @@ button { font: inherit; }
 .capture-tip:last-child .capture-tip-icon { background: transparent; }
 .capture-tip strong { font-size: 16px; line-height: 24px; }
 .capture-tip p { margin-top: 4px; color: #4e5968; font-size: 14px; line-height: 21px; }
-.capture-prep-actions { margin-top: auto; display: grid; gap: 12px; }
+.capture-prep-actions { margin-top: auto; display: grid; gap: 10px; }
 .capture-prep-actions .button { width: 100%; }
 .capture-permission-backdrop { position: absolute; inset: 0; z-index: 5; background: #0007; display: flex; align-items: end; padding: 16px 16px max(38px, env(safe-area-inset-bottom)); }
 .capture-permission { width: 100%; padding: 34px 24px 20px; background: #fff; border-radius: 28px; }
@@ -166,10 +166,13 @@ button { font: inherit; }
 .capture-permission p { margin-bottom: 66px; }
 .capture-camera { position: relative; width: 100%; height: 100dvh; overflow: hidden; background: #17211f; color: white; }
 .capture-camera video { width: 100%; height: 100%; object-fit: cover; }
+.capture-camera-preview { display: block; width: 100%; height: 100%; object-fit: cover; filter: brightness(.94); }
 .capture-camera-guide { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 180px; height: 85px; display: grid; place-items: center; }
 .capture-camera-guide img:first-child { width: 85px; height: 85px; }
 .capture-camera-guide img:last-child { position: absolute; width: 180px; height: 1px; }
+.capture-camera-guide--tilted img:last-child { transform: rotate(-7deg); }
 .capture-camera-hint { position: absolute; top: calc(50% + 97px); left: 0; width: 100%; margin: 0; padding: 0 18px; display: flex; justify-content: center; align-items: center; text-align: center; color: white !important; font-size: 16px !important; line-height: 21px !important; font-weight: 700; }
+.capture-double-arrow { width: 24px; height: 24px; flex: none; }
 .capture-camera-controls { position: absolute; bottom: max(55px, env(safe-area-inset-bottom)); left: 0; width: 100%; display: grid; place-items: center; gap: 12px; }
 .capture-shutter { width: 76px; height: 76px; padding: 0; border: 7px solid white; border-radius: 50%; background: #f04452; }
 .capture-shutter--recording { background: white; display: grid; place-items: center; }
@@ -177,6 +180,14 @@ button { font: inherit; }
 .capture-camera-controls span { color: #fff; font-size: 14px; font-weight: 700; }
 
 .capture-camera-error { position: absolute; bottom: 158px; left: 24px; right: 24px; color: #fff !important; text-align: center; background: #0009; padding: 10px; border-radius: 8px; }
+.capture-review { display: flex; flex-direction: column; min-height: 100dvh; padding: max(12px, env(safe-area-inset-top)) 24px max(32px, env(safe-area-inset-bottom)); }
+.capture-review-content { display: flex; flex-direction: column; gap: 12px; margin-top: 22px; }
+.capture-review-content h1 { font-size: 24px; line-height: 39px; letter-spacing: 0; }
+.capture-review-content > p { color: #8b95a1; font-size: 13px; line-height: 20px; }
+.capture-review-content video, .capture-review-placeholder { display: block; width: 100%; height: min(48.6dvh, 410px); border-radius: 22px; background: #d9d9d9; object-fit: cover; }
+.capture-review-note { padding: 16px; border-radius: 16px; background: #f5f7f9; color: #6b788c; font-size: 13px; line-height: 18px; }
+.capture-review-content .capture-review-error { color: #e83850; }
+.capture-review-actions { display: grid; gap: 10px; margin-top: auto; }
 .capture-status { min-height: 100dvh; padding: max(12px, env(safe-area-inset-top)) 24px max(32px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; }
 .capture-status h1 { margin-top: 30px; font-size: 22px; }
 .capture-status > p { margin-top: 12px; font-size: 14px; }
@@ -380,7 +391,7 @@ input.move-field { margin-top: 8px; color: #191f28; }
 .review-delete-dialog p { margin: 8px 6px 0; color: #4e5968; font-size: 15px; line-height: 24px; }
 .review-delete-dialog > div { display: flex; gap: 8px; margin-top: 20px; }
 .review-delete-dialog button { flex: 1; min-width: 0; height: 48px; padding: 0; border-radius: 14px; background: #f2f4f6; color: #4e5968; font-size: 17px; font-weight: 600; }
-.review-delete-dialog button:last-child { background: #20c5a1; color: white; }
+.review-delete-dialog button:last-child { background: #20c5a1; color: black; }
 .review-result-page { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; padding-top: max(12px, env(safe-area-inset-top)); padding-bottom: max(12px, env(safe-area-inset-bottom)); }
 .review-result-body { flex: 1; min-height: 0; overflow-y: auto; padding-top: 42px; padding-bottom: 24px; scrollbar-width: none; }
 .review-result-body::-webkit-scrollbar { display: none; }
