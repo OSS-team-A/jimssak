@@ -40,6 +40,7 @@ const fromSnapshot = (record: MoveSnapshot): Draft => ({
 
 export function MoveInfoPage() {
   const move = savedMove();
+  const preview = import.meta.env.DEV && new URLSearchParams(window.location.search).has('preview');
   const draftKey = move ? `jimssak-draft-${move.move_id}` : '';
   const [hadDraft] = useState(() => Boolean(draftKey && sessionStorage.getItem(draftKey)));
   const [draft, setDraft] = useState<Draft>(() => {
@@ -90,7 +91,8 @@ export function MoveInfoPage() {
   const firstDay = new Date(month.getFullYear(), month.getMonth(), 1).getDay();
 
   async function save() {
-    if (!move || !complete) return;
+    if (!complete) return;
+    if (!move) { setError('미리보기에서는 저장할 수 없어요.'); return; }
     setSaving(true); setError('');
     try {
       await updateMove(move.move_id, move.guest_token, {
@@ -103,7 +105,7 @@ export function MoveInfoPage() {
     finally { setSaving(false); }
   }
 
-  if (!move) return <main className="app-page move-info-page"><BrandHeader />
+  if (!move && !preview) return <main className="app-page move-info-page"><BrandHeader />
     <h1>이사 정보를 찾을 수 없어요</h1><Button onClick={() => navigate(routes.capture)}>촬영 준비로 돌아가기</Button></main>;
 
   return <main className="app-page move-info-page">
