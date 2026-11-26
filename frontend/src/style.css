@@ -1,5 +1,5 @@
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 280px; background: #f7faf9; color: var(--color-text); font-family: Pretendard, -apple-system, BlinkMacSystemFont, sans-serif; }
+body { margin: 0; min-width: 280px; background: #fff; color: var(--color-text); font-family: Pretendard, -apple-system, BlinkMacSystemFont, sans-serif; }
 .demo-page { max-width: 850px; margin: auto; padding: 72px 24px; }
 .badge { font-size: 12px; font-weight: 700; letter-spacing: 2px; }
 h1 { font-size: clamp(44px, 8vw, 76px); line-height: 1.12; letter-spacing: -3px; }
