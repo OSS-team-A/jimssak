@@ -2,9 +2,18 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
-from .analysis import Dimensions, Snapshot
+from .analysis import (
+    MAX_ITEM_NAME_LENGTH,
+    MAX_ITEM_NOTES_LENGTH,
+    Dimensions,
+    DimensionsStatus,
+    Snapshot,
+)
 
-ItemName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+ItemName = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_ITEM_NAME_LENGTH)
+]
+ItemNotes = Annotated[str, StringConstraints(max_length=MAX_ITEM_NOTES_LENGTH)]
 
 
 class ItemCreate(BaseModel):
@@ -13,7 +22,7 @@ class ItemCreate(BaseModel):
     label_ko: ItemName
     quantity: int = Field(default=1, ge=1)
     dimensions_cm: Dimensions = Field(default_factory=Dimensions)
-    notes: str | None = None
+    notes: ItemNotes | None = None
     disassembly_required: bool | None = None
 
 
@@ -23,7 +32,7 @@ class ItemPatch(BaseModel):
     label_ko: ItemName | None = None
     quantity: int | None = Field(default=None, ge=1)
     dimensions_cm: Dimensions | None = None
-    notes: str | None = None
+    notes: ItemNotes | None = None
     disassembly_required: bool | None = None
 
     @model_validator(mode="after")
@@ -42,6 +51,12 @@ class InventoryItem(BaseModel):
     label_ko: str
     quantity: int
     dimensions_cm: Dimensions
+    dimensions_status: DimensionsStatus | None = Field(
+        default=None, description="분석 당시 치수 추정 상태"
+    )
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    needs_review: bool = False
+    review_reasons: list[str] = Field(default_factory=list)
     notes: str | None = None
     disassembly_required: bool | None = None
     snapshots: list[Snapshot] = Field(default_factory=list)

@@ -144,10 +144,14 @@ def test_demo_inventory_edits_and_confirmation(demo_client):
     clock.advance(6)
     original = demo_client.get(f"{url}/analysis", headers=headers).json()["items"]
     chair = original[1]
+    listed = demo_client.get(inventory, headers=headers).json()["items"][1]
+    for field in ("needs_review", "review_reasons", "dimensions_status", "confidence"):
+        assert listed[field] == chair[field]
     item_url = f"{inventory}/items/{chair['item_id']}"
     update = {"quantity": 2, "dimensions_cm": {"depth": 48}, "notes": "포장",
               "disassembly_required": True}
     edited = demo_client.patch(item_url, headers=headers, json=update).json()
+    assert edited["needs_review"] and edited["review_reasons"] == chair["review_reasons"]
     assert edited["dimensions_cm"] == {**chair["dimensions_cm"], "depth": 48}
     assert edited["notes"] == "포장" and edited["disassembly_required"]
     assert demo_client.patch(item_url, headers=headers, json={"quantity": 0}).status_code == 422
@@ -162,6 +166,12 @@ def test_demo_inventory_edits_and_confirmation(demo_client):
     confirmed = demo_client.get(inventory, headers=headers).json()
     assert confirmed["status"] == "confirmed" and confirmed["items"][1]["quantity"] == 2
     assert demo_client.delete(item_url, headers=headers).status_code == 409
+    assert demo_client.delete(f"{inventory}/confirm", headers=headers).status_code == 204
+    assert demo_client.get(inventory, headers=headers).json()["status"] == "draft"
+    for length, expected in ((501, 422), (500, 200)):
+        response = demo_client.patch(item_url, headers=headers, json={"notes": "x" * length})
+        assert response.status_code == expected
+    assert demo_client.post(f"{inventory}/confirm", headers=headers).status_code == 204
     assert demo_client.get(f"{url}/analysis", headers=headers).json()["items"] == original
 
     upload(demo_client, url, headers, name="retake.mp4")

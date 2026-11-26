@@ -3,6 +3,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
 
+from ..schemas.analysis import MAX_INVENTORY_ITEMS
 from ..schemas.inventory import Inventory, InventoryItem, ItemCreate, ItemPatch
 from ..services.inventory import edit_inventory, load_inventory
 from .moves import AccessibleMove, AnalysisDep
@@ -16,14 +17,14 @@ def get_inventory(move: AccessibleMove, analyses: AnalysisDep) -> Inventory:
 
 
 @contextmanager
-def editing(move, analyses, *, confirm=False):
+def editing(move, analyses, *, allow_confirmed=False):
     job = analyses.current(move.id)
     if job is None or job.status != "completed":
         raise HTTPException(409, "영상 분석이 완료된 후 목록을 편집할 수 있습니다.")
     with edit_inventory(analyses.db, job.analysis_id) as row:
         if row is None:
             raise HTTPException(409, "현재 영상의 이삿짐 목록을 다시 확인해주세요.")
-        if row["confirmed"] and not confirm:
+        if row["confirmed"] and not allow_confirmed:
             raise HTTPException(409, "이미 확정한 이삿짐 목록입니다.")
         yield row
 
@@ -39,6 +40,8 @@ def find_item(items: list[dict], item_id: str) -> dict:
 def add_item(move: AccessibleMove, analyses: AnalysisDep, body: ItemCreate) -> InventoryItem:
     item = InventoryItem(item_id=uuid4().hex, source="user", **body.model_dump())
     with editing(move, analyses) as row:
+        if len(row["items"]) >= MAX_INVENTORY_ITEMS:
+            raise HTTPException(409, f"물품은 최대 {MAX_INVENTORY_ITEMS}개까지 등록할 수 있습니다.")
         row["items"].append(item.model_dump())
     return item
 
@@ -64,5 +67,11 @@ def delete_item(move: AccessibleMove, analyses: AnalysisDep, item_id: str):
 
 @router.post("/confirm", status_code=204, summary="현재 이삿짐 목록 확정")
 def confirm_inventory(move: AccessibleMove, analyses: AnalysisDep):
-    with editing(move, analyses, confirm=True) as row:
+    with editing(move, analyses, allow_confirmed=True) as row:
         row["confirmed"] = True
+
+
+@router.delete("/confirm", status_code=204, summary="이삿짐 목록 확정 취소")
+def unconfirm_inventory(move: AccessibleMove, analyses: AnalysisDep):
+    with editing(move, analyses, allow_confirmed=True) as row:
+        row["confirmed"] = False

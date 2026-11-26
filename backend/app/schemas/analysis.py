@@ -20,6 +20,10 @@ __all__ = [
 ]
 
 AnalysisStatus = Literal["queued", "running", "completed", "failed"]
+MAX_INVENTORY_ITEMS = 200
+MAX_ITEM_NAME_LENGTH = 50
+MAX_ITEM_NOTES_LENGTH = 500
+DimensionsStatus = Literal["estimated", "partial", "unavailable"]
 
 
 class V2(BaseModel):
@@ -49,7 +53,7 @@ class AnalysisItem(V2):
     quantity: int = Field(ge=1, description="수량")
     confidence: float = Field(ge=0, le=1, description="인식 신뢰도(0~1)")
     dimensions_cm: Dimensions = Field(description="가로·깊이·높이(cm)")
-    dimensions_status: Literal["estimated", "partial", "unavailable"] = Field(
+    dimensions_status: DimensionsStatus = Field(
         description="estimated: 세 치수 모두, partial: 일부만, unavailable: 못 구함"
     )
     disassembly_required: bool | None = Field(
@@ -58,6 +62,11 @@ class AnalysisItem(V2):
     needs_review: bool = Field(description="사용자 확인이 필요하면 true")
     review_reasons: list[str] = Field(default_factory=list, description="확인이 필요한 이유")
     snapshots: list[Snapshot] = Field(default_factory=list, description="물품 사진")
+
+
+class SubmittedAnalysisItem(AnalysisItem):
+    label_ko: str = Field(min_length=1, max_length=MAX_ITEM_NAME_LENGTH)
+    notes: str | None = Field(default=None, max_length=MAX_ITEM_NOTES_LENGTH)
 
 
 class AnalysisError(V2):
@@ -80,7 +89,7 @@ class AnalysisResultV2(V2):
     status: Literal["completed", "failed"]
     progress: float = Field(ge=0, le=1)
     video: VideoInfo
-    items: list[AnalysisItem] = Field(default_factory=list)
+    items: list[SubmittedAnalysisItem] = Field(default_factory=list, max_length=MAX_INVENTORY_ITEMS)
     warnings: list[str] = Field(default_factory=list)
     error: AnalysisError | None = None
 
