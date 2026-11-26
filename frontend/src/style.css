@@ -137,7 +137,7 @@ button { font: inherit; }
 .capture-tip { display: flex; align-items: flex-start; gap: 14px; }
 .capture-tip-icon { width: 42px; height: 42px; border-radius: 50%; flex: none; display: grid; place-items: center; background: #e8f2ff; color: #3280ed; font-size: 23px; }
 .capture-tip:first-child .capture-tip-icon { background: #fff3bd; }
-.capture-tip:last-child .capture-tip-icon { background: #3280ed; color: #fff; }
+.capture-tip:last-child .capture-tip-icon { background: transparent; }
 .capture-tip strong { font-size: 16px; line-height: 24px; }
 .capture-tip p { margin-top: 4px; color: #4e5968; font-size: 14px; line-height: 21px; }
 .capture-prep-actions { margin-top: auto; display: grid; gap: 12px; }

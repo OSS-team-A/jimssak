@@ -8,7 +8,7 @@ import mascot from '../assets/capture-mascot-final.png';
 import analysisMascot from '../assets/analysis-mascot.webp';
 import bulbIcon from '../assets/capture-bulb.svg';
 import cameraIcon from '../assets/capture-camera.svg';
-import arrowIcon from '../assets/capture-arrow.svg';
+import shoesIcon from '../assets/capture-shoes.png';
 import permissionCameraIcon from '../assets/capture-permission-camera.svg';
 import doubleArrowIcon from '../assets/capture-double-arrow.svg';
 import levelEllipse from '../assets/capture-level-ellipse.svg';
@@ -138,7 +138,7 @@ export function CapturePage() {
       <div className="capture-tips">
         <div className="capture-tip"><img className="capture-tip-icon" src={bulbIcon} alt="" /><div><strong>조명을 켜주세요</strong><p>밝을수록 물품을 확인하기 쉬워요.</p></div></div>
         <div className="capture-tip"><img className="capture-tip-icon" src={cameraIcon} alt="" /><div><strong>큰 가구부터, 빠짐없이</strong><p>가구 전체와 가려진 공간까지 담아주세요.</p></div></div>
-        <div className="capture-tip"><img className="capture-tip-icon" src={arrowIcon} alt="" /><div><strong>수평을 맞추고 천천히</strong><p>한 방향으로 방을 둘러보듯 촬영해요.</p></div></div>
+        <div className="capture-tip"><img className="capture-tip-icon" src={shoesIcon} alt="" /><div><strong>이동하며 방 전체를 촬영해 주세요</strong><p>천천히 이동하면서 방 구석구석 빠짐없이 담기도록 충분히 촬영해 주세요.</p></div></div>
       </div>
       {error && <p role="alert">{error}</p>}
       <div className="capture-prep-actions"><Button onClick={() => setPermissionOpen(true)}>촬영 시작하기</Button></div>
