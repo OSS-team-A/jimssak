@@ -1,0 +1,72 @@
+# Deploys the backend API to EC2 (https://api.kyooo.shop) when backend changes reach main.
+# Required repository secrets: EC2_HOST (server IP), EC2_SSH_KEY (private key for user ubuntu).
+# The server keeps its own ~/jimssak.env; this workflow never sends settings or API keys.
+name: Deploy API
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'scripts/deploy-api.sh'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-api
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: python -m pip install -e '.[dev]'
+      - run: pytest -q backend/tests
+
+  deploy:
+    name: deploy to EC2
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: |
+          docker build -t jimssak-api:latest backend
+          docker save jimssak-api:latest | gzip > jimssak-api.tar.gz
+
+      - name: Set up SSH
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$EC2_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
+
+      - name: Copy image and script
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          scp -i ~/.ssh/deploy_key jimssak-api.tar.gz scripts/deploy-api.sh "ubuntu@$EC2_HOST:~/"
+
+      - name: Replace container
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          ssh -i ~/.ssh/deploy_key "ubuntu@$EC2_HOST" 'bash ~/deploy-api.sh ~/jimssak-api.tar.gz'
+
+      - name: Check public health
+        run: curl -fsS --retry 5 --retry-delay 3 https://api.kyooo.shop/health
