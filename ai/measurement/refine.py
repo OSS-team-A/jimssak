@@ -85,6 +85,12 @@ MISSING_REASON = {
     "height": "바닥과 윗면이 함께 보이지 않아 높이를 구하지 못했어요",
 }
 
+# Storage that reaches about the ceiling (apartments are usually about 230 cm) may be built in
+# and so not something to move. Freestanding wardrobes can be nearly as tall, so this only asks
+# the user to check. Set by hand; adjust once real built-in measurements are available.
+BUILT_IN_LABELS = {"wardrobe", "cabinet", "shelf", "drawer"}
+BUILT_IN_HEIGHT_CM = 225
+
 
 # Checked in order, so "bookshelf" maps to shelf and "nightstand" to cabinet.
 LABEL_KEYWORDS = (
@@ -211,6 +217,12 @@ def review_track(track: MeasuredTrack) -> dict:
                 f"{name} {AXIS_KO[axis]} {estimate.cm:.0f}cm는 일반적인 크기"
                 f"({low:.0f}~{high:.0f}cm)를 벗어나요",
             )
+    height = primary.get("height")
+    if label in BUILT_IN_LABELS and height is not None and height.cm >= BUILT_IN_HEIGHT_CM:
+        flag(
+            "possible_built_in",
+            f"천장까지 닿는 높이라 붙박이 {name}일 수 있어요. 옮길 짐이 아니면 목록에서 빼 주세요",
+        )
     return {
         "track_id": track.track_id,
         "label": track.label,

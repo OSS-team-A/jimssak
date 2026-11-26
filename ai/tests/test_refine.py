@@ -70,9 +70,25 @@ def test_review_flags_missing_out_of_range_and_few_views():
     track.dimensions["width"].views = 1
     result = review_track(track)
     assert result["needs_review"]
-    assert result["review_codes"] == ["missing_depth", "few_views", "out_of_range_height"]
+    assert result["review_codes"] == [
+        "missing_depth", "few_views", "out_of_range_height", "possible_built_in",
+    ]
     assert "옆면" in result["review_reasons"][0]
     assert "옷장 높이 310cm" in result["review_reasons"][2]
+
+
+def test_review_flags_ceiling_height_storage_as_possible_built_in():
+    tall = response("x", {"width": 180, "depth": 60, "height": 232},
+                    label="cabinet").videos[0].objects[0]
+    result = review_track(tall)
+    assert result["review_codes"] == ["possible_built_in"]
+    assert "붙박이 수납장" in result["review_reasons"][0]
+    low = response("x", {"width": 180, "depth": 60, "height": 200},
+                   label="wardrobe").videos[0].objects[0]
+    assert review_track(low)["review_codes"] == []
+    fridge = response("x", {"width": 90, "depth": 75, "height": 230},
+                      label="refrigerator").videos[0].objects[0]
+    assert "possible_built_in" not in review_track(fridge)["review_codes"]
 
 
 def test_review_passes_plausible_multiview_estimate():
