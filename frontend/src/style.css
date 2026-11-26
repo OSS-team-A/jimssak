@@ -342,7 +342,7 @@ input.move-field { margin-top: 8px; color: #191f28; }
 .review-inventory-detail dt { color: #6b7684; font-size: 12px; line-height: 18px; }
 .review-inventory-detail dd { margin: 0; color: #333d4b; }
 .review-inventory-detail dd:first-of-type { font-size: 14px; font-weight: 700; line-height: 21px; }
-.review-inventory-total { display: flex; justify-content: space-between; margin-top: 22px; padding: 14px 0; border-top: 1px solid #e5e8eb; border-bottom: 1px solid #333d4b; font-size: 14px; }
+.review-inventory-total { display: flex; justify-content: space-between; margin-top: 22px; padding: 14px 0; border-bottom: 1px solid #333d4b; font-size: 14px; }
 .review-inventory-help { padding: 24px 0; color: #333d4b; font-size: 13px; }
 .review-inventory-help p { margin-top: 12px; color: #6b7684; font-size: 12px; line-height: 18px; }
 .review-inventory-help small { display: block; margin-top: 18px; color: #8b95a1; font-size: 11px; }
