@@ -7,6 +7,7 @@ import type { AddressCandidate, MoveSnapshot, PlaceInput } from '../types/move';
 import calendarClockIcon from '../assets/move-calendar-clock.svg';
 import searchIcon from '../assets/move-search.svg';
 import searchClearIcon from '../assets/move-search-clear.svg';
+import backChevronIcon from '../assets/move-back-chevron.png';
 
 type Side = 'origin' | 'destination';
 type PlaceDraft = { address: string; candidate: AddressCandidate | null; detail: string; floor: number | null };
@@ -176,7 +177,7 @@ export function MoveInfoPage() {
       <div className="confirm-card confirm-card--schedule"><small>이사 날짜와 시간</small><strong>{draft.date.replaceAll('-', '. ')} · {Number(draft.time.slice(0, 2)) < 12 ? '오전' : '오후'} {Number(draft.time.slice(0, 2)) % 12 || 12}시</strong></div></div>
       {error && <p className="form-error" role="alert">{error}</p>}
       <div className="move-actions confirm-actions">
-        <button type="button" aria-label="수정하기" onClick={() => setConfirm(false)}>‹</button>
+        <button type="button" aria-label="수정하기" onClick={() => setConfirm(false)}><img src={backChevronIcon} alt="" /></button>
         <Button disabled={saving} onClick={() => void save()}>{saving ? '저장 중...' : '저장하기'}</Button>
       </div>
     </>}
