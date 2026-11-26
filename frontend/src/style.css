@@ -194,10 +194,12 @@ input.move-field { margin-top: 8px; color: #191f28; }
 .confirm-card p { color: #6b7684; font-size: 13px; }
 .confirm-actions { display: flex; gap: 14px; }
 .confirm-actions > button:first-child { width: 52px; border: 1px solid #e1e9e5; border-radius: 12px; background: #fff; color: #415650; font-size: 30px; padding: 0; flex: none; }
-.sheet-backdrop { position: fixed; inset: 0; z-index: 10; background: #0006; display: flex; align-items: end; justify-content: center; }
-.move-sheet { max-width: 430px; width: 100%; min-height: 70dvh; max-height: 90dvh; overflow: auto; background: #fff; border-radius: 24px 24px 0 0; padding: 8px 24px max(32px, env(safe-area-inset-bottom)); }
-.sheet-handle { display: block; width: 34px; height: 4px; background: #d8dee2; border-radius: 8px; margin: 0 auto 22px; }
-.move-sheet h2 { margin: 0 0 24px; font-size: 20px; }
+.sheet-backdrop { position: fixed; inset: 0; z-index: 10; background: rgba(25,31,40,.5); display: flex; align-items: end; justify-content: center; }
+.move-sheet { max-width: 430px; width: 100%; overflow: auto; background: #fff; border-radius: 24px 24px 0 0; padding: 9px 24px max(32px, env(safe-area-inset-bottom)); }
+.move-sheet--address { height: min(650px, 90dvh); }
+.move-sheet--schedule { height: min(661px, 90dvh); }
+.sheet-handle { display: block; width: 34px; height: 4px; background: #d9dde2; border-radius: 2px; margin: 0 auto 16px; }
+.move-sheet h2 { margin: 0 0 25px; font-size: 20px; line-height: 25px; }
 .move-sheet h3 { margin: 25px 0 12px; font-size: 15px; }
 .calendar-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
 .calendar-head button { background: #fff; color: #8b95a1; padding: 5px 16px; font-size: 28px; }
@@ -207,12 +209,15 @@ input.move-field { margin-top: 8px; color: #191f28; }
 .calendar-grid button:disabled { color: #c3c9ce; cursor: not-allowed; }
 .time-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 35px; }
 .time-options button { background: #f2f4f6; color: #6b7684; padding: 13px 4px; font-size: 13px; }
-.address-search { display: flex; align-items: center; background: #f2f4f6; border-radius: 14px; height: 52px; padding: 0 12px 0 16px; }
+.address-search { display: flex; align-items: center; background: #f4f5f7; border-radius: 12px; height: 52px; padding: 0 12px 0 16px; }
 .address-search input { min-width: 0; flex: 1; border: 0; background: transparent; outline: none; font: inherit; }
 .address-search button { background: transparent; color: #8b95a1; font-size: 25px; padding: 0 6px; }
-.address-results button { display: grid; text-align: left; gap: 8px; width: 100%; padding: 18px 0; border-radius: 0; border-bottom: 1px solid #e1e9e5; background: white; color: #191f28; }
+.move-sheet > .move-label { margin: 28px 0 0; font-weight: 700; }
+.address-results button { display: grid; text-align: left; gap: 8px; width: 100%; padding: 18px 0; border-radius: 0; border-bottom: 1px solid #e5e8eb; background: white; color: #191f28; }
 .address-results small { color: #8b95a1; font-size: 13px; }
+.address-selection-hint { margin-top: 22px !important; padding: 18px 15px; border-radius: 12px; background: #e8f8f4; color: #008f7a !important; font-size: 13px !important; }
 .manual-address { background: #e6f7f3; color: #009b82; width: 100%; padding: 16px; margin-top: 20px; }
+.move-info-page button:focus-visible, .move-info-page input:focus-visible { outline: none; }
 .analysis-page { display: flex; flex-direction: column; padding-top: max(12px, env(safe-area-inset-top)); }
 .analysis-page h1 { margin-top: 25px; font-size: 24px; line-height: 1.4; }
 .analysis-page > p { margin-top: 18px; font-size: 16px; color: #333d4b; line-height: 1.5; }

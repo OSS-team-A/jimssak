@@ -47,6 +47,10 @@ export function MoveInfoPage() {
     try { return JSON.parse(sessionStorage.getItem(draftKey) || 'null') || emptyDraft(); }
     catch { return emptyDraft(); }
   });
+  const [customFloor, setCustomFloor] = useState<Record<Side, boolean>>({
+    origin: draft.origin.floor !== null && ![-1, 1, 2, 3].includes(draft.origin.floor),
+    destination: draft.destination.floor !== null && ![-1, 1, 2, 3].includes(draft.destination.floor),
+  });
   const [sheet, setSheet] = useState<Side | 'schedule' | null>(null);
   const [keyword, setKeyword] = useState('');
   const [results, setResults] = useState<AddressCandidate[]>([]);
@@ -125,13 +129,13 @@ export function MoveInfoPage() {
         <div className="floor-options">
           {([['지하', -1], ['1층', 1], ['2층', 2], ['3층', 3]] as const).map(([label, value]) =>
             <button type="button" key={label} className={draft[side].floor === value ? 'selected' : ''}
-              onClick={() => updatePlace(side, { floor: value })}>{label}</button>)}
-          <button type="button" className={draft[side].floor !== null && ![-1, 1, 2, 3].includes(draft[side].floor) ? 'selected' : ''}
-            onClick={() => updatePlace(side, { floor: 4 })}>직접 입력</button>
+              onClick={() => { setCustomFloor(current => ({ ...current, [side]: false })); updatePlace(side, { floor: value }); }}>{label}</button>)}
+          <button type="button" className={customFloor[side] ? 'selected' : ''}
+            onClick={() => { setCustomFloor(current => ({ ...current, [side]: true })); updatePlace(side, { floor: null }); }}>직접 입력</button>
         </div>
-        {draft[side].floor !== null && ![-1, 1, 2, 3].includes(draft[side].floor) &&
-          <input className="move-field floor-input" type="number" min="-5" max="80" aria-label="층수 직접 입력"
-            value={draft[side].floor} onChange={e => updatePlace(side, { floor: e.target.value === '' ? null : Number(e.target.value) })} />}
+        {customFloor[side] &&
+          <input className="move-field floor-input" type="number" min="-5" max="80" placeholder="층수를 입력해주세요" aria-label="층수 직접 입력"
+            value={draft[side].floor ?? ''} onChange={e => updatePlace(side, { floor: e.target.value === '' ? null : Number(e.target.value) })} />}
       </section>)}
       <section className="move-block schedule-block"><h2>이사 일정</h2>
         <button type="button" className="move-field" onClick={() => { setPickedDate(draft.date); setPickedTime(draft.time); setSheet('schedule'); }}>
@@ -158,7 +162,7 @@ export function MoveInfoPage() {
       </div>
     </>}
     {sheet && <div className="sheet-backdrop" onClick={() => setSheet(null)}>
-      <div className="move-sheet" role="dialog" aria-modal="true" aria-label={sheet === 'schedule' ? '이사 날짜와 시간' : '주소 검색'} onClick={e => e.stopPropagation()}>
+      <div className={`move-sheet ${sheet === 'schedule' ? 'move-sheet--schedule' : 'move-sheet--address'}`} role="dialog" aria-modal="true" aria-label={sheet === 'schedule' ? '이사 날짜와 시간' : '주소 검색'} onClick={e => e.stopPropagation()}>
         <span className="sheet-handle" />
         {sheet === 'schedule' ? <>
           <h2>이사 날짜와 시간</h2>
@@ -190,6 +194,7 @@ export function MoveInfoPage() {
           <div className="address-results">{results.map(item => <button type="button" key={item.adm_cd + item.lot_main + item.road_address}
             onClick={() => { updatePlace(sheet, { address: item.road_address, candidate: item }); setSheet(null); }}>
             <strong>{item.road_address}</strong><small>{item.jibun_address}</small></button>)}</div>
+          {results.length > 0 && <p className="address-selection-hint">주소를 선택하면 입력 화면으로 돌아가요</p>}
           {searchError && <button type="button" className="manual-address" onClick={() => {
             updatePlace(sheet, { address: keyword.trim(), candidate: null }); setSheet(null);
           }}>입력한 주소 사용하기</button>}
