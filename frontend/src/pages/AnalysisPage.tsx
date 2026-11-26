@@ -12,8 +12,6 @@ import type { MoveSnapshot } from '../types/move';
 type AnalysisScreen = 'waiting' | 'complete' | 'failed';
 
 export function AnalysisPage() {
-  const previewParam = import.meta.env.DEV ? new URLSearchParams(window.location.search).get('preview') : null;
-  const preview = previewParam === 'waiting' || previewParam === 'complete' || previewParam === 'failed' ? previewParam : null;
   const [snapshot, setSnapshot] = useState<MoveSnapshot | null>(null);
   const [error, setError] = useState('');
   const saved = sessionStorage.getItem('jimssak-member-move') || sessionStorage.getItem('jimssak-guest-move');
@@ -23,7 +21,7 @@ export function AnalysisPage() {
   const guestToken = move?.guest_token;
 
   useEffect(() => {
-    if (preview || !moveId) return;
+    if (!moveId) return;
     let active = true;
     const refresh = () => {
       void getMove(moveId, guestToken).then(value => { if (active) { setSnapshot(value); setError(''); } })
@@ -32,12 +30,12 @@ export function AnalysisPage() {
     refresh();
     const timer = window.setInterval(refresh, 5000);
     return () => { active = false; window.clearInterval(timer); };
-  }, [moveId, guestToken, preview]);
+  }, [moveId, guestToken]);
 
   const status = snapshot?.data.analysis.status;
-  const screen: AnalysisScreen = preview || (status === 'completed' ? 'complete' : status === 'failed' ? 'failed' : 'waiting');
+  const screen: AnalysisScreen = status === 'completed' ? 'complete' : status === 'failed' ? 'failed' : 'waiting';
 
-  if (!moveId && !preview) return <main className="app-page analysis-page"><BrandHeader />
+  if (!moveId) return <main className="app-page analysis-page"><BrandHeader />
     <div className="analysis-content"><h1>이사 정보를 찾을 수 없어요</h1><Button onClick={() => navigate(routes.capture)}>촬영 준비로 돌아가기</Button></div>
   </main>;
 
