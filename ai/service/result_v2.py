@@ -16,7 +16,12 @@ from pathlib import Path
 
 from ai.measurement.moving_contract import MeasurementResponse, VideoResult
 from ai.measurement.refine import LABEL_KO, canonical_label, review_track
-from ai.measurement.standard_sizes import NONSTANDARD, QUALIFIER, STANDARDS
+from ai.measurement.standard_sizes import (
+    APPLIANCE_QUALIFIER,
+    NONSTANDARD,
+    QUALIFIER,
+    STANDARDS,
+)
 
 SCHEMA_VERSION = "2.0"
 AXES = ("width", "depth", "height")
@@ -86,6 +91,8 @@ def item(track, index: int, *, fps: float | None, confidence: float | None) -> d
     standard = _standard(track)
     if standard:
         body["standard_size"] = standard
+    if APPLIANCE_QUALIFIER in track.qualifiers:
+        body["size_adjustment"] = "catalog_prior"
     return body
 
 

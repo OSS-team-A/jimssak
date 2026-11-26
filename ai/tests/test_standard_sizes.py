@@ -62,3 +62,30 @@ def test_cli(tmp_path):
     assert main(["apply", str(source), "--output", str(out)]) == 0
     track = json.loads(out.read_text())["videos"][0]["objects"][0]
     assert track["dimensions"]["depth"]["cm"] == 160
+
+
+def test_washer_is_pulled_toward_catalog_sizes():
+    # A compact drum washer (about 60 x 55 x 85 cm) measured 25% too wide and deep.
+    size, qualifiers = dims(snap(response("washing machine", {"width": 75, "depth": 69,
+                                                              "height": 88})))
+    assert "appliance_catalog_prior" in qualifiers
+    assert 59 <= size["width"] <= 70 and 55 <= size["depth"] <= 66
+    assert 82 <= size["height"] <= 100
+
+
+def test_fridge_height_stays_near_measurement_between_models():
+    size, _ = dims(snap(response("refrigerator", {"width": 64, "depth": 57, "height": 158})))
+    assert 150 <= size["height"] <= 170
+
+
+def test_catalog_uses_measurement_axes():
+    from ai.measurement.standard_sizes import catalog_cm
+    for label in ("washer", "refrigerator"):
+        assert all(s["width"] >= s["depth"] for s in catalog_cm(label))
+
+
+def test_pull_excludes_a_model():
+    from ai.measurement.standard_sizes import pull_to_catalog
+    exact = {"width": 63.7, "depth": 55.0, "height": 82.0}
+    assert pull_to_catalog(exact, "washer", exclude="lg_fr9wpb") != pull_to_catalog(exact,
+                                                                                   "washer")
