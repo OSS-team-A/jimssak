@@ -48,7 +48,8 @@ function go(view: 'chat' | 'list', status?: 'normal' | 'needs' | 'saved', fromLi
 function Avatar() { return <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>; }
 
 export function AfterMoveReviewPage() {
-  const params = new URLSearchParams(location.search);
+  const [query, setQuery] = useState(location.search);
+  const params = new URLSearchParams(query);
   const isPreview = preview();
   const [state, setState] = useState<AfterReviewState>(load);
   const [expanded, setExpanded] = useState<string | null>(params.get('view') === 'list' ? 'preview-chair' : null);
@@ -64,6 +65,7 @@ export function AfterMoveReviewPage() {
   const total = shown.reduce((sum, item) => sum + item.quantity, 0);
   const concerns = (state.chairConfirmed ? 0 : 1) + (state.wardrobe === 'confirmed' ? 0 : 1);
 
+  useEffect(() => { const sync = () => setQuery(location.search); window.addEventListener('popstate', sync); return () => window.removeEventListener('popstate', sync); }, []);
   useEffect(() => { if (isPreview) sessionStorage.setItem(storageKey, JSON.stringify(state)); }, [isPreview, state]);
   useEffect(() => { if (!isPreview) return; let active = true; void import('../features/reviewPreview').then(({ reviewPreview }) => { if (active) setSample(reviewPreview); }); return () => { active = false; }; }, [isPreview]);
   useEffect(() => { if (!toast) return; const timer = window.setTimeout(() => setToast(''), 2600); return () => window.clearTimeout(timer); }, [toast]);
