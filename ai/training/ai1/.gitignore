@@ -1,0 +1,46 @@
+# 가상환경·캐시
+.venv/
+__pycache__/
+*.pyc
+.cache/
+
+# 가중치·체크포인트 (Git에 올리지 않음)
+weights/
+*.pt
+*.pth
+*.onnx
+*.engine
+
+# 실행 결과·평가 결과 (프레임·대표 이미지·결과 영상 포함)
+runs/
+evaluations/
+
+# 원본 영상·프레임·데이터셋 (Git에 올리지 않음)
+*.mp4
+*.MP4
+*.mov
+*.MOV
+*.avi
+*.mkv
+*.jpg
+*.jpeg
+*.png
+*.webp
+data/
+datasets/
+frames*/
+
+# CVAT 내보내기
+cvat_export*/
+*.zip
+
+# 전달용 압축본
+dist/
+
+# 서버에서 받은 결과
+results_from_server/
+
+# 로컬 실행 산출물
+logs/
+models/
+.ruff_cache/

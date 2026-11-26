@@ -1,0 +1,75 @@
+# smoke: 전체 파이프라인이 끝까지 도는지 확인 (적은 데이터·짧은 학습). 수치는 성능 근거로 쓰지 않는다.
+profile: smoke
+description: 파이프라인 점검 — 모든 단계를 최소 데이터로 실행
+
+input_video: data/input_videos/언니방영상.mp4
+input_video_id: unnie_room_01
+video_max_frames: 90          # 영상 추론은 앞 90프레임만
+
+gpu:
+  require_gpu: true
+  use_all_visible_gpus: false
+  monitor_interval_sec: 5
+
+lvis:
+  use_train_json: false       # 350MB train json 대신 val json만 사용해 train/val/test를 이미지 단위로 나눔 (점검 전용)
+  use_coco_annotations: true  # max와 같은 COCO+LVIS 병합 라벨 경로를 본 실행 전에 점검
+  max_train_images: 160
+  max_val_images: 40
+  max_test_images: 60
+  per_class_image_cap: 40
+  min_train_instances: 3
+  min_test_instances: 1
+  download_workers: 8
+
+seg_models:
+  - {name: yolo11n-seg, epochs: 2, batch: 8, imgsz: 320}
+train_common:
+  patience: 5
+  optimizer: auto
+  cos_lr: true
+  seed: 0
+  workers: 2
+  save_period: -1
+  oom_retry: 2
+
+homeobjects:
+  enabled: false              # 400MB 다운로드 → smoke에서는 생략
+
+reid:
+  backbone: vit_small_patch14_dinov2.lvd142m
+  product_types: [CHAIR, SOFA, TABLE, LAMP, OTTOMAN]
+  min_images_per_item: 3
+  max_items: 120
+  split: {train: 0.6, val: 0.2, test: 0.2}
+  epochs: 2
+  batch_items: 8
+  imgs_per_item: 3
+  lr: 0.001
+  weight_decay: 0.0001
+  embed_dim: 128
+  margin: 0.2
+  patience: 2
+  download_workers: 8
+
+tracking_bench:
+  n_val_sequences: 3
+  n_test_sequences: 4
+  frames_per_sequence: 60
+  out_size: [480, 288]
+
+matching_bench:
+  n_val_scenarios: 15
+  n_test_scenarios: 20
+  items_per_scenario: [5, 8]
+  missing_per_scenario: [0, 2]
+  unexpected_per_scenario: [0, 1]
+
+damage:
+  crack_model: {name: yolo11n-seg, epochs: 2, batch: 8, imgsz: 320, max_train_images: 120}
+  visa_categories: []          # 1.9GB → smoke 생략. 이상 탐지 코드는 ABO 합성 손상으로만 점검
+  patchcore: {backbone: wide_resnet50_2, coreset_ratio: 0.05, imgsz: 224, max_train_images: 30}
+  change_bench: {n_val_pairs: 20, n_test_pairs: 30}
+
+video:
+  vid_stride: 1

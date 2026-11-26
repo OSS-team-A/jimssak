@@ -1,0 +1,77 @@
+# full: 확장 실험 (데이터·학습량 증가, 모델 크기 n/s/m 비교). GPU 1장 기준 추정 20시간 이상(미측정)
+profile: full
+description: 확장 실험 — 세그멘테이션 n/s/m, 더 많은 LVIS 이미지, VisA 12개 범주
+
+input_video: data/input_videos/언니방영상.mp4
+input_video_id: unnie_room_01
+
+gpu:
+  require_gpu: true
+  use_all_visible_gpus: true
+  monitor_interval_sec: 5
+
+lvis:
+  use_train_json: true
+  max_train_images: 40000
+  max_val_images: 3000
+  max_test_images: 5000
+  per_class_image_cap: 5000
+  min_train_instances: 30
+  min_test_instances: 5
+  download_workers: 24
+
+seg_models:
+  - {name: yolo11n-seg, epochs: 100, batch: 32, imgsz: 640}
+  - {name: yolo11s-seg, epochs: 100, batch: 16, imgsz: 640}
+  - {name: yolo11m-seg, epochs: 100, batch: 8, imgsz: 640}
+train_common:
+  patience: 20
+  optimizer: auto
+  cos_lr: true
+  seed: 0
+  workers: 12
+  save_period: 10
+  oom_retry: 3
+
+homeobjects:
+  enabled: true
+  det_model: {name: yolo11m, epochs: 100, batch: 16, imgsz: 640}
+  val_fraction: 0.1
+
+reid:
+  backbone: vit_small_patch14_dinov2.lvd142m
+  product_types: [CHAIR, SOFA, TABLE, LAMP, OTTOMAN, STOOL_SEATING, SUITCASE, HOME_FURNITURE_AND_DECOR, HOME, BED, DRESSER, SHELF, CABINET, DESK, BOOKCASE, LIGHT_FIXTURE, RUG]
+  min_images_per_item: 3
+  max_items: 12000
+  split: {train: 0.7, val: 0.1, test: 0.2}
+  epochs: 60
+  batch_items: 64
+  imgs_per_item: 3
+  lr: 0.001
+  weight_decay: 0.0001
+  embed_dim: 256
+  margin: 0.2
+  patience: 8
+  download_workers: 24
+
+tracking_bench:
+  n_val_sequences: 40
+  n_test_sequences: 100
+  frames_per_sequence: 180
+  out_size: [640, 384]
+
+matching_bench:
+  n_val_scenarios: 300
+  n_test_scenarios: 1000
+  items_per_scenario: [8, 24]
+  missing_per_scenario: [0, 4]
+  unexpected_per_scenario: [0, 3]
+
+damage:
+  crack_model: {name: yolo11s-seg, epochs: 100, batch: 16, imgsz: 640}
+  visa_categories: [candle, capsules, cashew, chewinggum, fryum, macaroni1, macaroni2, pcb1, pcb2, pcb3, pcb4, pipe_fryum]
+  patchcore: {backbone: wide_resnet50_2, coreset_ratio: 0.01, imgsz: 256, max_train_images: 400}
+  change_bench: {n_val_pairs: 300, n_test_pairs: 1000}
+
+video:
+  vid_stride: 1

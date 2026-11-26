@@ -1,0 +1,91 @@
+# max: 정확도 최대화 실험 (GPU 2장 권장). standard 결과 분석을 반영한 개선판.
+#
+# standard 대비 바뀐 점과 근거
+# 1) 공통 클래스(의자·소파·침대·테이블·TV·냉장고·전자레인지·오븐·캐리어·자전거) 라벨을 COCO 원본 주석으로 교체
+#    - 근거(실측): COCO val2017에서 의자가 있는 572장 중 LVIS 의자 라벨은 87장(15%), 테이블 12%.
+#      LVIS만 쓰면 라벨 없는 의자를 '배경'으로 배워 standard에서 의자 mask AP가 0.17→0.09로 떨어짐.
+# 2) 데이터 상한 해제: 조건에 맞는 LVIS 학습 이미지 전부 사용(standard 1.2만 장 → 수만 장 예상)
+# 3) 더 큰 모델 yolo11m-seg 추가 (Ultralytics 공식 COCO mask mAP50-95: s 37.8 → m 41.5)
+# 4) GPU 2장 DDP, COCO 이미지는 묶음(zip 19.3GB)으로 한 번에 받아 다운로드 시간 단축
+# 5) 재식별 백본 DINOv2 ViT-B/14, ABO 상품 최대 1.2만 개, VisA 12범주, 평가 시나리오 증가
+#
+# 시간(추정, standard 실측 epoch 시간에서 외삽 — 서버 실측 아님): 세그멘테이션 학습 약 8~10시간 + 데이터 준비·평가 약 1~2시간.
+# 실제 추정치는 smoke 직후·학습 단계에서 env/time_estimate.json과 로그에 다시 계산된다.
+# 디스크: COCO zip 20GB + 추출 이미지·데이터셋 약 15~25GB + VisA 4GB → 여유 80GB 이상 권장
+profile: max
+description: 정확도 최대화 — COCO+LVIS 병합 라벨, 전체 데이터, yolo11s/m-seg, GPU 2장
+
+input_video: data/input_videos/언니방영상.mp4
+input_video_id: unnie_room_01
+
+gpu:
+  require_gpu: true
+  use_all_visible_gpus: true
+  monitor_interval_sec: 10
+
+lvis:
+  use_train_json: true
+  use_coco_annotations: true
+  coco_images: zip
+  max_train_images: 200000     # 사실상 상한 없음 (조건에 맞는 이미지 전부)
+  max_val_images: 3000
+  max_test_images: 100000      # COCO val2017 출신 중 대상 품목이 있는 이미지 전부
+  per_class_image_cap: 200000
+  min_train_instances: 40
+  min_test_instances: 5
+  download_workers: 32
+
+seg_models:                    # batch는 GPU 2장 합계 (DDP)
+  - {name: yolo11s-seg, epochs: 80, batch: 64, imgsz: 640}
+  - {name: yolo11m-seg, epochs: 80, batch: 32, imgsz: 640}
+train_common:
+  patience: 20
+  optimizer: auto
+  cos_lr: true
+  seed: 0
+  workers: 12
+  save_period: 20
+  oom_retry: 3
+
+homeobjects:
+  enabled: true
+  det_model: {name: yolo11m, epochs: 100, batch: 32, imgsz: 640}
+  val_fraction: 0.1
+
+reid:
+  backbone: vit_base_patch14_dinov2.lvd142m
+  product_types: [CHAIR, SOFA, TABLE, LAMP, OTTOMAN, STOOL_SEATING, SUITCASE, HOME_FURNITURE_AND_DECOR, HOME, BED, DRESSER, SHELF, CABINET, DESK, BOOKCASE, LIGHT_FIXTURE, RUG]
+  min_images_per_item: 3
+  max_items: 12000
+  split: {train: 0.7, val: 0.1, test: 0.2}
+  epochs: 60
+  batch_items: 64
+  imgs_per_item: 3
+  lr: 0.001
+  weight_decay: 0.0001
+  embed_dim: 256
+  margin: 0.2
+  patience: 8
+  download_workers: 32
+
+tracking_bench:
+  n_val_sequences: 40
+  n_test_sequences: 100
+  frames_per_sequence: 150
+  out_size: [640, 384]
+
+matching_bench:
+  n_val_scenarios: 300
+  n_test_scenarios: 1000
+  items_per_scenario: [8, 20]
+  missing_per_scenario: [0, 4]
+  unexpected_per_scenario: [0, 3]
+
+damage:
+  crack_model: {name: yolo11s-seg, epochs: 80, batch: 64, imgsz: 640}
+  visa_categories: [candle, capsules, cashew, chewinggum, fryum, macaroni1, macaroni2, pcb1, pcb2, pcb3, pcb4, pipe_fryum]
+  patchcore: {backbone: wide_resnet50_2, coreset_ratio: 0.01, imgsz: 256, max_train_images: 300}
+  change_bench: {n_val_pairs: 300, n_test_pairs: 600}
+
+video:
+  vid_stride: 1
