@@ -189,7 +189,11 @@ export function MoveInfoPage() {
                 onClick={() => setPickedDate(date)}>{index + 1}</button>;
             })}
           </div>
-          <div className="time-heading"><h3>이사 시작 시간</h3><button type="button" className="time-tip-button" aria-expanded={tipOpen} aria-controls="time-tip" onClick={() => setTipOpen(open => !open)}>tip</button></div>
+          <div className="time-heading"><h3>이사 시작 시간</h3><button type="button" className="time-tip-button" aria-expanded={tipOpen} aria-controls="time-tip" onClick={() => setTipOpen(open => !open)}>tip</button>
+            {tipOpen && <div id="time-tip" className="time-tip-content" role="tooltip">
+              오전이사: 하루 첫 일정이라 시작 시간이 비교적 안정적이지만 수요가 많아 오후 이사보다 비용이 높게 책정되는 편입니다.<br />오후이사: 오전 이사보다 보통 수만 원~20만 원 가량 저렴한 경우가 많지만, 앞 팀 작업이 늦어지면 시작 시간이 밀릴 수 있고, 마무리가 늦어질 수 있습니다.
+            </div>}
+          </div>
           <div className="time-options">{times.map(time => <button type="button" key={time} className={pickedTime === time ? 'selected' : ''}
             onClick={() => setPickedTime(time)}>{Number(time.slice(0, 2)) < 12 ? '오전' : '오후'} {Number(time.slice(0, 2)) % 12 || 12}:00</button>)}</div>
           <div className="move-sheet-actions"><Button disabled={!pickedDate || !pickedTime} onClick={() => { setDraft(current => ({ ...current, date: pickedDate, time: pickedTime })); setSheet(null); }}>선택 완료</Button></div>
@@ -210,9 +214,6 @@ export function MoveInfoPage() {
           }}>입력한 주소 사용하기</Button></div>
         </>}
       </div>
-      {sheet === 'schedule' && tipOpen && <div id="time-tip" className="time-tip-content" role="tooltip" onClick={e => e.stopPropagation()}>
-        오전이사: 하루 첫 일정이라 시작 시간이 비교적 안정적이지만 수요가 많아요. 오후 이사보다 비용이 높게 책정되는 편입니다.<br />오후이사: 오전 이사보다 보통 수만 원~20만 원 가량 저렴한 경우가 많지만, 앞 팀 작업이 늦어지면 시작 시간이 밀릴 수 있고, 마무리가 늦어질 수 있습니다.
-      </div>}
     </div>}
   </main>;
 }
