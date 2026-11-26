@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { HomePage } from '../pages/HomePage';
 import { GuidePage } from '../pages/GuidePage';
 import { AuthPage } from '../pages/AuthPage';
-import { HistoryPage } from '../pages/HistoryPage';
+import { HistoryPage, HistoryDetailPage } from '../pages/HistoryPage';
 import { CapturePage } from '../pages/CapturePage';
 import { MoveInfoPage } from '../pages/MoveInfoPage';
 import { AnalysisPage } from '../pages/AnalysisPage';
@@ -28,5 +28,6 @@ export function App() {
   if (path === routes.login) return <AuthPage mode="login" />;
   if (path === routes.signup) return <AuthPage mode="signup" />;
   if (path === routes.history) return <HistoryPage />;
+  if (path === routes.historyDetail) return <HistoryDetailPage />;
   return <HomePage />;
 }
