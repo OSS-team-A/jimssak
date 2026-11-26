@@ -179,6 +179,8 @@ button { font: inherit; }
 input.move-field { margin-top: 8px; color: #191f28; }
 .move-info-page input.move-field::placeholder { color: #8b95a1; opacity: 1; }
 .move-field span { color: #a9b3bf; font-size: 20px; }
+.move-field .move-search-icon { width: 18px; height: 18px; display: grid; place-items: center; flex: none; }
+.move-search-icon img { display: block; width: 15.6387px; height: 15.638px; }
 .move-field .move-calendar-icon { width: 18px; height: 18px; display: grid; place-items: center; flex: none; }
 .move-calendar-icon img { display: block; width: 15.6031px; height: 15.558px; }
 .move-label { display: block; color: #8b95a1; font-size: 13px; margin: 20px 0 10px; }
@@ -222,7 +224,8 @@ input.move-field { margin-top: 8px; color: #191f28; }
 .address-search { display: flex; align-items: center; background: #f4f5f7; border-radius: 12px; height: 52px; padding: 0 12px 0 16px; }
 .address-search input { min-width: 0; flex: 1; border: 0; background: transparent; outline: none; font: inherit; }
 .address-search input::placeholder { color: #8b95a1; opacity: 1; }
-.address-search button { background: transparent; color: #8b95a1; font-size: 25px; padding: 0 6px; }
+.address-search button { background: transparent; width: 18px; height: 18px; padding: 0; display: grid; place-items: center; }
+.address-search button img { display: block; width: 18px; height: 18px; }
 .move-sheet > .move-label { margin: 28px 0 0; font-weight: 700; }
 .address-results button { display: grid; text-align: left; gap: 8px; width: 100%; padding: 18px 0; border-radius: 0; border-bottom: 1px solid #e5e8eb; background: white; color: #191f28; }
 .address-results small { color: #8b95a1; font-size: 13px; }

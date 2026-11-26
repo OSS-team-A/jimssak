@@ -5,6 +5,8 @@ import { navigate, routes } from '../app/routes';
 import { getMove, searchAddresses, updateMove } from '../api/moves';
 import type { AddressCandidate, MoveSnapshot, PlaceInput } from '../types/move';
 import calendarClockIcon from '../assets/move-calendar-clock.svg';
+import searchIcon from '../assets/move-search.svg';
+import searchClearIcon from '../assets/move-search-clear.svg';
 
 type Side = 'origin' | 'destination';
 type PlaceDraft = { address: string; candidate: AddressCandidate | null; detail: string; floor: number | null };
@@ -122,7 +124,7 @@ export function MoveInfoPage() {
       {(['origin', 'destination'] as const).map(side => <section className="move-block" key={side}>
         <h2>{side === 'origin' ? '출발지' : '도착지'}</h2>
         <button type="button" className="move-field" onClick={() => { setSheet(side); setKeyword(''); }}>
-          {draft[side].address || '주소 검색'} <span>⌕</span>
+          {draft[side].address || '주소 검색'} <span className="move-search-icon"><img src={searchIcon} alt="" /></span>
         </button>
         {draft[side].address && <input className="move-field" aria-label={side === 'origin' ? '출발지 상세주소' : '도착지 상세주소'}
           placeholder="상세주소 (동·호)" value={draft[side].detail}
@@ -136,7 +138,7 @@ export function MoveInfoPage() {
             onClick={() => { setCustomFloor(current => ({ ...current, [side]: true })); updatePlace(side, { floor: null }); }}>직접 입력</button>
         </div>
         {customFloor[side] &&
-          <input className="move-field floor-input" type="number" min="-5" max="80" placeholder="층수를 입력해주세요" aria-label="층수 직접 입력"
+          <input className="move-field floor-input" type="number" min="-5" max="80" placeholder="예: 5 (숫자만 입력)" aria-label="층수 직접 입력"
             value={draft[side].floor ?? ''} onChange={e => updatePlace(side, { floor: e.target.value === '' ? null : Number(e.target.value) })} />}
       </section>)}
       <section className="move-block schedule-block"><h2>이사 일정</h2>
@@ -189,7 +191,7 @@ export function MoveInfoPage() {
         </> : <>
           <h2>{sheet === 'origin' ? '출발지' : '도착지'} 주소 검색</h2>
           <div className="address-search"><input autoFocus placeholder="도로명, 건물명 검색" value={keyword} onChange={e => setKeyword(e.target.value)} />
-            <button type="button" aria-label="검색어 지우기" onClick={() => setKeyword('')}>×</button></div>
+            <button type="button" aria-label="검색어 지우기" onClick={() => setKeyword('')}><img src={searchClearIcon} alt="" /></button></div>
           <p className="move-label">검색 결과</p>
           {searching && <p>검색 중...</p>}
           {searchError && <p role="alert">{searchError}</p>}
