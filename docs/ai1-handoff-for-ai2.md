@@ -75,7 +75,14 @@ python -u infer.py --video <영상.mp4> --video-id <id> --label B1 \
 python -u link_reappearance.py --run outputs/ai2_test/B1/<run 이름>
 ```
 
-- 학습된 가중치(`B1_yolo11s-seg_best.pt` 19.6MB 등)는 Git에 넣지 않는다. 팀 레포 Release(또는 공유 드라이브)에서 받는다.
+- 학습된 가중치는 Git에 넣지 않고 Release로 공유한다:
+  [ai1-weights-standard-20261125](https://github.com/OSS-team-A/jimssak/releases/tag/ai1-weights-standard-20261125)
+  (`B1_yolo11s-seg_best.pt` 19.6MB 권장, `SHA256SUMS.txt`로 무결성 확인).
+
+  ```bash
+  gh release download ai1-weights-standard-20261125 -R OSS-team-A/jimssak \
+      -p "B1_yolo11s-seg_best.pt" -p "SHA256SUMS.txt" -D weights
+  ```
 - 개인 방 영상·프레임은 레포에 올리지 않는다.
 
 ## 7. 다음에 맞춰야 할 것
