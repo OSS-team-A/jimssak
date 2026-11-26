@@ -9,12 +9,21 @@ import sendIcon from '../assets/chat-send.svg';
 import downloadIcon from '../assets/chat-download.svg';
 import chevronIcon from '../assets/chat-chevron.svg';
 import rowChevronIcon from '../assets/chat-row-chevron.svg';
+import inventoryCloseIcon from '../assets/inventory-close.svg';
+import inventoryChevronDown from '../assets/inventory-chevron-down.svg';
+import inventoryChevronUp from '../assets/inventory-chevron-up.svg';
+import inventoryMinusIcon from '../assets/inventory-minus.svg';
+import inventoryPlusIcon from '../assets/inventory-plus.svg';
 
 const questions = [
   { title: '빠진 물품이 있나요?', description: '영상에 나오지 않은 물품을 목록에서 추가해주세요.', example: '“모니터 27인치 추가해줘.”', skip: '빠진 물품 없어요' },
   { title: '목록에서 제외할 물품이 있나요?', description: '이사하지 않는 물품은 목록에서 수량을 0개로 바꿔주세요.', example: '“세탁기는 이사하지 않아요.”', skip: '제외할 물품 없어요' },
   { title: '이사할 때 알아두면 좋을 점이 있나요?', description: '무거운 물품이나 트럭 진입 제한, 짐을 빼는 날과 받는 날이 다른 경우를 알려주세요.', example: '“침대가 돌침대예요. 짐을 빼고 이틀 뒤에 받아야 해요.”', skip: '특이사항 없어요' },
 ];
+const objectParticle = (name: string) => {
+  const last = name.charCodeAt(name.length - 1);
+  return last >= 0xac00 && last <= 0xd7a3 && (last - 0xac00) % 28 === 0 ? '를' : '을';
+};
 
 function ReviewGate({ loading, error, hasMove, completed }: { loading: boolean; error: string; hasMove: boolean; completed: boolean }) {
   return <div className="review-gate">
@@ -91,37 +100,46 @@ export function ChatPage() {
 }
 
 export function InventoryPage() {
-  const { move, analysis, draft, loading, error, items, added, total, updateDraft } = useReview();
+  const { move, analysis, draft, loading, error, items, added, total, preview, updateDraft } = useReview();
   const [expanded, setExpanded] = useState<string | null>(() => isReviewPreview() ? 'preview-chair' : null);
-  const [newLabel, setNewLabel] = useState('');
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; label: string; added: boolean } | null>(null);
   const ready = analysis?.status === 'completed' && !!draft;
+  const visibleItems = items.filter(item => item.quantity > 0);
 
-  function addItem(event: FormEvent) {
-    event.preventDefault();
-    const label = newLabel.trim();
-    if (!label) return;
-    updateDraft(current => ({ ...current, added: [...current.added, { id: crypto.randomUUID(), label, quantity: 1 }] }));
-    setNewLabel('');
+  function decrease(id: string, label: string, quantity: number, isAdded: boolean) {
+    if (quantity === 1) {
+      setPendingDelete({ id, label, added: isAdded });
+      return;
+    }
+    if (isAdded) updateDraft(current => ({ ...current, added: current.added.map(entry => entry.id === id ? { ...entry, quantity: entry.quantity - 1 } : entry) }));
+    else updateDraft(current => ({ ...current, quantities: { ...current.quantities, [id]: quantity - 1 } }));
+  }
+
+  function confirmDelete() {
+    if (!pendingDelete) return;
+    if (pendingDelete.added) updateDraft(current => ({ ...current, added: current.added.filter(entry => entry.id !== pendingDelete.id) }));
+    else updateDraft(current => ({ ...current, quantities: { ...current.quantities, [pendingDelete.id]: 0 } }));
+    setExpanded(current => current === pendingDelete.id ? null : current);
+    setPendingDelete(null);
   }
 
   return <main className="app-page review-inventory-page">
-    <header className="sub-header"><strong>이삿짐 목록</strong><button type="button" onClick={() => navigateReview(routes.chat)} aria-label="목록 닫기">×</button></header>
+    <header className="sub-header"><strong>이삿짐 목록</strong><button type="button" onClick={() => navigateReview(routes.chat)} aria-label="목록 닫기"><img src={inventoryCloseIcon} alt="" /></button></header>
     {ready ? <div className="review-inventory-body">
       <div className="review-inventory-heading"><h1>이삿짐 목록</h1><span>검토중</span></div>
-      <p>영상 분석을 바탕으로 작성한 목록이에요.<br />확인한 내용을 검토해 주세요.</p>
-      <div className="review-inventory-stats"><span>품목 수 <strong>{items.filter(item => item.quantity > 0).length + added.filter(item => item.quantity > 0).length}종</strong></span><span>총 수량 <strong>{total}개</strong></span></div>
+      <p>영상 분석을 바탕으로 작성한 목록이에요.<br />확인한 내용은 명세서에 반영돼요.</p>
+      <div className="review-inventory-stats"><span>품목 수 <strong>{visibleItems.length + added.filter(item => item.quantity > 0).length}종</strong></span><span>총 수량 <strong>{total}개</strong></span></div>
       <div className="review-inventory-table"><div className="review-inventory-table-head"><span>번호</span><span>품목</span><span>수량</span><span>예상 크기 (cm)</span></div>
-        {items.map((item, index) => <div className="review-inventory-item" key={item.item_id}>
-          <div className="review-inventory-row"><small>{String(index + 1).padStart(2, '0')}</small><strong>{item.label_ko}</strong><div className="review-quantity"><button type="button" onClick={() => updateDraft(current => ({ ...current, quantities: { ...current.quantities, [item.item_id]: Math.max(0, item.quantity - 1) } }))} aria-label={`${item.label_ko} 수량 줄이기`}>−</button><b>{item.quantity}</b><button type="button" onClick={() => updateDraft(current => ({ ...current, quantities: { ...current.quantities, [item.item_id]: item.quantity + 1 } }))} aria-label={`${item.label_ko} 수량 늘리기`}>+</button></div><span>{dimensions(item)}</span><button className="review-expand" type="button" onClick={() => setExpanded(expanded === item.item_id ? null : item.item_id)} aria-label={`${item.label_ko} 상세 ${expanded === item.item_id ? '닫기' : '보기'}`}>{expanded === item.item_id ? '⌃' : '⌄'}</button></div>
-          {expanded === item.item_id && <div className="review-inventory-detail">{item.snapshots[0]?.image_url && <img className="review-inventory-photo" src={item.snapshots[0].image_url} alt={`${item.label_ko} 분석 사진`} />}<dl><dt>크기</dt><dd>{dimensions(item)} cm</dd><dt>분리 여부</dt><dd>{item.disassembly_required == null ? '확인 필요' : item.disassembly_required ? '분리 필요' : '분리 불필요'}</dd><dt>검토</dt><dd>{item.needs_review ? item.review_reasons.join(' · ') || '확인 필요' : '확인 완료'}</dd></dl></div>}
+        {visibleItems.map((item, index) => <div className="review-inventory-item" key={item.item_id}>
+          <div className="review-inventory-row"><small>{String(index + 1).padStart(2, '0')}</small><strong>{item.label_ko}</strong><div className="review-quantity"><button type="button" onClick={() => decrease(item.item_id, item.label_ko, item.quantity, false)} aria-label={`${item.label_ko} 수량 줄이기`}><img src={inventoryMinusIcon} alt="" /></button><b>{pendingDelete?.id === item.item_id ? 0 : item.quantity}</b><button type="button" onClick={() => updateDraft(current => ({ ...current, quantities: { ...current.quantities, [item.item_id]: item.quantity + 1 } }))} aria-label={`${item.label_ko} 수량 늘리기`}><img src={inventoryPlusIcon} alt="" /></button></div><span>{dimensions(item)}</span><button className="review-expand" type="button" onClick={() => setExpanded(expanded === item.item_id ? null : item.item_id)} aria-label={`${item.label_ko} 상세 ${expanded === item.item_id ? '닫기' : '보기'}`}><img src={expanded === item.item_id ? inventoryChevronUp : inventoryChevronDown} alt="" /></button></div>
+          {expanded === item.item_id && <div className="review-inventory-detail">{item.snapshots[0]?.image_url && <div className={`review-inventory-photo${preview ? ' review-inventory-photo--preview' : ''}`}><img src={item.snapshots[0].image_url} alt={`${item.label_ko} 분석 사진`} /></div>}<dl><dt>크기</dt><dd>{dimensions(item)} cm</dd><dt>예상 무게</dt><dd>확인 필요</dd><dt>분리 여부</dt><dd>{item.disassembly_required == null ? '확인 필요' : item.disassembly_required ? '분리 필요' : '분리 불필요'}</dd><dt>검토</dt><dd>{item.needs_review ? item.review_reasons.join(' · ') || '확인 필요' : '확인 완료'}</dd></dl></div>}
         </div>)}
-        {added.map((item, index) => <div className="review-inventory-row review-inventory-added" key={item.id}><small>{String(items.length + index + 1).padStart(2, '0')}</small><strong>{item.label}</strong><div className="review-quantity"><button type="button" onClick={() => updateDraft(current => ({ ...current, added: current.added.map(entry => entry.id === item.id ? { ...entry, quantity: Math.max(0, entry.quantity - 1) } : entry) }))} aria-label={`${item.label} 수량 줄이기`}>−</button><b>{item.quantity}</b><button type="button" onClick={() => updateDraft(current => ({ ...current, added: current.added.map(entry => entry.id === item.id ? { ...entry, quantity: entry.quantity + 1 } : entry) }))} aria-label={`${item.label} 수량 늘리기`}>+</button></div><span>직접 추가</span></div>)}
+        {added.filter(item => item.quantity > 0).map((item, index) => <div className="review-inventory-row review-inventory-added" key={item.id}><small>{String(visibleItems.length + index + 1).padStart(2, '0')}</small><strong>{item.label}</strong><div className="review-quantity"><button type="button" onClick={() => decrease(item.id, item.label, item.quantity, true)} aria-label={`${item.label} 수량 줄이기`}><img src={inventoryMinusIcon} alt="" /></button><b>{pendingDelete?.id === item.id ? 0 : item.quantity}</b><button type="button" onClick={() => updateDraft(current => ({ ...current, added: current.added.map(entry => entry.id === item.id ? { ...entry, quantity: entry.quantity + 1 } : entry) }))} aria-label={`${item.label} 수량 늘리기`}><img src={inventoryPlusIcon} alt="" /></button></div><span>직접 추가</span></div>)}
       </div>
-      <form className="review-add-item" onSubmit={addItem}><label htmlFor="review-add-name">빠진 물품 추가</label><div><input id="review-add-name" value={newLabel} onChange={event => setNewLabel(event.target.value)} placeholder="물품 이름" /><button type="submit" disabled={!newLabel.trim()}>추가</button></div></form>
       <div className="review-inventory-total"><strong>합계</strong><strong>{total}개</strong></div>
-      <div className="review-inventory-help"><strong>확인해 주세요</strong><p>크기는 가로 × 깊이 × 높이 순서의 추정값이에요.<br />무게와 분리 여부는 실제 물품 확인이 필요해요.</p><p>수정한 목록은 이 브라우저에 임시로 보관돼요.</p></div>
-      <Button onClick={() => navigateReview(routes.chat)}>채팅으로 돌아가기</Button>
+      <div className="review-inventory-help"><strong>확인해 주세요</strong><p>• 크기는 가로 × 깊이 × 높이 순서의 추정값이에요.<br />• 무게와 분리 여부는 실제 물품 확인이 필요해요.<br />• 누락된 물품이나 두고 갈 물품은 채팅으로 알려주세요.</p><small>수정한 목록은 이 브라우저에 임시로 보관돼요.</small></div>
     </div> : <ReviewGate loading={loading} error={error} hasMove={!!move} completed={analysis?.status === 'completed'} />}
+    {pendingDelete && <div className="review-delete-backdrop" onClick={() => setPendingDelete(null)}><div className="review-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="review-delete-title" onClick={event => event.stopPropagation()}><h2 id="review-delete-title">{pendingDelete.label}{objectParticle(pendingDelete.label)} 삭제할까요?</h2><p>{pendingDelete.label}{objectParticle(pendingDelete.label)} 목록에서 삭제할까요?</p><div><button type="button" onClick={() => setPendingDelete(null)}>아니요</button><button type="button" onClick={confirmDelete}>예</button></div></div></div>}
   </main>;
 }
 
