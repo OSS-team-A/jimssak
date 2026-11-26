@@ -13,6 +13,11 @@ type PlaceDraft = { address: string; candidate: AddressCandidate | null; detail:
 type Draft = { origin: PlaceDraft; destination: PlaceDraft; date: string; time: string };
 const emptyPlace = (): PlaceDraft => ({ address: '', candidate: null, detail: '', floor: null });
 const emptyDraft = (): Draft => ({ origin: emptyPlace(), destination: emptyPlace(), date: '', time: '' });
+const confirmPreviewDraft = (): Draft => ({
+  origin: { address: '서울 중구 퇴계로36길 2', candidate: null, detail: '302호', floor: 3 },
+  destination: { address: '서울 성동구 월계로44가길 8', candidate: null, detail: '', floor: 5 },
+  date: '2026-12-20', time: '09:00',
+});
 const times = ['07:00', '09:00', '10:00', '13:00', '14:00'];
 const savedMove = () => {
   for (const key of ['jimssak-member-move', 'jimssak-guest-move']) {
@@ -44,9 +49,11 @@ const fromSnapshot = (record: MoveSnapshot): Draft => ({
 export function MoveInfoPage() {
   const move = savedMove();
   const preview = import.meta.env.DEV && new URLSearchParams(window.location.search).has('preview');
+  const previewConfirm = import.meta.env.DEV && new URLSearchParams(window.location.search).get('preview') === 'confirm';
   const draftKey = move ? `jimssak-draft-${move.move_id}` : '';
   const [hadDraft] = useState(() => Boolean(draftKey && sessionStorage.getItem(draftKey)));
   const [draft, setDraft] = useState<Draft>(() => {
+    if (previewConfirm) return confirmPreviewDraft();
     try { return JSON.parse(sessionStorage.getItem(draftKey) || 'null') || emptyDraft(); }
     catch { return emptyDraft(); }
   });
@@ -59,7 +66,7 @@ export function MoveInfoPage() {
   const [results, setResults] = useState<AddressCandidate[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
-  const [confirm, setConfirm] = useState(false);
+  const [confirm, setConfirm] = useState(previewConfirm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [month, setMonth] = useState(() => {
@@ -70,13 +77,13 @@ export function MoveInfoPage() {
   const [tipOpen, setTipOpen] = useState(false);
   const [tipAnchor, setTipAnchor] = useState({ right: 24, bottom: 0 });
 
-  useEffect(() => { if (draftKey) sessionStorage.setItem(draftKey, JSON.stringify(draft)); }, [draft, draftKey]);
+  useEffect(() => { if (draftKey && !previewConfirm) sessionStorage.setItem(draftKey, JSON.stringify(draft)); }, [draft, draftKey, previewConfirm]);
   useEffect(() => {
-    if (!move) return;
+    if (!move || previewConfirm) return;
     void getMove(move.move_id, move.guest_token).then(record => {
       if (!hadDraft) setDraft(fromSnapshot(record));
     }).catch(() => setError('저장된 이사 정보를 불러오지 못했어요.'));
-  }, [draftKey, hadDraft, move?.move_id, move?.guest_token]);
+  }, [draftKey, hadDraft, move?.move_id, move?.guest_token, previewConfirm]);
   useEffect(() => {
     if (!keyword.trim() || keyword.trim().length < 2 || sheet === 'schedule' || sheet === null) {
       setResults([]); setSearchError(''); return;
@@ -101,7 +108,7 @@ export function MoveInfoPage() {
 
   async function save() {
     if (!complete) return;
-    if (!move) { setError('미리보기에서는 저장할 수 없어요.'); return; }
+    if (!move || previewConfirm) { setError('미리보기에서는 저장할 수 없어요.'); return; }
     setSaving(true); setError('');
     try {
       await updateMove(move.move_id, move.guest_token, {
