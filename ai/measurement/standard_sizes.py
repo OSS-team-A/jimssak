@@ -1,9 +1,14 @@
-"""Snap measured beds to the nearest standard mattress size.
+"""Use known product sizes: snap beds to mattress standards, pull appliances to catalogs.
 
 Bed sizes come in a handful of standards, so a bed measured from plain video is usually
 closer to the truth when it is replaced by the most likely standard size. Width (the
 longer floor side) is the bed's length and depth its width, as elsewhere in measurement.
 Height varies with the frame and is left as measured.
+
+Washers and refrigerators come in many models, but their sizes cluster. Their measured
+size is replaced by the average of catalog models weighted by how well each matches the
+measurement (all three dimensions together), which pulls a noisy measurement toward
+sizes that real products have.
 
     python -m ai.measurement.standard_sizes apply outputs/result-calibrated.json \
         --region kr --output outputs/result-beds.json
@@ -45,6 +50,60 @@ KINDS = {"capture_poses": "arkit", "rgb_metric_depth_pnp": "rgb"}
 MAX_LOG_RATIO = 0.6
 QUALIFIER = "bed_standard_size"
 NONSTANDARD = "bed_size_nonstandard"
+APPLIANCE_QUALIFIER = "appliance_catalog_prior"
+
+# Official sizes (W x D x H, mm) of models sold in Korea, from lge.co.kr, samsung.com and
+# retailer spec tables (checked 2026-11). Sources are listed in docs/appliance-sizes.md.
+APPLIANCES_MM = {
+    "washer": {
+        "lg_tr10wl": (590, 606, 960), "lg_tr10wv4": (590, 610, 965),
+        "lg_f10src": (600, 615, 850), "lg_f9wp": (600, 550, 850),
+        "lg_fr9wpb": (600, 550, 825), "samsung_ww90t3000kw": (595, 565, 855),
+        "samsung_wa10cg5441bw": (610, 675, 1059), "samsung_wa10j5710sw1": (610, 675, 1075),
+        "samsung_wa16cg6441by": (637, 701, 1093), "samsung_wa16n6780bg": (637, 701, 1095),
+        "samsung_wd16j7800ks": (686, 787, 990), "samsung_wf24b9600kv": (686, 850, 984),
+        "lg_f21vdu": (700, 770, 990), "lg_f21vbtm": (700, 835, 990),
+    },
+    "refrigerator": {
+        "lg_90l_bar": (463, 500, 820), "lg_b182w13": (555, 585, 1400),
+        "lg_b245w22": (555, 637, 1573), "lg_d312mbe31": (600, 710, 1640),
+        "samsung_rb30d4051s9": (595, 663, 1700), "lg_q336mee151": (597, 674, 1860),
+        "lg_q343mhhf33": (595, 676, 1860), "lg_q405mee151": (697, 696, 1860),
+        "lg_d605mps52": (831, 741, 1860), "lg_ls19gbbdi": (913, 743, 1790),
+        "lg_gs_j5982ms": (913, 735, 1790), "lg_m875aaa031": (914, 918, 1860),
+        "lg_gr_x33fgngl": (912, 929, 1784),
+    },
+}
+# Spread of log(calibrated / true) height on development scene videos (rgb, arkit).
+HEIGHT_SIGMA = {"rgb": 0.23, "arkit": 0.20}
+# Width of each catalog model's bump in log space, so neighbouring models blend smoothly.
+CATALOG_BANDWIDTH = 0.05
+
+
+def catalog_cm(label: str, exclude: str | None = None) -> list[dict[str, float]]:
+    """Catalog sizes in measurement axes: width = longer floor side, depth = shorter."""
+    sizes = []
+    for model, (w, d, h) in APPLIANCES_MM.get(label, {}).items():
+        if model != exclude:
+            sizes.append({"width": max(w, d) / 10, "depth": min(w, d) / 10, "height": h / 10})
+    return sizes
+
+
+def pull_to_catalog(estimate: dict[str, float], label: str, kind: str = "rgb",
+                    exclude: str | None = None) -> dict[str, float] | None:
+    """Catalog average weighted by agreement with the measured dimensions (log space)."""
+    catalog = catalog_cm(label, exclude)
+    if not catalog or not estimate:
+        return None
+    sigma = {**SIGMA[kind], "height": HEIGHT_SIGMA[kind]}
+    spread = {axis: math.hypot(sigma[axis], CATALOG_BANDWIDTH) for axis in estimate}
+    scores = [-0.5 * sum((math.log(estimate[a] / size[a]) / spread[a]) ** 2 for a in estimate)
+              for size in catalog]
+    top = max(scores)
+    weights = [math.exp(score - top) for score in scores]
+    total = sum(weights)
+    return {axis: math.exp(sum(w * math.log(size[axis]) for w, size in zip(weights, catalog))
+                           / total) for axis in estimate}
 
 
 def outer_size(standard: tuple) -> dict[str, float]:
@@ -68,14 +127,32 @@ def match(estimate: dict[str, float], region: str = "kr", kind: str = "rgb") -> 
     return best
 
 
+def _pull_track(track, kind: str):
+    label = canonical_label(track.label)
+    dims = {axis: track.dimensions.get(axis) for axis in ("width", "depth", "height")}
+    measured = {axis: d.cm for axis, d in dims.items() if d is not None}
+    pulled = pull_to_catalog(measured, label, kind)
+    if pulled is None:
+        return track
+    dimensions = dict(track.dimensions)
+    for axis, cm in pulled.items():
+        dimensions[axis] = dims[axis].model_copy(update={"cm": round(cm, 1)})
+    qualifiers = sorted(set(track.qualifiers) | {APPLIANCE_QUALIFIER})
+    return track.model_copy(update={"dimensions": dimensions, "qualifiers": qualifiers})
+
+
 def snap(response: MeasurementResponse, region: str = "kr") -> MeasurementResponse:
-    """Replace bed width/depth with the matched standard; other objects are unchanged."""
+    """Snap beds to a standard and pull appliances to catalog sizes; others unchanged."""
     videos = []
     for clip in response.videos:
         kind = KINDS.get(clip.pose_source, "rgb")
         objects = []
         for track in clip.objects:
-            if canonical_label(track.label) != "bed":
+            label = canonical_label(track.label)
+            if label in APPLIANCES_MM:
+                objects.append(_pull_track(track, kind))
+                continue
+            if label != "bed":
                 objects.append(track)
                 continue
             dims = {axis: track.dimensions.get(axis) for axis in ("width", "depth")}

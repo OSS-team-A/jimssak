@@ -64,6 +64,7 @@ RANGE_MIN_SAMPLES = 20
 LABEL_ALIASES = {
     "couch": "sofa", "dining table": "table", "tv": "tv_monitor", "bookshelf": "shelf",
     "bookcase": "shelf", "dresser": "drawer", "closet": "wardrobe",
+    "washing machine": "washer", "fridge": "refrigerator",
 }
 LABEL_KO = {
     "bed": "침대", "sofa": "소파", "chair": "의자", "stool": "스툴", "table": "테이블",
