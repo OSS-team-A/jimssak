@@ -145,7 +145,6 @@ button { font: inherit; }
 .capture-permission-backdrop { position: absolute; inset: 0; z-index: 5; background: #0007; display: flex; align-items: end; padding: 16px 16px max(38px, env(safe-area-inset-bottom)); }
 .capture-permission { width: 100%; padding: 34px 24px 20px; background: #fff; border-radius: 28px; }
 .capture-permission { position: relative; }
-.permission-close { position: absolute; top: 12px; right: 14px; background: transparent; color: #6b7684; padding: 4px 10px; font-size: 24px; }
 .capture-permission h2 { font-size: 22px; line-height: 1.55; margin: 22px 0 16px; }
 .capture-permission p { margin-bottom: 66px; }
 .capture-camera { position: relative; width: 100%; height: 100dvh; overflow: hidden; background: #17211f; color: white; }

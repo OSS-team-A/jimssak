@@ -138,14 +138,13 @@ export function CapturePage() {
       <div className="capture-tips">
         <div className="capture-tip"><img className="capture-tip-icon" src={bulbIcon} alt="" /><div><strong>조명을 켜주세요</strong><p>밝을수록 물품을 확인하기 쉬워요.</p></div></div>
         <div className="capture-tip"><img className="capture-tip-icon" src={cameraIcon} alt="" /><div><strong>큰 가구부터, 빠짐없이</strong><p>가구 전체와 가려진 공간까지 담아주세요.</p></div></div>
-        <div className="capture-tip"><img className="capture-tip-icon" src={shoesIcon} alt="" /><div><strong>이동하며 방 전체를 촬영해 주세요</strong><p>천천히 이동하면서 방 구석구석 빠짐없이 담기도록 충분히 촬영해 주세요.</p></div></div>
+        <div className="capture-tip"><img className="capture-tip-icon" src={shoesIcon} alt="" /><div><strong>이동하며 방 전체를 촬영해 주세요</strong><p>천천히 이동하면서 방 구석구석 빠짐없이 담기도록<br/>충분히 촬영해 주세요.</p></div></div>
       </div>
       {error && <p role="alert">{error}</p>}
       <div className="capture-prep-actions"><Button onClick={() => setPermissionOpen(true)}>촬영 시작하기</Button></div>
       <input ref={fileRef} type="file" accept=".mp4,.mov,video/mp4,video/quicktime" capture="environment" onChange={chooseFile} hidden aria-label="카메라로 영상 촬영" />
       {permissionOpen && <div className="capture-permission-backdrop" onClick={() => setPermissionOpen(false)}>
         <div className="capture-permission" role="dialog" aria-modal="true" aria-label="카메라 사용 안내" onClick={event => event.stopPropagation()}>
-          <button className="permission-close" type="button" aria-label="닫기" onClick={() => setPermissionOpen(false)}>×</button>
           <img src={permissionCameraIcon} width="40" height="40" alt="" />
           <h2>방을 촬영하려면<br />카메라 사용이 필요해요</h2>
           <p>이삿짐 목록을 만들기 위해 카메라를 사용해요.<br />다음 브라우저 안내에서 ‘허용’을 눌러주세요.</p>
