@@ -13,7 +13,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
-    auth_db_path: Path = BACKEND_DIR / "data" / "auth.sqlite3"
+    # PostgreSQL for users, moves and analyses. The default matches `docker compose up -d db`.
+    database_url: str = "postgresql://jimssak:jimssak@127.0.0.1:5432/jimssak"
     auth_session_ttl_seconds: PositiveInt = 86400
     auth_refresh_ttl_seconds: PositiveInt = 14 * 24 * 60 * 60
     # A guest move stays open for this long after its last request.
@@ -59,7 +60,7 @@ class Settings(BaseSettings):
     analysis_demo: bool = False
     analysis_demo_seconds: PositiveFloat = 6.0
 
-    @field_validator("auth_db_path", "media_dir")
+    @field_validator("media_dir")
     @classmethod
     def resolve_backend_path(cls, path: Path) -> Path:
         return BACKEND_DIR / path

@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.config import Settings
+from backend.app.db import Database
 from backend.app.main import create_app
 from backend.app.schemas.moves import KST
 from backend.app.services import calendar as calendar_module
@@ -104,10 +105,12 @@ class FakeCalendar:
 
 
 @pytest.fixture
-def store(tmp_path):
-    moves = MoveStore(tmp_path / "app.sqlite3", 600)
-    moves.initialize()
-    return moves
+def store(database_url):
+    db = Database(database_url)
+    db.open()
+    db.initialize()
+    yield MoveStore(db, 600)
+    db.close()
 
 
 def test_year_and_month_are_fetched_once(store):
@@ -137,7 +140,7 @@ def test_failure_then_retry(store):
 
 def test_stale_holidays_are_used_when_refresh_fails(store):
     judge_move_date(store, FakeCalendar(), date(2026, 11, 25))
-    with store._connect() as db:
+    with store.db.connect() as db:
         db.execute("UPDATE calendar_cache SET fetched_at = 0")  # a week old and more
     record = judge_move_date(store, FakeCalendar(fail=True), date(2026, 11, 25))
     assert record.holiday_status == "confirmed"
@@ -154,7 +157,7 @@ def in_days(n):
 
 @pytest.fixture
 def client(tmp_path):
-    settings = Settings(auth_db_path=tmp_path / "app.sqlite3", media_dir=tmp_path / "media")
+    settings = Settings(media_dir=tmp_path / "media")
     with TestClient(create_app(settings)) as client:
         yield client
 

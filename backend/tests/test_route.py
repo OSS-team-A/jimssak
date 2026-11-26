@@ -36,7 +36,7 @@ class FakeRouter:
 
 @pytest.fixture
 def client(tmp_path):
-    settings = Settings(auth_db_path=tmp_path / "app.sqlite3", media_dir=tmp_path / "media")
+    settings = Settings(media_dir=tmp_path / "media")
     with TestClient(create_app(settings)) as client:
         yield client
 

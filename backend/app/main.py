@@ -9,6 +9,7 @@ from .api.auth import router as auth_router
 from .api.moves import router as moves_router
 from .api.routes import router
 from .config import Settings
+from .db import Database
 from .services.address_search import JusoAddressSearch
 from .services.analysis import AnalysisStore
 from .services.auth import AuthStore
@@ -24,25 +25,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        store = AuthStore(
-            settings.auth_db_path,
-            settings.auth_session_ttl_seconds,
-            settings.auth_refresh_ttl_seconds,
+        db = Database(settings.database_url)
+        db.open()
+        try:
+            db.initialize()
+        except BaseException:
+            db.close()
+            raise
+        app.state.db = db
+        app.state.auth_store = AuthStore(
+            db, settings.auth_session_ttl_seconds, settings.auth_refresh_ttl_seconds
         )
-        store.initialize()
-        app.state.auth_store = store
-        # Same database as users so member moves can reference their account.
-        move_store = MoveStore(settings.auth_db_path, settings.guest_move_ttl_seconds)
-        move_store.initialize()
-        app.state.move_store = move_store
+        app.state.move_store = MoveStore(db, settings.guest_move_ttl_seconds)
         app.state.media_storage = MediaStorage(settings.media_dir, settings.media_max_bytes)
-        analysis_store = AnalysisStore(
-            settings.auth_db_path,
-            settings.analysis_timeout_seconds,
-            settings.analysis_demo_seconds,
+        app.state.analysis_store = AnalysisStore(
+            db, settings.analysis_timeout_seconds, settings.analysis_demo_seconds
         )
-        analysis_store.initialize()
-        app.state.analysis_store = analysis_store
         app.state.analysis_demo = settings.analysis_demo
         worker_key = settings.analysis_worker_key
         app.state.analysis_worker_key = worker_key.get_secret_value() if worker_key else None
@@ -74,7 +72,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             settings.calendar_request_timeout_seconds,
             settings.calendar_lookup_budget_seconds,
         )
-        yield
+        try:
+            yield
+        finally:
+            db.close()
 
     app = FastAPI(title="짐싹 API", version="0.1.0", lifespan=lifespan)
     app.add_middleware(

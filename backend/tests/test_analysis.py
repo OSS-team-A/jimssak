@@ -14,7 +14,7 @@ MP4 = b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 1000
 
 def make_client(tmp_path, **overrides):
     values = {
-        "auth_db_path": tmp_path / "app.sqlite3", "media_dir": tmp_path / "media",
+        "media_dir": tmp_path / "media",
         "analysis_worker_key": "test-worker-key", "analysis_timeout_seconds": 600,
         "analysis_demo_seconds": 6, **overrides,
     }

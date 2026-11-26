@@ -45,7 +45,7 @@ class FakeSearch:
 
 @pytest.fixture
 def client(tmp_path):
-    settings = Settings(auth_db_path=tmp_path / "app.sqlite3", address_search_api_key=None)
+    settings = Settings(address_search_api_key=None)
     with TestClient(create_app(settings)) as client:
         yield client
 

@@ -62,7 +62,7 @@ class FakeRegister:
 
 @pytest.fixture
 def client(tmp_path):
-    settings = Settings(auth_db_path=tmp_path / "app.sqlite3", media_dir=tmp_path / "media",
+    settings = Settings(media_dir=tmp_path / "media",
                         data_go_kr_service_key=None, address_search_api_key=None)
     with TestClient(create_app(settings)) as client:
         yield client
@@ -355,7 +355,7 @@ def test_short_request_timeout_leaves_room_to_retry(monkeypatch):
 
 
 def test_app_uses_short_register_timeout(tmp_path):
-    settings = Settings(auth_db_path=tmp_path / "app.sqlite3")
+    settings = Settings()
     with TestClient(create_app(settings)) as client:
         register = client.app.state.building_register
         assert register.timeout == 2.0
