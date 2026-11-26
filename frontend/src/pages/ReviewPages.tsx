@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { BrandHeader } from '../components/common/BrandHeader';
 import { Button } from '../components/common/Button';
 import { navigate, routes } from '../app/routes';
@@ -47,26 +47,41 @@ function ChatFooter({ canEdit }: { canEdit: boolean }) {
 export function ChatPage() {
   const { move, analysis, draft, loading, error, items, added, total, updateDraft } = useReview();
   const [message, setMessage] = useState('');
+  const scrollRef = useRef<HTMLDivElement>(null);
   const step = Math.min(draft?.step ?? 0, 4);
   const ready = analysis?.status === 'completed' && !!draft;
-  const question = step >= 1 && step <= 3 ? questions[step - 1] : null;
 
-  function next() { updateDraft(current => ({ ...current, step: Math.min(current.step + 1, 4) })); }
+  useEffect(() => {
+    if (!ready) return;
+    const frame = requestAnimationFrame(() => {
+      const scroll = scrollRef.current;
+      if (scroll) scroll.scrollTop = scroll.scrollHeight;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [ready, step]);
+
+  function next() {
+    updateDraft(current => ({
+      ...current,
+      answers: current.step >= 1 && current.step <= 3
+        ? [...current.answers, { step: current.step, text: questions[current.step - 1].skip }]
+        : current.answers,
+      step: Math.min(current.step + 1, 4),
+    }));
+  }
   function send(event: FormEvent) {
     event.preventDefault();
     const text = message.trim();
     if (!text || !ready || step === 0 || step === 4) return;
-    updateDraft(current => ({ ...current, notes: [...current.notes, { step, text }], step: Math.min(current.step + 1, 4) }));
+    updateDraft(current => ({ ...current, notes: [...current.notes, { step, text }], answers: [...current.answers, { step, text }], step: Math.min(current.step + 1, 4) }));
     setMessage('');
   }
 
   return <main className="app-page review-chat-page">
     <BrandHeader />
-    {ready ? <div className="review-chat-scroll">
-      {step > 0 && <div className="review-user-bubble">목록을 확인했어요</div>}
-      {draft.notes.length > 0 && <div className="review-user-bubble">{draft.notes[draft.notes.length - 1].text}</div>}
-      <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
-      {step === 0 ? <>
+    {ready ? <div className="review-chat-scroll" ref={scrollRef}>
+      <section className="review-chat-turn">
+        <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
         <p className="review-chat-intro">영상에서 찾은 이삿짐을 정리했어요.<br />목록 탭을 눌러 맞는지 확인해주세요.</p>
         <button className="review-summary" type="button" onClick={() => navigateReview(routes.inventory)}>
           <span className="review-summary-title">이삿짐 목록<img src={chevronIcon} alt="" /></span>
@@ -75,18 +90,30 @@ export function ChatPage() {
           {total === 0 && <span className="review-summary-empty">분석에서 찾은 물품이 없어요. 목록에서 직접 추가할 수 있어요.</span>}
           <span className="review-summary-count">총 {total}개 · 누르면 자세히 볼 수 있어요</span>
         </button>
-        <Button onClick={next}>확인했어요</Button>
-      </> : question ? <>
-        <h1>{question.title}</h1>
-        <p className="review-chat-intro">{question.description}</p>
-        <div className="review-example"><strong>예를 들어 이렇게 알려주세요</strong><p>{question.example}</p></div>
-        <Button onClick={next}>{question.skip}</Button>
-        <p className="review-local-note">입력한 내용은 이 브라우저에 임시 보관돼요. 목록 수정은 이삿짐 목록에서 해주세요.</p>
-      </> : <>
+        {step === 0 && <Button onClick={next}>확인했어요</Button>}
+      </section>
+      {step > 0 && <div className="review-user-bubble">목록을 확인했어요</div>}
+      {questions.slice(0, Math.min(step, 3)).map((question, index) => {
+        const questionStep = index + 1;
+        const completed = step > questionStep;
+        const answer = draft.answers.find(entry => entry.step === questionStep)?.text ?? question.skip;
+        return <section className="review-chat-turn" key={questionStep}>
+          <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
+          <h1>{question.title}</h1>
+          <p className="review-chat-intro">{question.description}</p>
+          <div className="review-example"><strong>예를 들어 이렇게 알려주세요</strong><p>{question.example}</p></div>
+          {completed ? <div className="review-user-bubble">{answer}</div> : <>
+            <Button onClick={next}>{question.skip}</Button>
+            <p className="review-local-note">입력한 내용은 이 브라우저에 임시 보관돼요. 목록 수정은 이삿짐 목록에서 해주세요.</p>
+          </>}
+        </section>;
+      })}
+      {step === 4 && <section className="review-chat-turn">
+        <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
         <h1>이 내용으로 견적을 비교할까요?</h1>
         <p className="review-chat-intro">확인한 이삿짐과 이사 조건을 바탕으로 이사 유형별 예상 비용을 비교해요. 실제 견적은 업체와 상담할 때 확인해주세요.</p>
         <Button onClick={() => navigateReview(routes.result)}>예상 비용 비교하기</Button>
-      </>}
+      </section>}
     </div> : <ReviewGate loading={loading} error={error} hasMove={!!move} completed={analysis?.status === 'completed'} />}
     <div className="review-chat-bottom">
       <ChatFooter canEdit={false} />

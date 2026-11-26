@@ -10,6 +10,7 @@ export type ReviewDraft = {
   quantities: Record<string, number>;
   added: { id: string; label: string; quantity: number }[];
   notes: { step: number; text: string }[];
+  answers: { step: number; text: string }[];
 };
 
 function activeMove(): MoveSession | null {
@@ -19,7 +20,7 @@ function activeMove(): MoveSession | null {
   } catch { return null; }
 }
 
-const emptyDraft = (analysisId: string): ReviewDraft => ({ analysisId, step: 0, quantities: {}, added: [], notes: [] });
+const emptyDraft = (analysisId: string): ReviewDraft => ({ analysisId, step: 0, quantities: {}, added: [], notes: [], answers: [] });
 const storageKey = (moveId: string) => `jimssak-review-${moveId}`;
 export const isReviewPreview = () => import.meta.env.DEV && new URLSearchParams(window.location.search).get('preview') === '1';
 
@@ -33,7 +34,7 @@ function loadDraft(moveId: string, analysisId: string): ReviewDraft {
   try {
     const saved = sessionStorage.getItem(storageKey(moveId));
     const draft = saved ? JSON.parse(saved) as ReviewDraft : null;
-    if (draft?.analysisId === analysisId) return draft;
+    if (draft?.analysisId === analysisId) return { ...draft, answers: draft.answers ?? draft.notes.map(note => ({ step: note.step, text: note.text })) };
   } catch { /* Damaged browser data is discarded. */ }
   return emptyDraft(analysisId);
 }
