@@ -29,6 +29,18 @@ export type MoveSnapshot = {
   missing: MoveStep[]; next_step: MoveStep | null;
 };
 
+export type MoveSummary = {
+  move_id: string;
+  created_at: string;
+  move_date: string | null;
+  start_time: string | null;
+  origin_address: string | null;
+  destination_address: string | null;
+  stage: 'preparing' | 'after_move' | 'comparing' | 'done';
+};
+
+export type MoveList = { moves: MoveSummary[]; total: number; limit: number; offset: number };
+
 export type AnalysisItem = {
   item_id: string; label_ko: string; quantity: number;
   dimensions_cm: { width: number | null; depth: number | null; height: number | null };

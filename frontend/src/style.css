@@ -104,21 +104,38 @@ button { font: inherit; }
 .auth-actions p button { margin-left: 8px; color: #687286; font-size: 14px; }
 
 .history-page { padding-top: 0; }
+.history-page .sub-header { width: calc(100% + 48px); margin-left: -24px; padding: 0 24px; }
+.history-page .sub-header strong { font-size: 18px; }
+.history-page .sub-header button { right: 14px; display: grid; place-items: center; }
+.history-page .sub-header button img { display: block; width: 20px; height: 20px; }
 .history-content { padding-top: 16px; }
-.history-content h1 { margin-top: 14px; font-size: 22px; line-height: 1.45; }
-.history-content > p { margin-top: 14px; color: #8b95a1; font-size: 13px; line-height: 1.5; }
-.history-filters { display: flex; gap: 8px; margin: 24px 0 16px; }
-.history-filters button { border: 0; border-radius: 100px; background: #f2f3f5; color: #6b7684; padding: 9px 15px; font-size: 14px; cursor: pointer; }
+.history-content h1 { margin-top: 16px; font-size: 20px; line-height: 30px; letter-spacing: normal; }
+.history-content > p { margin-top: 16px; color: #8b95a1; font-size: 13px; line-height: 18px; }
+.history-filters { display: flex; gap: 10px; margin: 16px 0; padding: 6px 0; }
+.history-filters button { min-width: 64px; min-height: 38px; border: 0; border-radius: 100px; background: #f2f4f6; color: #4e5968; padding: 2px 13px; font-size: 15px; font-weight: 600; cursor: pointer; }
 .history-filters button.active { background: #20c5a1; color: #102f27; }
-.history-card { padding: 20px; border: 0; border-radius: 20px; background: #f7f8fa; }
-.history-status { display: flex; gap: 12px; align-items: center; font-size: 13px; }
-.history-status span { padding: 7px 14px; border-radius: 6px; background: #bcefe6; color: #089b83; }
-.history-card h2 { margin-top: 14px; font-size: 20px; line-height: 1.25; }
-.history-card hr { border: 0; border-top: 1px solid #ebedf0; margin: 14px 0; }
-.history-route { font-size: 14px; }
-.history-card p { margin-top: 10px; color: #6b7684; font-size: 13px; line-height: 1.4; }
-.history-card .button { margin-top: 16px; }
-.history-empty { margin-top: 32px !important; text-align: center; }
+.history-card-list { display: grid; gap: 16px; }
+.history-card { display: grid; gap: 14px; padding: 20px; border: 0; border-radius: 20px; background: #f7f8fa; }
+.history-status { display: flex; gap: 12px; align-items: center; font-size: 16px; }
+.history-status strong { font-weight: 600; }
+.history-status span { display: grid; place-items: center; width: 76px; height: 30px; border-radius: 8px; background: #20c5a14d; color: #089b83; font-size: 12px; font-weight: 600; }
+.history-status span.history-status-done { background: #d8dee4; color: #4e5968; }
+.history-card h2 { margin: 0; color: #333d4b; font-size: 21px; line-height: 25px; letter-spacing: normal; }
+.history-card hr { width: 100%; margin: 0; border: 0; border-top: 1px solid #e8ebee; }
+.history-route { color: #333d4b; font-size: 16px; line-height: 19px; }
+.history-card p { color: #333d4b; }
+.history-card .history-items { font-size: 13px; line-height: 16px; }
+.history-card .history-description { font-size: 15px; line-height: 18px; }
+.history-card .button { min-height: 52px; margin: 0; }
+.history-empty { margin-top: 32px !important; text-align: center; color: #8b95a1; font-size: 14px; }
+.history-empty .button { margin-top: 16px; }
+.history-error { color: #e83850 !important; margin-bottom: 12px !important; }
+.history-detail-page { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; padding-top: max(12px, env(safe-area-inset-top)); padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+.history-detail-scroll { flex: 1; min-height: 0; overflow-y: auto; padding-top: 16px; padding-bottom: 24px; }
+.history-detail-scroll h1 { margin-top: 18px; color: #333d4b; font-size: 20px; line-height: 30px; letter-spacing: normal; }
+.history-detail-scroll > p { margin-top: 18px; color: #333d4b; font-size: 15px; line-height: 23px; }
+.history-detail-scroll > .button { margin-top: 18px; }
+.history-detail-bottom { width: 100%; }
 @media (max-width: 360px) { .guide-tabs { gap: 16px; padding: 0 18px; } .guide-body { padding-left: 18px; padding-right: 18px; } .home-content { padding-top: 36px; } }
 @media (max-height: 680px) { .home-content { padding-top: 16px; } .auth-page .brand-header { margin-bottom: 8px; } }
 
