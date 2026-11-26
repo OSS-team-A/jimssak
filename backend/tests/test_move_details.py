@@ -32,7 +32,6 @@ SCHEDULE = {"move_date": MOVE_DAY, "start_time": "09:00"}
 def settings(tmp_path):
     return Settings(
         cors_origins=["http://localhost:5173"],
-        auth_db_path=tmp_path / "app.sqlite3",
         media_dir=tmp_path / "media",
         media_max_bytes=4096,
     )

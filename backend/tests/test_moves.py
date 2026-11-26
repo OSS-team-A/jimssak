@@ -1,7 +1,6 @@
-import sqlite3
-from contextlib import closing
 from uuid import UUID
 
+import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
@@ -16,7 +15,6 @@ MOVES = "/api/v1/moves"
 def settings(tmp_path):
     return Settings(
         cors_origins=["http://localhost:5173"],
-        auth_db_path=tmp_path / "app.sqlite3",
         guest_move_ttl_seconds=600,
         media_dir=tmp_path / "media",
         media_max_bytes=4096,
@@ -83,15 +81,15 @@ def test_guest_move_expires_after_inactivity(client, settings):
     url = f"{MOVES}/{body['move_id']}"
     headers = {"X-Guest-Token": body["guest_token"]}
 
-    with closing(sqlite3.connect(settings.auth_db_path)) as db, db:
+    with psycopg.connect(settings.database_url, autocommit=True) as db:
         db.execute("UPDATE moves SET last_used_at = last_used_at - 590")
     # Using the move pushes the deadline back.
     assert client.get(url, headers=headers).status_code == 200
-    with closing(sqlite3.connect(settings.auth_db_path)) as db, db:
+    with psycopg.connect(settings.database_url, autocommit=True) as db:
         db.execute("UPDATE moves SET last_used_at = last_used_at - 590")
     assert client.get(url, headers=headers).status_code == 200
 
-    with closing(sqlite3.connect(settings.auth_db_path)) as db, db:
+    with psycopg.connect(settings.database_url, autocommit=True) as db:
         db.execute("UPDATE moves SET last_used_at = last_used_at - 600")
     assert client.get(url, headers=headers).status_code == 404
 
@@ -258,10 +256,10 @@ def test_failed_database_write_removes_new_file_only(client, settings, monkeypat
     ).json()
 
     def broken(media):
-        raise sqlite3.OperationalError("disk full")
+        raise psycopg.OperationalError("disk full")
 
     monkeypatch.setattr(client.app.state.move_store, "replace_video", broken)
-    with pytest.raises(sqlite3.OperationalError):
+    with pytest.raises(psycopg.OperationalError):
         client.post(f"{url}/media", headers=headers,
                     files={"file": ("retake.mp4", MP4, "video/mp4")})
     # The new file is gone and the previous video is untouched.

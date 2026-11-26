@@ -7,12 +7,10 @@ time since upload whenever the job is read, so no background thread is needed.
 
 import json
 import secrets
-import sqlite3
 import time
-from collections.abc import Iterator
-from contextlib import closing, contextmanager
 from dataclasses import dataclass, replace
-from pathlib import Path
+
+from ..db import Database
 
 # Statuses kept in the table; "cancelled" marks a job whose video was replaced.
 ACTIVE = ("queued", "running")
@@ -38,44 +36,17 @@ class StaleAnalysis(Exception):
 
 
 class AnalysisStore:
-    def __init__(self, path: Path, timeout_seconds: int, demo_seconds: float):
-        self.path = path
+    def __init__(self, db: Database, timeout_seconds: int, demo_seconds: float):
+        self.db = db
         self.timeout_seconds = timeout_seconds
         self.demo_seconds = demo_seconds
         # Replaceable so tests can move time forward.
         self.clock = time.time
 
-    @contextmanager
-    def _connect(self) -> Iterator[sqlite3.Connection]:
-        with closing(sqlite3.connect(self.path)) as db, db:
-            db.row_factory = sqlite3.Row
-            db.execute("PRAGMA foreign_keys = ON")
-            yield db
-
-    def initialize(self) -> None:
-        with self._connect() as db:
-            db.executescript("""
-                CREATE TABLE IF NOT EXISTS move_analyses (
-                    analysis_id TEXT PRIMARY KEY NOT NULL,
-                    move_id TEXT NOT NULL REFERENCES moves(id) ON DELETE CASCADE,
-                    media_id TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    progress REAL NOT NULL DEFAULT 0,
-                    demo INTEGER NOT NULL DEFAULT 0,
-                    demo_fail INTEGER NOT NULL DEFAULT 0,
-                    result_json TEXT,
-                    error_json TEXT,
-                    created_at INTEGER NOT NULL,
-                    updated_at INTEGER NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS move_analyses_move ON move_analyses(move_id);
-                CREATE INDEX IF NOT EXISTS move_analyses_queue ON move_analyses(status, created_at);
-            """)
-
     @staticmethod
-    def _job(row: sqlite3.Row) -> AnalysisJob:
+    def _job(row: dict) -> AnalysisJob:
         fields = dict(row)
-        fields["demo"], fields["demo_fail"] = bool(fields["demo"]), bool(fields["demo_fail"])
+        fields.pop("seq", None)
         return AnalysisJob(**fields)
 
     def start(self, move_id: str, media_id: str, demo: bool, demo_fail: bool) -> AnalysisJob:
@@ -86,33 +57,34 @@ class AnalysisStore:
             status="queued", progress=0.0, demo=demo, demo_fail=demo_fail,
             result_json=None, error_json=None, created_at=now, updated_at=now,
         )
-        with self._connect() as db:
+        with self.db.connect() as db:
             db.execute(
-                "UPDATE move_analyses SET status = 'cancelled', updated_at = ? "
-                "WHERE move_id = ? AND status IN ('queued', 'running')", (now, move_id),
+                "UPDATE move_analyses SET status = 'cancelled', updated_at = %s "
+                "WHERE move_id = %s AND status IN ('queued', 'running')", (now, move_id),
             )
             db.execute(
                 "INSERT INTO move_analyses(analysis_id, move_id, media_id, status, progress, "
-                "demo, demo_fail, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)",
-                (job.analysis_id, move_id, media_id, job.status, int(demo), int(demo_fail),
+                "demo, demo_fail, created_at, updated_at) "
+                "VALUES (%s, %s, %s, %s, 0, %s, %s, %s, %s)",
+                (job.analysis_id, move_id, media_id, job.status, demo, demo_fail,
                  now, now),
             )
         return job
 
     def current(self, move_id: str) -> AnalysisJob | None:
-        with self._connect() as db:
+        with self.db.connect() as db:
             row = db.execute(
-                "SELECT * FROM move_analyses WHERE move_id = ? AND status != 'cancelled' "
-                "ORDER BY created_at DESC, rowid DESC LIMIT 1", (move_id,),
+                "SELECT * FROM move_analyses WHERE move_id = %s AND status != 'cancelled' "
+                "ORDER BY created_at DESC, seq DESC LIMIT 1", (move_id,),
             ).fetchone()
         if row is None:
             return None
         return self._settle(self._job(row))
 
     def get(self, analysis_id: str) -> AnalysisJob | None:
-        with self._connect() as db:
+        with self.db.connect() as db:
             row = db.execute(
-                "SELECT * FROM move_analyses WHERE analysis_id = ?", (analysis_id,)
+                "SELECT * FROM move_analyses WHERE analysis_id = %s", (analysis_id,)
             ).fetchone()
         return self._settle(self._job(row)) if row else None
 
@@ -147,10 +119,10 @@ class AnalysisStore:
 
     def _finish(self, job: AnalysisJob, status: str, result_json: str | None,
                 error_json: str | None, now: int) -> AnalysisJob:
-        with self._connect() as db:
+        with self.db.connect() as db:
             db.execute(
-                "UPDATE move_analyses SET status = ?, progress = 1, result_json = ?, "
-                "error_json = ?, updated_at = ? WHERE analysis_id = ? "
+                "UPDATE move_analyses SET status = %s, progress = 1, result_json = %s, "
+                "error_json = %s, updated_at = %s WHERE analysis_id = %s "
                 "AND status IN ('queued', 'running')",
                 (status, result_json, error_json, now, job.analysis_id),
             )
@@ -162,27 +134,23 @@ class AnalysisStore:
     def claim_next(self) -> AnalysisJob | None:
         """Hand the oldest waiting (non-demo) job to an analyzer and mark it running."""
         now = int(self.clock())
-        with self._connect() as db:
-            db.execute("BEGIN IMMEDIATE")
+        with self.db.connect() as db:
+            # SKIP LOCKED: two analyzers asking at once get different jobs.
             row = db.execute(
-                "SELECT * FROM move_analyses WHERE status = 'queued' AND demo = 0 "
-                "AND created_at > ? ORDER BY created_at, rowid LIMIT 1",
-                (now - self.timeout_seconds,),
+                "UPDATE move_analyses SET status = 'running', updated_at = %s "
+                "WHERE analysis_id = (SELECT analysis_id FROM move_analyses "
+                "WHERE status = 'queued' AND NOT demo AND created_at > %s "
+                "ORDER BY created_at, seq LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING *",
+                (now, now - self.timeout_seconds),
             ).fetchone()
-            if row is None:
-                return None
-            db.execute(
-                "UPDATE move_analyses SET status = 'running', updated_at = ? "
-                "WHERE analysis_id = ?", (now, row["analysis_id"]),
-            )
-        return replace(self._job(row), status="running", updated_at=now)
+        return self._job(row) if row else None
 
     def report_progress(self, analysis_id: str, progress: float) -> AnalysisJob:
         job = self._active(analysis_id)
         now = int(self.clock())
-        with self._connect() as db:
+        with self.db.connect() as db:
             db.execute(
-                "UPDATE move_analyses SET progress = ?, updated_at = ? WHERE analysis_id = ?",
+                "UPDATE move_analyses SET progress = %s, updated_at = %s WHERE analysis_id = %s",
                 (progress, now, analysis_id),
             )
         return replace(job, progress=progress, updated_at=now)

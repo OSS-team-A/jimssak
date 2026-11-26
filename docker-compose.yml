@@ -1,16 +1,39 @@
-# API server only; the frontend is deployed separately.
+# API server and its PostgreSQL; the frontend is deployed separately.
 #   cp backend/.env.example backend/.env   # then fill in the keys and CORS_ORIGINS
 #   docker compose up -d --build
+# Running the API from source (uvicorn) only needs the database:
+#   docker compose up -d db
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: jimssak
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jimssak}
+      POSTGRES_DB: jimssak
+    # Only this computer can reach it.
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - jimssak-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "jimssak", "-d", "jimssak"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   api:
     build: ./backend
     image: jimssak-api
     env_file: ./backend/.env
-    # These win over backend/.env, whose relative data paths are for local runs. Keeping
-    # the database and videos on the volume is what lets them survive a redeploy.
+    # These win over backend/.env, whose addresses and relative paths are for local runs.
+    # Keeping the videos on the volume is what lets them survive a redeploy.
     environment:
-      AUTH_DB_PATH: /data/auth.sqlite3
+      DATABASE_URL: postgresql://jimssak:${POSTGRES_PASSWORD:-jimssak}@db:5432/jimssak
       MEDIA_DIR: /data/media
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
       - "8000:8000"
     volumes:
@@ -19,3 +42,4 @@ services:
 
 volumes:
   jimssak-data:
+  jimssak-pgdata:

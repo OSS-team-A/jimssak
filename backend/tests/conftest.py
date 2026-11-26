@@ -1,5 +1,16 @@
+import os
+import secrets
+
 import httpx
+import psycopg
 import pytest
+from psycopg.conninfo import make_conninfo
+
+# Tests need a PostgreSQL server; each test gets its own empty schema in this database.
+# Locally: `docker compose up -d db` (same default as the app). CI sets TEST_DATABASE_URL.
+TEST_DATABASE_URL = os.environ.get(
+    "TEST_DATABASE_URL", "postgresql://jimssak:jimssak@127.0.0.1:5432/jimssak"
+)
 
 # Settings also read backend/.env, where developers keep real API keys. Environment
 # variables win over that file, so blanking them here keeps every test off the network.
@@ -24,3 +35,20 @@ def no_network(monkeypatch):
 
     for name in ("get", "post"):
         monkeypatch.setattr(httpx, name, blocked)
+
+
+@pytest.fixture(autouse=True)
+def database_url(monkeypatch):
+    """A fresh schema per test; Settings picks it up through DATABASE_URL."""
+    schema = f"test_{secrets.token_hex(6)}"
+    try:
+        admin = psycopg.connect(TEST_DATABASE_URL, autocommit=True, connect_timeout=3)
+    except psycopg.OperationalError as error:
+        pytest.exit(f"Tests need PostgreSQL at TEST_DATABASE_URL ({error}). "
+                    "Start one with `docker compose up -d db`.", returncode=1)
+    with admin:
+        admin.execute(f"CREATE SCHEMA {schema}")
+        url = make_conninfo(TEST_DATABASE_URL, options=f"-c search_path={schema}")
+        monkeypatch.setenv("DATABASE_URL", url)
+        yield url
+        admin.execute(f"DROP SCHEMA {schema} CASCADE")

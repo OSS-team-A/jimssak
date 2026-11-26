@@ -1,8 +1,7 @@
 import hashlib
-import sqlite3
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import closing
 
+import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
@@ -17,7 +16,6 @@ ACCOUNT = {"email": "Mover@Example.com", "password": "a long passphrase"}
 def settings(tmp_path):
     return Settings(
         cors_origins=["http://localhost:5173"],
-        auth_db_path=tmp_path / "auth.sqlite3",
         auth_session_ttl_seconds=600,
         auth_refresh_ttl_seconds=3600,
     )
@@ -62,7 +60,7 @@ def test_refresh_after_access_expiry_and_restart(settings):
     with TestClient(create_app(settings)) as client:
         user = client.post(f"{AUTH}/signup", json=ACCOUNT).json()
         tokens = client.post(f"{AUTH}/login", json=ACCOUNT).json()
-        with closing(sqlite3.connect(settings.auth_db_path)) as db, db:
+        with psycopg.connect(settings.database_url, autocommit=True) as db:
             db.execute("UPDATE sessions SET expires_at = 0")
             db.execute("UPDATE refresh_tokens SET expires_at = expires_at - 3300")
             digest, deadline = db.execute(
@@ -84,9 +82,9 @@ def test_refresh_after_access_expiry_and_restart(settings):
         assert client.post(f"{AUTH}/refresh", json=old_refresh).status_code == 401
         headers = {"Authorization": f"Bearer {new['access_token']}"}
         assert client.get(f"{AUTH}/me", headers=headers).json() == user
-        with closing(sqlite3.connect(settings.auth_db_path)) as db:
+        with psycopg.connect(settings.database_url, autocommit=True) as db:
             new_deadline, = db.execute(
-                "SELECT expires_at FROM refresh_tokens WHERE token_digest = ?",
+                "SELECT expires_at FROM refresh_tokens WHERE token_digest = %s",
                 (hashlib.sha256(new["refresh_token"].encode()).digest(),),
             ).fetchone()
         assert new_deadline == deadline
@@ -116,7 +114,7 @@ def test_expired_and_wrong_token_types_rejected(client, settings):
     assert client.post(
         f"{AUTH}/refresh", json={"refresh_token": tokens["access_token"]}
     ).status_code == 401
-    with closing(sqlite3.connect(settings.auth_db_path)) as db, db:
+    with psycopg.connect(settings.database_url, autocommit=True) as db:
         db.execute("UPDATE refresh_tokens SET expires_at = 0")
     assert client.post(
         f"{AUTH}/refresh", json={"refresh_token": tokens["refresh_token"]}
@@ -164,7 +162,7 @@ def test_non_auth_validation_keeps_default_error_details(client):
 def test_expired_session_and_credential_storage(client, settings):
     client.post(f"{AUTH}/signup", json=ACCOUNT).raise_for_status()
     token = client.post(f"{AUTH}/login", json=ACCOUNT).json()["access_token"]
-    with closing(sqlite3.connect(settings.auth_db_path)) as db, db:
+    with psycopg.connect(settings.database_url, autocommit=True) as db:
         password_hash, = db.execute("SELECT password_hash FROM users").fetchone()
         assert password_hash.startswith("$argon2id$")
         digest, = db.execute("SELECT token_digest FROM sessions").fetchone()

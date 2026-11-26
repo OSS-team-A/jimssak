@@ -233,10 +233,14 @@ Windows PowerShell에서는 `Copy-Item .env.example .env`,
 
 ### 백엔드 실행 (저장소 루트)
 
+백엔드는 PostgreSQL을 씁니다. Docker로 DB만 먼저 띄웁니다(테스트도 이 DB를 씁니다).
+
 ```bash
+docker compose up -d db
 python -m uvicorn backend.app.main:app --reload --port 8000
 ```
 
+- DB 주소는 `backend/.env`의 `DATABASE_URL`이고, 기본값이 위 DB와 맞습니다.
 - 상태: http://localhost:8000/health
 - API 문서: http://localhost:8000/docs
 - backend 폴더에서 실행할 때: `python -m uvicorn app.main:app --reload`

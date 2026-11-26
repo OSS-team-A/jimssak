@@ -1,7 +1,6 @@
-import sqlite3
-from contextlib import closing
 from datetime import datetime, timedelta
 
+import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
@@ -17,7 +16,7 @@ MOVE_DAY = (datetime.now(KST).date() + timedelta(days=30)).isoformat()
 
 @pytest.fixture
 def settings(tmp_path):
-    return Settings(auth_db_path=tmp_path / "app.sqlite3", media_dir=tmp_path / "media",
+    return Settings(media_dir=tmp_path / "media",
                     guest_move_ttl_seconds=600)
 
 
@@ -99,7 +98,7 @@ def test_member_token_alone_is_not_enough(client):
 
 def test_expired_guest_move_cannot_be_claimed(client, settings):
     move_id, guest, _ = guest_move_with_details(client)
-    with closing(sqlite3.connect(settings.auth_db_path)) as db, db:
+    with psycopg.connect(settings.database_url, autocommit=True) as db:
         db.execute("UPDATE moves SET last_used_at = last_used_at - 601")
     assert claim(client, move_id, login(client, "mover@example.com"), guest).status_code == 404
 
@@ -109,8 +108,8 @@ def test_history_lists_own_moves_newest_first(client, settings):
     first = client.post(MOVES, headers=member).json()["move_id"]
     claimed, guest, _ = guest_move_with_details(client)
     claim(client, claimed, member, guest)
-    with closing(sqlite3.connect(settings.auth_db_path)) as db, db:
-        db.execute("UPDATE moves SET created_at = created_at - 100 WHERE id = ?", (first,))
+    with psycopg.connect(settings.database_url, autocommit=True) as db:
+        db.execute("UPDATE moves SET created_at = created_at - 100 WHERE id = %s", (first,))
     client.post(MOVES, headers=login(client, "other@example.com"))  # not theirs
 
     body = client.get(MOVES, headers=member).json()
