@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { BrandHeader } from '../components/common/BrandHeader';
 import { Button } from '../components/common/Button';
+import { InventoryDeleteDialog } from '../components/common/InventoryDeleteDialog';
 import { navigate, routes } from '../app/routes';
 import { dimensions, type ReviewDraft } from '../features/review';
 import { downloadReviewPdf } from '../features/reviewPdf';
@@ -56,14 +57,17 @@ export function AfterMoveReviewPage() {
   const [message, setMessage] = useState('');
   const [toast, setToast] = useState<ReviewToast>(null);
   const [pdfNotice, setPdfNotice] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; label: string } | null>(null);
   const [sample, setSample] = useState<AnalysisResult | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const listView = params.get('view') === 'list';
   const normalPreview = params.get('state') === 'normal';
   const shown = (sample?.items ?? []).map(item => ({ ...item, quantity: state.quantities[item.item_id] ?? item.quantity }));
+  const visibleItems = shown.filter(item => item.quantity > 0);
   const roomPhoto = sample?.items.find(item => item.snapshots[0]?.image_url)?.snapshots[0]?.image_url ?? '';
   const total = shown.reduce((sum, item) => sum + item.quantity, 0);
-  const concerns = (state.chairConfirmed ? 0 : 1) + (state.wardrobe === 'confirmed' ? 0 : 1);
+  const concerns = (state.quantities['preview-chair'] > 0 && !state.chairConfirmed ? 1 : 0)
+    + (state.quantities['preview-wardrobe'] > 0 && state.wardrobe !== 'confirmed' ? 1 : 0);
 
   useEffect(() => { const sync = () => setQuery(location.search); window.addEventListener('popstate', sync); return () => window.removeEventListener('popstate', sync); }, []);
   useEffect(() => { if (isPreview) sessionStorage.setItem(storageKey, JSON.stringify(state)); }, [isPreview, state]);
@@ -81,6 +85,21 @@ export function AfterMoveReviewPage() {
   function selectConfirmation(value: Confirmation) {
     setState(current => ({ ...current, wardrobe: value }));
     setToast(value === 'confirmed' ? { message: '확인사항을 반영했어요', kind: 'success' } : null);
+  }
+  function decrease(id: string, label: string, quantity: number) {
+    if (quantity === 1) {
+      setPendingDelete({ id, label });
+      return;
+    }
+    if (quantity > 1) setState(current => ({ ...current, quantities: { ...current.quantities, [id]: quantity - 1 } }));
+  }
+  function confirmDelete() {
+    if (!pendingDelete) return;
+    const { id } = pendingDelete;
+    setState(current => ({ ...current, quantities: { ...current.quantities, [id]: 0 } }));
+    setExpanded(current => current === id ? null : current);
+    setPendingDelete(null);
+    setToast(null);
   }
   async function onPdf() {
     if (!isPreview) return;
@@ -105,13 +124,13 @@ export function AfterMoveReviewPage() {
     <div className="review-inventory-body">
       <div className="review-inventory-heading"><h1>이삿짐 목록</h1><span className={normalPreview || concerns === 0 ? 'after-badge-normal' : 'after-badge-concern'}>{normalPreview || concerns === 0 ? '이상 없음' : '확인 필요'}</span></div>
       <p>이사 후 촬영한 영상 분석을 바탕으로 작성한 목록이에요.<br />파손되거나 분실된 물품을 확인해요.</p>
-      <div className="review-inventory-stats"><span>품목 수 <strong>{shown.filter(item => item.quantity > 0).length}종</strong></span><span>총 수량 <strong>{total}개</strong></span></div>
+      <div className="review-inventory-stats"><span>품목 수 <strong>{visibleItems.length}종</strong></span><span>총 수량 <strong>{total}개</strong></span></div>
       <div className="review-inventory-table"><div className="review-inventory-table-head"><span>번호</span><span>품목</span><span>수량</span><span>예상 크기 (cm)</span></div>
-        {shown.map((item, index) => {
+        {visibleItems.map((item, index) => {
           const concern = !normalPreview && ((item.item_id === 'preview-chair' && !state.chairConfirmed) || (item.item_id === 'preview-wardrobe' && state.wardrobe !== 'confirmed'));
           const opened = expanded === item.item_id;
           return <div className={`review-inventory-item${concern ? ' after-item-concern' : ''}${item.item_id === 'preview-wardrobe' && state.wardrobe === 'confirmed' ? ' after-wardrobe-confirmed' : ''}`} key={item.item_id}>
-            <div className="review-inventory-row"><small>{String(index + 1).padStart(2, '0')}</small><strong>{item.label_ko}</strong><div className="review-quantity"><button type="button" aria-label={`${item.label_ko} 수량 줄이기`} onClick={() => setState(current => ({ ...current, quantities: { ...current.quantities, [item.item_id]: Math.max(0, item.quantity - 1) } }))}><img src={minusIcon} alt="" /></button><b>{item.quantity}</b><button type="button" aria-label={`${item.label_ko} 수량 늘리기`} onClick={() => setState(current => ({ ...current, quantities: { ...current.quantities, [item.item_id]: item.quantity + 1 } }))}><img src={plusIcon} alt="" /></button></div><span>{dimensions(item)}</span><button className="review-expand" type="button" aria-label={`${item.label_ko} 상세 ${opened ? '닫기' : '보기'}`} onClick={() => { setExpanded(opened ? null : item.item_id); if (!opened && concern) setToast({ message: item.item_id === 'preview-chair' ? '상태 변화가 의심돼요' : '영상에서 확인되지 않았어요', kind: 'warning' }); else setToast(null); }}><img src={opened ? upIcon : downIcon} alt="" /></button></div>
+            <div className="review-inventory-row"><small>{String(index + 1).padStart(2, '0')}</small><strong>{item.label_ko}</strong><div className="review-quantity"><button type="button" aria-label={`${item.label_ko} 수량 줄이기`} onClick={() => decrease(item.item_id, item.label_ko, item.quantity)}><img src={minusIcon} alt="" /></button><b>{pendingDelete?.id === item.item_id ? 0 : item.quantity}</b><button type="button" aria-label={`${item.label_ko} 수량 늘리기`} onClick={() => setState(current => ({ ...current, quantities: { ...current.quantities, [item.item_id]: item.quantity + 1 } }))}><img src={plusIcon} alt="" /></button></div><span>{dimensions(item)}</span><button className="review-expand" type="button" aria-label={`${item.label_ko} 상세 ${opened ? '닫기' : '보기'}`} onClick={() => { setExpanded(opened ? null : item.item_id); if (!opened && concern) setToast({ message: item.item_id === 'preview-chair' ? '상태 변화가 의심돼요' : '영상에서 확인되지 않았어요', kind: 'warning' }); else setToast(null); }}><img src={opened ? upIcon : downIcon} alt="" /></button></div>
             {opened && <div className="after-review-detail">
               {item.item_id === 'preview-wardrobe' && <p>촬영 범위 밖이거나 다른 물품에 가려졌을 수 있어요.</p>}
               {(item.item_id === 'preview-chair' || item.item_id === 'preview-wardrobe' || item.snapshots[0]?.image_url) && <div className="after-review-photo-stack">
@@ -126,12 +145,13 @@ export function AfterMoveReviewPage() {
       <div className="review-inventory-total"><strong>합계</strong><strong>{total}개</strong></div>
       <div className="review-inventory-help"><strong>확인해 주세요</strong><p>• 크기는 가로 × 깊이 × 높이 순서의 추정값이에요.<br />• 무게와 분리 여부는 실제 물품 확인이 필요해요.<br />• 누락된 물품이나 두고 갈 물품은 채팅으로 알려주세요.</p><small>확정된 목록 · 검토 후 명세서로 저장할 수 있어요.</small></div>
     </div>{toast && <div className="after-review-toast" role="status"><img src={toast.kind === 'success' ? confirmIcon : warningIcon} alt="" />{toast.message}</div>}
+    {pendingDelete && <InventoryDeleteDialog label={pendingDelete.label} onCancel={() => setPendingDelete(null)} onConfirm={confirmDelete} />}
   </main>;
 
   return <main className="app-page review-chat-page after-review-chat"><BrandHeader />
     <div className="review-chat-scroll" ref={scrollRef}>
       <section className="review-chat-turn"><Avatar /><h1>확인이 필요한 물품이 있어요</h1><p className="review-chat-intro">이사 전후 영상을 비교했어요.<br />상태가 달라 보이는 물품 1개와<br />이사 후 영상에서 찾지 못한 물품 1개가 있어요.<br />목록 탭을 눌러 직접 확인해주세요.</p>
-        <button className="review-summary" type="button" onClick={openList}><span className="review-summary-title">이삿짐 목록<img src={chevronIcon} alt="" /></span>{shown.map(item => <span className="review-summary-row" key={item.item_id}><span>{item.label_ko}</span><strong>{item.quantity}개</strong><img src={rowChevronIcon} alt="" /></span>)}<span className="review-summary-count after-concern-count">총 {total}개 · 확인이 필요한 물품 {concerns}개</span></button>
+        <button className="review-summary" type="button" onClick={openList}><span className="review-summary-title">이삿짐 목록<img src={chevronIcon} alt="" /></span>{visibleItems.map(item => <span className="review-summary-row" key={item.item_id}><span>{item.label_ko}</span><strong>{item.quantity}개</strong><img src={rowChevronIcon} alt="" /></span>)}<span className="review-summary-count after-concern-count">총 {total}개 · 확인이 필요한 물품 {concerns}개</span></button>
         {state.step === 0 && <Button onClick={() => setState(current => ({ ...current, step: 1 }))}>확인했어요</Button>}
       </section>
       {state.step > 0 && <><div className="review-user-bubble">목록을 확인했어요</div><section className="review-chat-turn"><Avatar /><h1>물품은 직접 확인해보셨나요?</h1><p className="review-chat-intro">상태가 달라 보이거나 영상에서 찾지 못한 물품을<br />목록에서 확인해주세요. 직접 확인한 결과가 있다면<br />채팅으로 알려주셔도 돼요.</p><div className="review-example"><strong>예를 들어 이렇게 알려주세요</strong><p>“의자는 괜찮아요. 옷장은 아직 못 찾았어요.”</p></div><Button onClick={() => { const next = { ...state, step: 2 as const }; sessionStorage.setItem(storageKey, JSON.stringify(next)); setState(next); go('chat', 'saved'); }}>검토 결과 저장하기</Button><p className="review-local-note">확인하지 못한 물품은 확인 필요로 저장돼요</p></section></>}

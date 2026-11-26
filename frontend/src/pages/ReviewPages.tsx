@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { BrandHeader } from '../components/common/BrandHeader';
 import { Button } from '../components/common/Button';
+import { InventoryDeleteDialog } from '../components/common/InventoryDeleteDialog';
 import { navigate, routes } from '../app/routes';
 import { dimensions, isReviewPreview, navigateReview, useReview, type ReviewDraft } from '../features/review';
 import { downloadReviewPdf } from '../features/reviewPdf';
@@ -22,10 +23,6 @@ const questions = [
   { title: '목록에서 제외할 물품이 있나요?', description: '이사하지 않는 물품은 목록에서 수량을 0개로 바꿔주세요.', example: '“세탁기는 이사하지 않아요.”', skip: '제외할 물품 없어요' },
   { title: '이사할 때 알아두면 좋을 점이 있나요?', description: '무거운 물품이나 트럭 진입 제한, 짐을 빼는 날과 받는 날이 다른 경우를 알려주세요.', example: '“침대가 돌침대예요. 짐을 빼고 이틀 뒤에 받아야 해요.”', skip: '특이사항 없어요' },
 ];
-const objectParticle = (name: string) => {
-  const last = name.charCodeAt(name.length - 1);
-  return last >= 0xac00 && last <= 0xd7a3 && (last - 0xac00) % 28 === 0 ? '를' : '을';
-};
 
 function ReviewGate({ loading, error, hasMove, completed }: { loading: boolean; error: string; hasMove: boolean; completed: boolean }) {
   return <div className="review-gate">
@@ -215,7 +212,7 @@ export function InventoryPage() {
       <div className="review-inventory-total"><strong>합계</strong><strong>{total}개</strong></div>
       <div className="review-inventory-help"><strong>확인해 주세요</strong><p>• 크기는 가로 × 깊이 × 높이 순서의 추정값이에요.<br />• 무게와 분리 여부는 실제 물품 확인이 필요해요.<br />• 누락된 물품이나 두고 갈 물품은 채팅으로 알려주세요.</p><small>수정한 목록은 이 브라우저에 임시로 보관돼요.</small></div>
     </div> : <ReviewGate loading={loading} error={error} hasMove={!!move} completed={analysis?.status === 'completed'} />}
-    {pendingDelete && <div className="review-delete-backdrop" onClick={() => setPendingDelete(null)}><div className="review-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="review-delete-title" onClick={event => event.stopPropagation()}><h2 id="review-delete-title">{pendingDelete.label}{objectParticle(pendingDelete.label)} 삭제할까요?</h2><p>{pendingDelete.label}{objectParticle(pendingDelete.label)} 목록에서 삭제할까요?</p><div><button type="button" onClick={() => setPendingDelete(null)}>아니요</button><button type="button" onClick={confirmDelete}>예</button></div></div></div>}
+    {pendingDelete && <InventoryDeleteDialog label={pendingDelete.label} onCancel={() => setPendingDelete(null)} onConfirm={confirmDelete} />}
   </main>;
 }
 
