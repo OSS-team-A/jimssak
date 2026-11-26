@@ -30,7 +30,6 @@ from ..schemas.moves import (
     RouteSection,
     Schedule,
     ScheduleSection,
-    Section,
     UploadedVideo,
 )
 from ..services.analysis import DEMO_PHOTOS, AnalysisJob, AnalysisStore
@@ -45,6 +44,7 @@ from ..services.building_register import (
 )
 from ..services.calendar import Calendar
 from ..services.date_info import is_complete, judge_move_date
+from ..services.inventory import load_inventory
 from ..services.media import MediaStorage, MediaTooLarge, UnsupportedMedia
 from ..services.moves import (
     DateInfoRecord,
@@ -235,8 +235,8 @@ def create_move(member: Member, moves: MoveStoreDep) -> MoveCreated:
         "| 항목 | 화면 | status 값 |\n"
         "|---|---|---|\n"
         "| `room_video` | SC-05 영상 | empty / uploaded |\n"
-        "| `analysis` | SC-06 분석 대기 | not_started (구현 전) |\n"
-        "| `inventory` | SC-07 이삿짐 목록 | empty (구현 전) |\n"
+        "| `analysis` | SC-06 분석 | not_started / queued / running / completed / failed |\n"
+        "| `inventory` | SC-07 이삿짐 목록 | empty / draft / confirmed |\n"
         "| `origin`, `destination` | SC-06 주소·층, 최종 확인 | empty / partial / filled |\n"
         "| `route` | 견적 거리 | not_ready / found / not_found / failed |\n"
         "| `schedule` | SC-06 일정 | empty / filled (`day`에 날짜 할증 조건) |\n\n"
@@ -543,13 +543,14 @@ def _snapshot(move: Move, moves: MoveStore, analyses: AnalysisStore) -> MoveSnap
     lookups = moves.get_lookups(move.id)
     route = moves.get_route(move.id)
     date_info = moves.get_date_info(move.id)
+    job = analyses.current(move.id)
     data = MoveData(
         room_video=RoomVideo(
             status="uploaded" if video else "empty",
             video=_media_info(video) if video else None,
         ),
-        analysis=_analysis_section(analyses.current(move.id)),
-        inventory=Section(status="empty"),
+        analysis=_analysis_section(job),
+        inventory=load_inventory(analyses.db, job),
         origin=_place_section(places.get("origin"), lookups.get("origin")),
         destination=_place_section(places.get("destination"), lookups.get("destination")),
         route=_route_section(route),

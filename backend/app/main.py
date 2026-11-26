@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .api.addresses import router as addresses_router
 from .api.analysis_worker import router as analysis_worker_router
 from .api.auth import router as auth_router
+from .api.inventory import router as inventory_router
 from .api.moves import router as moves_router
 from .api.routes import router
 from .config import Settings
@@ -81,13 +82,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
-        allow_methods=["GET", "POST", "PATCH"],
+        allow_methods=["GET", "POST", "PATCH", "DELETE"],
         allow_headers=["Content-Type", "Authorization", "X-Guest-Token"],
     )
 
     app.include_router(router)
     app.include_router(auth_router)
     app.include_router(moves_router)
+    app.include_router(inventory_router)
     app.include_router(addresses_router)
     app.include_router(analysis_worker_router)
     return app
