@@ -192,7 +192,7 @@ export function MoveInfoPage() {
           </div>
           <div className="time-heading"><h3>이사 시작 시간</h3><button type="button" className="time-tip-button" aria-expanded={tipOpen} aria-controls="time-tip" onClick={event => {
             const bounds = event.currentTarget.getBoundingClientRect();
-            setTipAnchor({ right: window.innerWidth - bounds.right, bottom: window.innerHeight - bounds.top + 9 });
+            setTipAnchor({ right: window.innerWidth - bounds.right, bottom: window.innerHeight - bounds.top + 17 });
             setTipOpen(open => !open);
           }}>tip</button></div>
           <div className="time-options">{times.map(time => <button type="button" key={time} className={pickedTime === time ? 'selected' : ''}
