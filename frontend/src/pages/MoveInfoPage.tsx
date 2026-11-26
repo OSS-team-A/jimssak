@@ -4,6 +4,10 @@ import { Button } from '../components/common/Button';
 import { navigate, routes } from '../app/routes';
 import { getMove, searchAddresses, updateMove } from '../api/moves';
 import type { AddressCandidate, MoveSnapshot, PlaceInput } from '../types/move';
+import calendarClockIcon from '../assets/move-calendar-clock.svg';
+import searchIcon from '../assets/move-search.svg';
+import searchClearIcon from '../assets/move-search-clear.svg';
+import backChevronIcon from '../assets/move-back-chevron.png';
 
 type Side = 'origin' | 'destination';
 type PlaceDraft = { address: string; candidate: AddressCandidate | null; detail: string; floor: number | null };
@@ -46,6 +50,10 @@ export function MoveInfoPage() {
     try { return JSON.parse(sessionStorage.getItem(draftKey) || 'null') || emptyDraft(); }
     catch { return emptyDraft(); }
   });
+  const [customFloor, setCustomFloor] = useState<Record<Side, boolean>>({
+    origin: draft.origin.floor !== null && ![-1, 1, 2, 3].includes(draft.origin.floor),
+    destination: draft.destination.floor !== null && ![-1, 1, 2, 3].includes(draft.destination.floor),
+  });
   const [sheet, setSheet] = useState<Side | 'schedule' | null>(null);
   const [keyword, setKeyword] = useState('');
   const [results, setResults] = useState<AddressCandidate[]>([]);
@@ -59,6 +67,8 @@ export function MoveInfoPage() {
   });
   const [pickedDate, setPickedDate] = useState(draft.date);
   const [pickedTime, setPickedTime] = useState(draft.time);
+  const [tipOpen, setTipOpen] = useState(false);
+  const [tipAnchor, setTipAnchor] = useState({ right: 24, bottom: 0 });
 
   useEffect(() => { if (draftKey) sessionStorage.setItem(draftKey, JSON.stringify(draft)); }, [draft, draftKey]);
   useEffect(() => {
@@ -90,7 +100,8 @@ export function MoveInfoPage() {
   const firstDay = new Date(month.getFullYear(), month.getMonth(), 1).getDay();
 
   async function save() {
-    if (!move || !complete) return;
+    if (!complete) return;
+    if (!move) return;
     setSaving(true); setError('');
     try {
       await updateMove(move.move_id, move.guest_token, {
@@ -106,16 +117,22 @@ export function MoveInfoPage() {
   if (!move) return <main className="app-page move-info-page"><BrandHeader />
     <h1>이사 정보를 찾을 수 없어요</h1><Button onClick={() => navigate(routes.capture)}>촬영 준비로 돌아가기</Button></main>;
 
-  return <main className="app-page move-info-page">
+  return <main className={`app-page move-info-page${confirm ? ' move-info-page--confirm' : ''}`}>
     <BrandHeader />
     {!confirm ? <>
       <h1>이사 정보를 알려주세요</h1>
       <p className="move-intro">영상 분석 중에 입력해두면 바로 목록을 확인할 수 있어요.</p>
       {(['origin', 'destination'] as const).map(side => <section className="move-block" key={side}>
         <h2>{side === 'origin' ? '출발지' : '도착지'}</h2>
-        <button type="button" className="move-field" onClick={() => { setSheet(side); setKeyword(''); }}>
-          {draft[side].address || '주소 검색'} <span>⌕</span>
-        </button>
+        <div className="move-field move-address-field">
+          <button type="button" className="move-address-value" onClick={() => { setSheet(side); setKeyword(''); }}>
+            {draft[side].address || '주소 검색'}
+          </button>
+          {draft[side].address
+            ? <button type="button" className="move-address-icon" aria-label={`${side === 'origin' ? '출발지' : '도착지'} 주소 지우기`}
+                onClick={() => updatePlace(side, { address: '', candidate: null, detail: '' })}><img src={searchClearIcon} alt="" /></button>
+            : <span className="move-search-icon"><img src={searchIcon} alt="" /></span>}
+        </div>
         {draft[side].address && <input className="move-field" aria-label={side === 'origin' ? '출발지 상세주소' : '도착지 상세주소'}
           placeholder="상세주소 (동·호)" value={draft[side].detail}
           onChange={e => updatePlace(side, { detail: e.target.value })} />}
@@ -123,17 +140,17 @@ export function MoveInfoPage() {
         <div className="floor-options">
           {([['지하', -1], ['1층', 1], ['2층', 2], ['3층', 3]] as const).map(([label, value]) =>
             <button type="button" key={label} className={draft[side].floor === value ? 'selected' : ''}
-              onClick={() => updatePlace(side, { floor: value })}>{label}</button>)}
-          <button type="button" className={draft[side].floor !== null && ![-1, 1, 2, 3].includes(draft[side].floor) ? 'selected' : ''}
-            onClick={() => updatePlace(side, { floor: 4 })}>직접 입력</button>
+              onClick={() => { setCustomFloor(current => ({ ...current, [side]: false })); updatePlace(side, { floor: value }); }}>{label}</button>)}
+          <button type="button" className={customFloor[side] ? 'selected' : ''}
+            onClick={() => { setCustomFloor(current => ({ ...current, [side]: true })); updatePlace(side, { floor: null }); }}>직접 입력</button>
         </div>
-        {draft[side].floor !== null && ![-1, 1, 2, 3].includes(draft[side].floor) &&
-          <input className="move-field floor-input" type="number" min="-5" max="80" aria-label="층수 직접 입력"
-            value={draft[side].floor} onChange={e => updatePlace(side, { floor: e.target.value === '' ? null : Number(e.target.value) })} />}
+        {customFloor[side] &&
+          <input className="move-field floor-input" type="number" min="-5" max="80" placeholder="예: 5 (숫자만 입력)" aria-label="층수 직접 입력"
+            value={draft[side].floor ?? ''} onChange={e => updatePlace(side, { floor: e.target.value === '' ? null : Number(e.target.value) })} />}
       </section>)}
       <section className="move-block schedule-block"><h2>이사 일정</h2>
         <button type="button" className="move-field" onClick={() => { setPickedDate(draft.date); setPickedTime(draft.time); setSheet('schedule'); }}>
-          {draft.date && draft.time ? `${draft.date} · ${draft.time}` : '날짜·시간 선택'} <span>▦</span>
+          {draft.date && draft.time ? `${draft.date} · ${draft.time}` : '날짜·시간 선택'} <span className="move-calendar-icon"><img src={calendarClockIcon} alt="" /></span>
         </button>
       </section>
       {error && <p className="form-error" role="alert">{error}</p>}
@@ -142,21 +159,22 @@ export function MoveInfoPage() {
       <span className="capture-eyebrow">이사 정보 최종 확인</span>
       <h1>이사 정보를<br />마지막으로 확인할게요</h1>
       <p className="move-intro">입력한 주소를 통해 정보를 확인했어요.</p>
-      {(['origin', 'destination'] as const).map(side => <div className="confirm-card" key={side}>
+      <div className="confirm-cards">{(['origin', 'destination'] as const).map(side => <div className="confirm-card" key={side}>
         <small>{side === 'origin' ? '출발지 주소' : '도착지 주소'}</small>
         <strong>{draft[side].address}</strong>
-        <p>상세주소 {draft[side].detail || '직접 입력'}</p>
-        <p>이사 층 {draft[side].floor}층 · 승강기 확인 필요</p>
+        <p>상세주소&nbsp; {draft[side].detail || '직접 입력'}</p>
+        <p>이사 층&nbsp; {draft[side].floor === -1 ? '지하' : `${draft[side].floor}층`}&emsp; 승강기&nbsp; 확인 필요</p>
+        <p className="confirm-note">건물 정보는 저장 후 확인할 수 있어요.</p>
       </div>)}
-      <div className="confirm-card"><small>이사 날짜와 시간</small><strong>{draft.date} · {draft.time}</strong></div>
+      <div className="confirm-card confirm-card--schedule"><small>이사 날짜와 시간</small><strong>{draft.date.replaceAll('-', '. ')} · {Number(draft.time.slice(0, 2)) < 12 ? '오전' : '오후'} {Number(draft.time.slice(0, 2)) % 12 || 12}시</strong></div></div>
       {error && <p className="form-error" role="alert">{error}</p>}
       <div className="move-actions confirm-actions">
-        <button type="button" aria-label="수정하기" onClick={() => setConfirm(false)}>‹</button>
+        <button type="button" aria-label="수정하기" onClick={() => setConfirm(false)}><img src={backChevronIcon} alt="" /></button>
         <Button disabled={saving} onClick={() => void save()}>{saving ? '저장 중...' : '저장하기'}</Button>
       </div>
     </>}
     {sheet && <div className="sheet-backdrop" onClick={() => setSheet(null)}>
-      <div className="move-sheet" role="dialog" aria-modal="true" aria-label={sheet === 'schedule' ? '이사 날짜와 시간' : '주소 검색'} onClick={e => e.stopPropagation()}>
+      <div className={`move-sheet ${sheet === 'schedule' ? 'move-sheet--schedule' : 'move-sheet--address'}`} role="dialog" aria-modal="true" aria-label={sheet === 'schedule' ? '이사 날짜와 시간' : '주소 검색'} onClick={e => e.stopPropagation()}>
         <span className="sheet-handle" />
         {sheet === 'schedule' ? <>
           <h2>이사 날짜와 시간</h2>
@@ -173,14 +191,18 @@ export function MoveInfoPage() {
                 onClick={() => setPickedDate(date)}>{index + 1}</button>;
             })}
           </div>
-          <h3>이사 시작 시간</h3>
+          <div className="time-heading"><h3>이사 시작 시간</h3><button type="button" className="time-tip-button" aria-expanded={tipOpen} aria-controls="time-tip" onClick={event => {
+            const bounds = event.currentTarget.getBoundingClientRect();
+            setTipAnchor({ right: window.innerWidth - bounds.right, bottom: window.innerHeight - bounds.top + 17 });
+            setTipOpen(open => !open);
+          }}>tip</button></div>
           <div className="time-options">{times.map(time => <button type="button" key={time} className={pickedTime === time ? 'selected' : ''}
             onClick={() => setPickedTime(time)}>{Number(time.slice(0, 2)) < 12 ? '오전' : '오후'} {Number(time.slice(0, 2)) % 12 || 12}:00</button>)}</div>
-          <Button disabled={!pickedDate || !pickedTime} onClick={() => { setDraft(current => ({ ...current, date: pickedDate, time: pickedTime })); setSheet(null); }}>선택 완료</Button>
+          <div className="move-sheet-actions"><Button disabled={!pickedDate || !pickedTime} onClick={() => { setDraft(current => ({ ...current, date: pickedDate, time: pickedTime })); setSheet(null); }}>선택 완료</Button></div>
         </> : <>
           <h2>{sheet === 'origin' ? '출발지' : '도착지'} 주소 검색</h2>
           <div className="address-search"><input autoFocus placeholder="도로명, 건물명 검색" value={keyword} onChange={e => setKeyword(e.target.value)} />
-            <button type="button" aria-label="검색어 지우기" onClick={() => setKeyword('')}>×</button></div>
+            <button type="button" aria-label="검색어 지우기" onClick={() => setKeyword('')}><img src={searchClearIcon} alt="" /></button></div>
           <p className="move-label">검색 결과</p>
           {searching && <p>검색 중...</p>}
           {searchError && <p role="alert">{searchError}</p>}
@@ -188,11 +210,15 @@ export function MoveInfoPage() {
           <div className="address-results">{results.map(item => <button type="button" key={item.adm_cd + item.lot_main + item.road_address}
             onClick={() => { updatePlace(sheet, { address: item.road_address, candidate: item }); setSheet(null); }}>
             <strong>{item.road_address}</strong><small>{item.jibun_address}</small></button>)}</div>
-          {searchError && <button type="button" className="manual-address" onClick={() => {
+          {results.length > 0 && <p className="address-selection-hint">주소를 선택하면 입력 화면으로 돌아가요</p>}
+          <div className="move-sheet-actions"><Button disabled={!keyword.trim()} onClick={() => {
             updatePlace(sheet, { address: keyword.trim(), candidate: null }); setSheet(null);
-          }}>입력한 주소 사용하기</button>}
+          }}>입력한 주소 사용하기</Button></div>
         </>}
       </div>
+      {sheet === 'schedule' && tipOpen && <div id="time-tip" className="time-tip-content" role="tooltip" style={tipAnchor} onClick={event => event.stopPropagation()}>
+        오전이사: 하루 첫 일정이라 시작 시간이 비교적 안정적이지만 수요가 많아 오후 이사보다 비용이 높게 책정되는 편입니다.<br />오후이사: 오전 이사보다 보통 수만 원~20만 원 가량 저렴한 경우가 많지만, 앞 팀 작업이 늦어지면 시작 시간이 밀릴 수 있고, 마무리가 늦어질 수 있습니다.
+      </div>}
     </div>}
   </main>;
 }

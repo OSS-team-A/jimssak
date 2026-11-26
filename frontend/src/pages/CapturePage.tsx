@@ -4,13 +4,15 @@ import { ApiError } from '../api/client';
 import { navigate, routes } from '../app/routes';
 import { BrandHeader } from '../components/common/BrandHeader';
 import { Button } from '../components/common/Button';
-import mascot from '../assets/capture-mascot.webp';
+import mascot from '../assets/capture-mascot-final.png';
 import analysisMascot from '../assets/analysis-mascot.webp';
 import bulbIcon from '../assets/capture-bulb.svg';
 import cameraIcon from '../assets/capture-camera.svg';
-import arrowIcon from '../assets/capture-arrow.svg';
+import shoesIcon from '../assets/capture-shoes.png';
 import permissionCameraIcon from '../assets/capture-permission-camera.svg';
 import doubleArrowIcon from '../assets/capture-double-arrow.svg';
+import levelEllipse from '../assets/capture-level-ellipse.svg';
+import levelLine from '../assets/capture-level-line.svg';
 
 type Screen = 'prep' | 'camera' | 'status';
 const acceptedVideo = (file: File) => /\.(mp4|mov)$/i.test(file.name)
@@ -136,14 +138,13 @@ export function CapturePage() {
       <div className="capture-tips">
         <div className="capture-tip"><img className="capture-tip-icon" src={bulbIcon} alt="" /><div><strong>조명을 켜주세요</strong><p>밝을수록 물품을 확인하기 쉬워요.</p></div></div>
         <div className="capture-tip"><img className="capture-tip-icon" src={cameraIcon} alt="" /><div><strong>큰 가구부터, 빠짐없이</strong><p>가구 전체와 가려진 공간까지 담아주세요.</p></div></div>
-        <div className="capture-tip"><img className="capture-tip-icon" src={arrowIcon} alt="" /><div><strong>수평을 맞추고 천천히</strong><p>한 방향으로 방을 둘러보듯 촬영해요.</p></div></div>
+        <div className="capture-tip"><img className="capture-tip-icon" src={shoesIcon} alt="" /><div><strong>이동하며 방 전체를 촬영해 주세요</strong><p>천천히 이동하면서 방 구석구석 빠짐없이 담기도록<br/>충분히 촬영해 주세요.</p></div></div>
       </div>
       {error && <p role="alert">{error}</p>}
       <div className="capture-prep-actions"><Button onClick={() => setPermissionOpen(true)}>촬영 시작하기</Button></div>
       <input ref={fileRef} type="file" accept=".mp4,.mov,video/mp4,video/quicktime" capture="environment" onChange={chooseFile} hidden aria-label="카메라로 영상 촬영" />
       {permissionOpen && <div className="capture-permission-backdrop" onClick={() => setPermissionOpen(false)}>
         <div className="capture-permission" role="dialog" aria-modal="true" aria-label="카메라 사용 안내" onClick={event => event.stopPropagation()}>
-          <button className="permission-close" type="button" aria-label="닫기" onClick={() => setPermissionOpen(false)}>×</button>
           <img src={permissionCameraIcon} width="40" height="40" alt="" />
           <h2>방을 촬영하려면<br />카메라 사용이 필요해요</h2>
           <p>이삿짐 목록을 만들기 위해 카메라를 사용해요.<br />다음 브라우저 안내에서 ‘허용’을 눌러주세요.</p>
@@ -153,7 +154,7 @@ export function CapturePage() {
     </div>}
     {screen === 'camera' && <div className="capture-camera">
       <video ref={videoRef} autoPlay muted playsInline aria-label="카메라 미리보기" />
-      <div className="capture-camera-guide" aria-hidden="true" />
+      <div className="capture-camera-guide" aria-hidden="true"><img src={levelEllipse} alt="" /><img src={levelLine} alt="" /></div>
       <p className="capture-camera-hint">{recording ? <>한 방향으로 천천히 이동해주세요 <img className="capture-double-arrow" src={doubleArrowIcon} alt="" /></> : '수평을 맞추고 천천히 움직여주세요'}</p>
       {error && <p role="alert" className="capture-camera-error">{error}</p>}
       <div className="capture-camera-controls"><button type="button" className={recording ? 'capture-shutter capture-shutter--recording' : 'capture-shutter'} onClick={() => recording ? recorderRef.current?.stop() : start()} aria-label={recording ? '촬영 종료' : '촬영 시작'} /></div>

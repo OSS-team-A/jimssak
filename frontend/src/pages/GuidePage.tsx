@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { navigate, routes } from '../app/routes';
+import { closeGuide } from '../app/routes';
 import mascot from '../assets/mascot.png';
 import guideBox from '../assets/guide-box.svg';
 import guideHouse from '../assets/guide-house.svg';
@@ -43,7 +43,7 @@ export function GuidePage() {
   const [openFaq, setOpenFaq] = useState<number | null>(0);
 
   return <main className="app-page guide-page">
-    <header className="sub-header"><strong>서비스 가이드</strong><button type="button" aria-label="닫기" onClick={() => navigate(routes.home)}>×</button></header>
+    <header className="sub-header"><strong>서비스 가이드</strong><button type="button" aria-label="닫기" onClick={closeGuide}>×</button></header>
     <nav className="guide-tabs" aria-label="서비스 가이드">
       {tabs.map(item => <button key={item.id} type="button" className={tab === item.id ? 'active' : ''} aria-current={tab === item.id ? 'page' : undefined} onClick={() => setTab(item.id)}>{item.label}</button>)}
     </nav>
