@@ -28,3 +28,16 @@ export type MoveSnapshot = {
   };
   missing: MoveStep[]; next_step: MoveStep | null;
 };
+
+export type AnalysisItem = {
+  item_id: string; label_ko: string; quantity: number;
+  dimensions_cm: { width: number | null; depth: number | null; height: number | null };
+  disassembly_required: boolean | null; needs_review: boolean; review_reasons: string[];
+  snapshots: { time_ms: number; image_url: string | null }[];
+};
+
+export type AnalysisResult = {
+  analysis_id: string | null;
+  status: 'not_started' | 'queued' | 'running' | 'completed' | 'failed';
+  items: AnalysisItem[];
+};

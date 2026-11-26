@@ -1,9 +1,13 @@
 import { apiRequest } from './client';
-import type { MoveCreated, MoveSnapshot, MoveUpdate, AddressCandidate } from '../types/move';
+import type { MoveCreated, MoveSnapshot, MoveUpdate, AddressCandidate, AnalysisResult } from '../types/move';
 
 export const createMove = () => apiRequest<MoveCreated>('/api/v1/moves', { method: 'POST' });
 export const getMove = (moveId: string, guestToken?: string) =>
   apiRequest<MoveSnapshot>(`/api/v1/moves/${encodeURIComponent(moveId)}`, {
+    headers: guestToken ? { 'X-Guest-Token': guestToken } : undefined,
+  });
+export const getAnalysis = (moveId: string, guestToken?: string) =>
+  apiRequest<AnalysisResult>(`/api/v1/moves/${encodeURIComponent(moveId)}/analysis`, {
     headers: guestToken ? { 'X-Guest-Token': guestToken } : undefined,
   });
 export const updateMove = (moveId: string, guestToken: string, update: MoveUpdate) =>
