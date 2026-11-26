@@ -294,3 +294,39 @@ def test_plan_measures_the_sweep_among_unoccluded_frames():
     centers = [-frames[i].rotation.T @ frames[i].translation for i in observed]
     angles = np.degrees(np.unwrap([np.arctan2(c[1], c[0]) for c in centers]))
     assert np.ptp(angles) > 40
+
+
+def test_scene_capture_puts_several_objects_in_one_video(tmp_path):
+    from ai.measurement.arkit_capture import make_job
+    from ai.training.arkitscenes_jobs import CaptureObject, plan_scene, write_scene_capture
+
+    frames = orbit(count=60, sweep_deg=80)
+    other = CORNERS * 0.6 + np.array([0.0, 0.5, 0.0])
+    plans = {"a": plan_capture(frames, CORNERS, views=4),
+             "b": plan_capture(frames, other, views=4)}
+    written, chosen = plan_scene(frames, plans, step_s=0.2)
+    assert chosen == ["a", "b"]
+    observed = {i for uid in chosen for i in plans[uid][1]}
+    assert observed <= set(written)
+    metadata, observations = write_scene_capture(
+        tmp_path, "scan-scene", frames, written, FakeSource(),
+        [CaptureObject("a", "table", CORNERS, plans["a"][1]),
+         CaptureObject("b", "stool", other, plans["b"][1])],
+    )
+    rgb, arkit = make_job(metadata, observations, tmp_path / "capture.avi", compare=True).videos
+    assert {v.track_id for v in arkit.views} == {"a", "b"}
+    assert len(arkit.views) == len(plans["a"][1]) + len(plans["b"][1])
+    assert len(metadata.frames) == len(written)
+
+
+def test_plan_scene_needs_two_objects_in_one_stretch():
+    from ai.training.arkitscenes_jobs import plan_scene
+
+    frames = orbit(count=60)
+    plan = plan_capture(frames, CORNERS, views=4)
+    assert plan_scene(frames, {"a": plan}) is None
+    late = [Frame(f"{float(f.stamp) + 100:.3f}", f.rotation, f.translation, f.intrinsics,
+                  f.size) for f in frames]
+    both = frames + late
+    far = (plan[0], plan[1]), ([i + 60 for i in plan[0]], [i + 60 for i in plan[1]])
+    assert plan_scene(both, {"a": far[0], "b": far[1]}, max_span_s=45) is None

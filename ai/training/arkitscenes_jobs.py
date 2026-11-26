@@ -417,15 +417,33 @@ def plan_capture(frames: list[Frame], corners: np.ndarray, *, views: int = 6,
     return written, observed
 
 
+@dataclass
+class CaptureObject:
+    track_id: str
+    label: str
+    corners: np.ndarray
+    observed: list[int]
+    mask_for: object = None  # frame index -> native mask or None
+
+
 def write_capture(folder: Path, video_id: str, frames: list[Frame], written: list[int],
                   observed: list[int], source: SceneSource, track_id: str,
                   label: str, corners: np.ndarray,
                   mask_for=None) -> tuple[ARCaptureMetadata, CaptureObservations]:
-    """Write the replay. ``mask_for(index)`` gives a native object mask; without it, or when
-    it returns None, the view uses the projected box outline."""
+    """Write a one-object replay. ``mask_for(index)`` gives a native object mask; without
+    it, or when it returns None, the view uses the projected box outline."""
+    return write_scene_capture(folder, video_id, frames, written, source,
+                               [CaptureObject(track_id, label, corners, observed, mask_for)])
+
+
+def write_scene_capture(folder: Path, video_id: str, frames: list[Frame], written: list[int],
+                        source: SceneSource, objects: list[CaptureObject],
+                        ) -> tuple[ARCaptureMetadata, CaptureObservations]:
+    """Write one replay in which every object carries masks on its own observed frames."""
     folder.mkdir(parents=True, exist_ok=True)
     size = frames[written[0]].size
-    turns = upright_turns(frames[observed[len(observed) // 2]])
+    observed_all = sorted({i for item in objects for i in item.observed})
+    turns = upright_turns(frames[observed_all[len(observed_all) // 2]])
     writer = cv2.VideoWriter(str(folder / "capture.avi"), cv2.VideoWriter_fourcc(*"FFV1"),
                              5, size)
     if not writer.isOpened():
@@ -445,13 +463,16 @@ def write_capture(folder: Path, video_id: str, frames: list[Frame], written: lis
                 "camera_to_world": camera_to_world(frame).tolist(),
                 "intrinsics": frame.intrinsics.tolist(),
             })
-            if i in observed:
-                native = mask_for(i) if mask_for is not None else None
-                view = {"frame_index": index, "track_id": track_id, "label": label}
+            for item in objects:
+                if i not in item.observed:
+                    continue
+                native = item.mask_for(i) if item.mask_for is not None else None
+                view = {"frame_index": index, "track_id": item.track_id, "label": item.label}
                 if native is not None and native.any():
                     view["mask_rle"] = encode_rle(annotation_mask(native, turns))
                 else:
-                    view["mask_polygon_px"] = hull_polygon(project_box(corners, frame), turns, size)
+                    view["mask_polygon_px"] = hull_polygon(
+                        project_box(item.corners, frame), turns, size)
                 views.append(view)
     finally:
         writer.release()
@@ -469,9 +490,47 @@ def write_capture(folder: Path, video_id: str, frames: list[Frame], written: lis
     return metadata, observations
 
 
+def plan_scene(frames: list[Frame], plans: dict[str, tuple[list[int], list[int]]], *,
+               max_span_s: float = 45.0, step_s: float = 0.25,
+               max_frames: int = 150) -> tuple[list[int], list[str]] | None:
+    """Pick the objects whose observed frames fit in one ``max_span_s`` stretch of video.
+
+    Returns (frame indices to write, object ids) for the stretch holding the most objects,
+    with frames every ``step_s`` between the first and last observed frame.
+    """
+    spans = sorted((float(frames[min(obs)].stamp), float(frames[max(obs)].stamp), uid)
+                   for uid, (_, obs) in plans.items())
+    best: list[str] = []
+    for start, _, _ in spans:
+        chosen = [uid for s, e, uid in spans if s >= start and e <= start + max_span_s]
+        if len(chosen) > len(best):
+            best = chosen
+    if len(best) < 2:
+        return None
+    observed = sorted({i for uid in best for i in plans[uid][1]})
+    written, last = [], None
+    for i in range(observed[0], observed[-1] + 1):
+        stamp = float(frames[i].stamp)
+        if i in observed or last is None or stamp - last >= step_s - 1e-6:
+            written.append(i)
+            last = stamp
+    if len(written) > max_frames:
+        keep = set(observed)
+        others = [i for i in written if i not in keep]
+        stride = int(np.ceil(len(others) / max(1, max_frames - len(keep))))
+        written = sorted(keep | set(others[::stride]))
+    if len(set(frames[i].size for i in written)) != 1:
+        return None
+    return written, sorted(best)
+
+
 def build_scan(source: SceneSource, output: Path, *, objects_per_scan: int = 2,
-               views: int = 6) -> tuple[list, list[dict]]:
-    """Replay up to ``objects_per_scan`` fully visible furniture boxes of one scan."""
+               views: int = 6, scene: bool = False) -> tuple[list, list[dict]]:
+    """Replay up to ``objects_per_scan`` fully visible furniture boxes of one scan.
+
+    With ``scene``, the objects that fit in one stretch of video share a single replay, as
+    in a real room video, so their measurements share camera tracking and depth scale.
+    """
     annotation = json.loads(source.file(f"{source.scan}_3dod_annotation.json").read_text())
     truth = {row["uid"]: row for row in furniture_objects(annotation, source.scan)}
     if not truth:
@@ -496,6 +555,30 @@ def build_scan(source: SceneSource, output: Path, *, objects_per_scan: int = 2,
             plans.append((len(plan[1]), uid, plan))
     plans.sort(key=lambda row: (-row[0], row[1]))
     videos, tracks = [], []
+    if scene:
+        planned = plan_scene(frames, {uid: plan for _, uid, plan in plans[:objects_per_scan]})
+        if planned is None:
+            return [], []
+        written, chosen = planned
+        by_uid = {uid: plan for _, uid, plan in plans}
+        objects = [
+            CaptureObject(uid, truth[uid]["label"], box_corners(items[uid]), by_uid[uid][1],
+                          lambda i, item=items[uid]: object_mask(
+                              item, frames[i], source.depth(frames[i].stamp)))
+            for uid in chosen
+        ]
+        video_id = f"{source.scan}-scene"
+        folder = output / video_id
+        metadata, observations = write_scene_capture(folder, video_id, frames, written,
+                                                     source, objects)
+        job = make_job(metadata, observations, folder / "capture.avi", compare=True)
+        videos.extend(job.videos)
+        for uid in chosen:
+            reference = {k: truth[uid][f"{k}_cm"] for k in ("width", "depth", "height")}
+            for clip in job.videos:
+                tracks.append({"video_id": clip.video_id, "track_id": uid,
+                               "label": truth[uid]["label"], "dimensions_cm": reference})
+        return videos, tracks
     for _, uid, (written, observed) in plans[:objects_per_scan]:
         video_id = f"{source.scan}-{uid[:6]}"
         folder = output / video_id
@@ -545,6 +628,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scan", action="append", default=[],
                         help="build these scans instead of a random choice")
     parser.add_argument("--objects-per-scan", type=int, default=2)
+    parser.add_argument("--scene", action="store_true",
+                        help="put the scan's objects in one shared video (room-video style)")
     parser.add_argument("--views", type=int, default=6)
     parser.add_argument("--cache", type=Path, required=True)
     parser.add_argument("--offline", action="store_true", help="use cached files only")
@@ -562,7 +647,8 @@ def main(argv: list[str] | None = None) -> int:
         source = SceneSource(args.cache, scan, metadata[scan]["fold"], not args.offline)
         try:
             new_videos, new_tracks = build_scan(
-                source, args.output, objects_per_scan=args.objects_per_scan, views=args.views
+                source, args.output, objects_per_scan=args.objects_per_scan, views=args.views,
+                scene=args.scene,
             )
         except Exception as error:  # report each failed scan and keep going
             report.append({"scan": scan, "error": repr(error)})
@@ -570,8 +656,9 @@ def main(argv: list[str] | None = None) -> int:
             continue
         videos.extend(new_videos)
         tracks.extend(new_tracks)
-        report.append({"scan": scan, "videos": len(new_videos) // 2})
-        print(f"[{number}/{len(scans)}] {scan}: {len(new_videos) // 2} objects", flush=True)
+        report.append({"scan": scan, "videos": len(new_videos) // 2,
+                       "objects": len(new_tracks) // 2})
+        print(f"[{number}/{len(scans)}] {scan}: {len(new_tracks) // 2} objects", flush=True)
     if not videos:
         raise SystemExit("No scan produced a measurable object")
     args.output.mkdir(parents=True, exist_ok=True)
@@ -588,7 +675,7 @@ def main(argv: list[str] | None = None) -> int:
     problems = check_jobs(split, [job_path])
     if problems:
         raise SystemExit("\n".join(problems))
-    print(json.dumps({"scans": len(scans), "objects": len(videos) // 2,
+    print(json.dumps({"scans": len(scans), "objects": len(tracks) // 2,
                       "videos": len(videos), "failed_scans": sum("error" in r for r in report)},
                      indent=2))
     return 0
