@@ -14,7 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ai.measurement import calibration, standard_sizes
+from ai.measurement import calibration, size_prior, standard_sizes
 from ai.measurement.moving_contract import MeasurementJob, MeasurementResponse, VideoInput
 from ai.service import result_v2
 
@@ -61,6 +61,10 @@ def load_calibration(family: str | None, directory: Path = CALIBRATION_DIR) -> d
     return json.loads(path.read_text()) if family and path.exists() else None
 
 
+def load_size_prior(family: str | None, directory: Path = CALIBRATION_DIR) -> dict | None:
+    return load_calibration(f"size-prior-{family}" if family else None, directory)
+
+
 def analyze(path: Path, recognition: Recognition, measure, *, analysis_id: str,
             video_id: str, region: str = "kr", calibration_dir: Path = CALIBRATION_DIR,
             progress: Callable[[float], None] | None = None) -> dict:
@@ -78,6 +82,10 @@ def analyze(path: Path, recognition: Recognition, measure, *, analysis_id: str,
         warnings.append(result_v2.WARNINGS["size_not_calibrated"])
     else:
         response = calibration.apply(response, factors)
+        # Its error model is that of calibrated estimates, so only after calibration.
+        prior = load_size_prior(result.depth_model_family, calibration_dir)
+        if prior is not None:
+            response = size_prior.apply(response, prior)
     response = standard_sizes.snap(response, region)
     fps, duration = result_v2.video_info(Path(path))
     return result_v2.completed(
