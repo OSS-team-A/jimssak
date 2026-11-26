@@ -34,16 +34,16 @@ function ReviewGate({ loading, error, hasMove, completed }: { loading: boolean; 
   </div>;
 }
 
-function ChatFooter({ canDownload, onPdf, result = false }: { canDownload: boolean; onPdf: () => void; result?: boolean }) {
+export function ChatFooter({ canDownload, onPdf, result = false, onInventory }: { canDownload: boolean; onPdf: () => void; result?: boolean; onInventory?: () => void }) {
   return <div className="review-chat-footer">
     <div className="review-footer-tabs">
-      <button type="button" onClick={() => navigateReview(routes.inventory)}><img src={listIcon} alt="" />{result ? '이사전 확정 목록 열기' : '이삿짐 목록 보러가기'}</button>
+      <button type="button" onClick={onInventory ?? (() => navigateReview(routes.inventory))}><img src={listIcon} alt="" />{result ? '이사전 확정 목록 열기' : '이삿짐 목록 보러가기'}</button>
       <button type="button" className={canDownload ? 'review-pdf-ready' : ''} onClick={onPdf} disabled={!canDownload}><img src={canDownload ? activeDownloadIcon : downloadIcon} alt="" />이삿짐 명세서 PDF 받기</button>
     </div>
   </div>;
 }
 
-function PdfNotice({ guest, error, onClose }: { guest: boolean; error: string; onClose: () => void }) {
+export function PdfNotice({ guest, error, onClose }: { guest: boolean; error: string; onClose: () => void }) {
   return <div className="review-dialog-backdrop" onClick={onClose}><div className="review-dialog review-pdf-dialog" role="dialog" aria-modal="true" aria-labelledby="review-pdf-title" onClick={event => event.stopPropagation()}>
     <h2 id="review-pdf-title">{error ? '명세서를 만들지 못했어요' : '이삿짐 명세서를 받았어요'}</h2>
     <p>{error || (guest ? <>업체에 보내 견적을 문의해보세요.<br />이사 후에도 확인하려면 로그인해 이사 기록을 저장해 주세요.</> : <>명세서를 업체에 보내 견적을 문의해보세요.<br />이사 후에는 나의 이사 기록에서 물품을 확인할 수 있어요.</>)}</p>

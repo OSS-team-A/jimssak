@@ -154,7 +154,7 @@ export function HistoryDetailPage() {
         <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
         <h1>{stage === 'after_move' ? '이사는 잘 마치셨나요?' : stage === 'comparing' ? '물품을 함께 확인해요' : '이사 기록을 확인해요'}</h1>
         <p>{stage === 'after_move' ? <>이사 후 방을 촬영하면 이사 전에 찍어둔 영상과<br />비교해드려요. 상태가 달라 보이거나<br />영상에서 찾지 못한 물품을 알려드릴게요.<br />결과를 보고 직접 확인할 수 있어요.</> : stage === 'comparing' ? '이사 전후 물품의 상태를 검토해 주세요.' : '확인한 물품과 이사 기록을 다시 살펴볼 수 있어요.'}</p>
-        <Button onClick={() => { if (stage === 'after_move') { window.history.pushState({}, '', `${routes.capture}?mode=after${preview ? '&preview=1' : ''}`); window.dispatchEvent(new PopStateEvent('popstate')); } else setNotice('review'); }}>{stage === 'after_move' ? '이사 후 물품 확인하기' : copy[stage].button}</Button>
+        <Button onClick={() => { if (stage === 'after_move') { window.history.pushState({}, '', `${routes.capture}?mode=after${preview ? '&preview=1' : ''}`); window.dispatchEvent(new PopStateEvent('popstate')); } else { window.history.pushState({}, '', `${routes.afterReview}${preview ? '?preview=1' : ''}`); window.dispatchEvent(new PopStateEvent('popstate')); } }}>{stage === 'after_move' ? '이사 후 물품 확인하기' : copy[stage].button}</Button>
       </>}
     </div>
     <div className="review-chat-bottom history-detail-bottom">
