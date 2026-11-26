@@ -65,6 +65,7 @@ export function MoveInfoPage() {
   });
   const [pickedDate, setPickedDate] = useState(draft.date);
   const [pickedTime, setPickedTime] = useState(draft.time);
+  const [tipOpen, setTipOpen] = useState(false);
 
   useEffect(() => { if (draftKey) sessionStorage.setItem(draftKey, JSON.stringify(draft)); }, [draft, draftKey]);
   useEffect(() => {
@@ -180,10 +181,11 @@ export function MoveInfoPage() {
                 onClick={() => setPickedDate(date)}>{index + 1}</button>;
             })}
           </div>
-          <h3>이사 시작 시간</h3>
+          <div className="time-heading"><h3>이사 시작 시간</h3><button type="button" className="time-tip-button" aria-expanded={tipOpen} aria-controls="time-tip" onClick={() => setTipOpen(open => !open)}>tip</button></div>
+          {tipOpen && <p id="time-tip" className="time-tip-content">오전이사: 하루 첫 일정이라 시작 시간이 비교적 안정적이지만 수요가 많아요. 오후 이사보다 비용이 높게 책정되는 편입니다.<br />오후이사: 오전 이사보다 보통 수만 원~20만 원 가량 저렴한 경우가 많지만, 앞 팀 작업이 늦어지면 시작 시간이 밀릴 수 있고, 마무리가 늦어질 수 있습니다.</p>}
           <div className="time-options">{times.map(time => <button type="button" key={time} className={pickedTime === time ? 'selected' : ''}
             onClick={() => setPickedTime(time)}>{Number(time.slice(0, 2)) < 12 ? '오전' : '오후'} {Number(time.slice(0, 2)) % 12 || 12}:00</button>)}</div>
-          <Button disabled={!pickedDate || !pickedTime} onClick={() => { setDraft(current => ({ ...current, date: pickedDate, time: pickedTime })); setSheet(null); }}>선택 완료</Button>
+          <div className="move-sheet-actions"><Button disabled={!pickedDate || !pickedTime} onClick={() => { setDraft(current => ({ ...current, date: pickedDate, time: pickedTime })); setSheet(null); }}>선택 완료</Button></div>
         </> : <>
           <h2>{sheet === 'origin' ? '출발지' : '도착지'} 주소 검색</h2>
           <div className="address-search"><input autoFocus placeholder="도로명, 건물명 검색" value={keyword} onChange={e => setKeyword(e.target.value)} />
@@ -196,9 +198,9 @@ export function MoveInfoPage() {
             onClick={() => { updatePlace(sheet, { address: item.road_address, candidate: item }); setSheet(null); }}>
             <strong>{item.road_address}</strong><small>{item.jibun_address}</small></button>)}</div>
           {results.length > 0 && <p className="address-selection-hint">주소를 선택하면 입력 화면으로 돌아가요</p>}
-          {searchError && <button type="button" className="manual-address" onClick={() => {
+          <div className="move-sheet-actions"><Button disabled={!keyword.trim()} onClick={() => {
             updatePlace(sheet, { address: keyword.trim(), candidate: null }); setSheet(null);
-          }}>입력한 주소 사용하기</button>}
+          }}>입력한 주소 사용하기</Button></div>
         </>}
       </div>
     </div>}
