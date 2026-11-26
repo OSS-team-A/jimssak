@@ -2,11 +2,13 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { BrandHeader } from '../components/common/BrandHeader';
 import { Button } from '../components/common/Button';
 import { navigate, routes } from '../app/routes';
-import { dimensions, isReviewPreview, navigateReview, useReview } from '../features/review';
+import { dimensions, isReviewPreview, navigateReview, useReview, type ReviewDraft } from '../features/review';
+import { downloadReviewPdf } from '../features/reviewPdf';
 import chatAvatar from '../assets/chat-avatar.svg';
 import listIcon from '../assets/chat-list.svg';
 import sendIcon from '../assets/chat-send.svg';
 import downloadIcon from '../assets/chat-download.svg';
+import activeDownloadIcon from '../assets/chat-download-active.svg';
 import chevronIcon from '../assets/chat-chevron.svg';
 import rowChevronIcon from '../assets/chat-row-chevron.svg';
 import inventoryCloseIcon from '../assets/inventory-close.svg';
@@ -32,24 +34,66 @@ function ReviewGate({ loading, error, hasMove, completed }: { loading: boolean; 
   </div>;
 }
 
-function ChatFooter({ canEdit }: { canEdit: boolean }) {
-  const [pdfOpen, setPdfOpen] = useState(false);
+function ChatFooter({ canDownload, onPdf, result = false }: { canDownload: boolean; onPdf: () => void; result?: boolean }) {
   return <div className="review-chat-footer">
     <div className="review-footer-tabs">
-      <button type="button" onClick={() => navigateReview(routes.inventory)}><img src={listIcon} alt="" />이삿짐 목록 보러가기</button>
-      <button type="button" onClick={() => setPdfOpen(true)}><img src={downloadIcon} alt="" />이삿짐 명세서 PDF 받기</button>
+      <button type="button" onClick={() => navigateReview(routes.inventory)}><img src={listIcon} alt="" />{result ? '이사전 확정 목록 열기' : '이삿짐 목록 보러가기'}</button>
+      <button type="button" className={canDownload ? 'review-pdf-ready' : ''} onClick={onPdf} disabled={!canDownload}><img src={canDownload ? activeDownloadIcon : downloadIcon} alt="" />이삿짐 명세서 PDF 받기</button>
     </div>
-    {!canEdit && <p>문서는 목록과 이사 조건을 확인한 뒤 만들 수 있어요</p>}
-    {pdfOpen && <div className="review-dialog-backdrop" onClick={() => setPdfOpen(false)}><div className="review-dialog" role="dialog" aria-modal="true" aria-label="명세서 안내" onClick={event => event.stopPropagation()}><h2>명세서를 아직 만들 수 없어요</h2><p>목록 저장과 PDF 생성 기능이 연결되면 내려받을 수 있어요.</p><Button onClick={() => setPdfOpen(false)}>확인</Button></div></div>}
   </div>;
 }
 
+function PdfNotice({ guest, error, onClose }: { guest: boolean; error: string; onClose: () => void }) {
+  return <div className="review-dialog-backdrop" onClick={onClose}><div className="review-dialog review-pdf-dialog" role="dialog" aria-modal="true" aria-labelledby="review-pdf-title" onClick={event => event.stopPropagation()}>
+    <h2 id="review-pdf-title">{error ? '명세서를 만들지 못했어요' : '이삿짐 명세서를 받았어요'}</h2>
+    <p>{error || (guest ? <>업체에 보내 견적을 문의해보세요.<br />이사 후에도 확인하려면 로그인해 이사 기록을 저장해 주세요.</> : <>명세서를 업체에 보내 견적을 문의해보세요.<br />이사 후에는 나의 이사 기록에서 물품을 확인할 수 있어요.</>)}</p>
+    <button type="button" onClick={onClose}>확인</button>
+  </div></div>;
+}
+
+function EstimateConversation({ preview, total, selected, onSelect, onPdf }: {
+  preview: boolean;
+  total: number;
+  selected: ReviewDraft['selectedMoveType'];
+  onSelect: (type: NonNullable<ReviewDraft['selectedMoveType']>) => void;
+  onPdf: () => void;
+}) {
+  return <>
+    <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
+    <h1>이사 유형별 예상 비용</h1><p>확인한 이삿짐 목록과 이사 조건을 기준으로 비교했어요.</p>
+    <div className="review-result-summary"><strong>{preview ? '서울 강남구 → 서울 마포구' : `검토한 이삿짐 ${total}개`}</strong><p>{preview ? '길찾기 약 18km · 출발 3층 · 도착 5층' : '목록과 이사 조건을 확인하고 있어요.'}</p>{preview && <small>화면의 주소와 거리는 피그마 예시 데이터예요.</small>}</div>
+    <div className="review-result-card"><strong>이사 유형</strong>
+      {([
+        { id: 'standard', name: '일반 이사', price: '약 18만~25만원', description: '운반 중심 · 포장과 정리는 직접 해요' },
+        { id: 'semi', name: '반포장 이사', price: '약 27만~36만원', description: '큰 짐 포장과 운반 · 잔짐 정리는 직접 해요' },
+        { id: 'full', name: '포장 이사', price: '약 39만~52만원', description: '포장부터 운반·정리까지 맡겨요' },
+      ] as const).map(option => <button type="button" key={option.id} className={`review-move-option${selected === option.id ? ' selected' : ''}`} aria-pressed={selected === option.id} onClick={() => onSelect(option.id)}>
+        <span><strong>{option.name}</strong><b>{preview ? option.price : '비용 계산 전'}</b></span><small>{option.description}</small>
+      </button>)}
+      <p>{preview ? '화면의 금액은 예시예요. 실제 비용은 업체 제안에 따라 달라져요.' : '예상 비용 API가 연결되면 이사 유형별 금액을 보여드려요. 실제 비용은 이사업체와 확인해주세요.'}</p>
+    </div>
+    <div className="review-result-help"><strong>같은 짐을 다시 입력하지 않아도 돼요</strong><p>확인한 명세서를 내려받아 여러 업체에 전달하고 실제 금액을 문의하세요.</p></div>
+    <Button disabled={!selected} onClick={onPdf}>이삿짐 명세서 PDF 받기</Button>
+    <button className="review-text-button" type="button" onClick={() => navigate(routes.history)}>나의 이사 기록에서 이사 완료하기↗︎</button>
+  </>;
+}
+
 export function ChatPage() {
-  const { move, analysis, draft, loading, error, items, added, total, updateDraft } = useReview();
+  const { move, analysis, draft, loading, error, items, added, total, preview, updateDraft } = useReview();
   const [message, setMessage] = useState('');
+  const [pdfNotice, setPdfNotice] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const step = Math.min(draft?.step ?? 0, 4);
+  const step = Math.min(draft?.step ?? 0, 5);
   const ready = analysis?.status === 'completed' && !!draft;
+  const canDownload = ready && step === 5 && !!draft.selectedMoveType;
+
+  async function onPdf() {
+    if (!move || !draft || !canDownload) return;
+    try {
+      await downloadReviewPdf({ moveId: move.move_id, guestToken: move.guest_token, preview, draft, items, added });
+      setPdfNotice('');
+    } catch (cause) { setPdfNotice(cause instanceof Error ? cause.message : '잠시 후 다시 시도해주세요.'); }
+  }
 
   useEffect(() => {
     if (!ready) return;
@@ -58,7 +102,7 @@ export function ChatPage() {
       if (scroll) scroll.scrollTop = scroll.scrollHeight;
     });
     return () => cancelAnimationFrame(frame);
-  }, [ready, step]);
+  }, [ready, step, draft?.notes.length]);
 
   function next() {
     updateDraft(current => ({
@@ -73,7 +117,7 @@ export function ChatPage() {
     event.preventDefault();
     const text = message.trim();
     if (!text || !ready || step === 0 || step === 4) return;
-    updateDraft(current => ({ ...current, notes: [...current.notes, { step, text }], answers: [...current.answers, { step, text }], step: Math.min(current.step + 1, 4) }));
+    updateDraft(current => ({ ...current, notes: [...current.notes, { step, text }], answers: [...current.answers, { step, text }], step: step === 5 ? 5 : Math.min(current.step + 1, 4) }));
     setMessage('');
   }
 
@@ -112,17 +156,22 @@ export function ChatPage() {
         <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
         <h1>이 내용으로 견적을 비교할까요?</h1>
         <p className="review-chat-intro">확인한 이삿짐과 이사 조건을 바탕으로 이사 유형별 예상 비용을 비교해요. 실제 견적은 업체와 상담할 때 확인해주세요.</p>
-        <Button onClick={() => navigateReview(routes.result)}>예상 비용 비교하기</Button>
+        <Button onClick={() => updateDraft(current => ({ ...current, step: 5 }))}>예상 비용 비교하기</Button>
       </section>}
+      {step === 5 && <section className="review-chat-turn review-estimate-turn">
+        <EstimateConversation preview={preview} total={total} selected={draft.selectedMoveType} onSelect={type => updateDraft(current => ({ ...current, selectedMoveType: type }))} onPdf={onPdf} />
+      </section>}
+      {step === 5 && draft.notes.filter(note => note.step === 5).map((note, index) => <div className="review-user-bubble" key={index}>{note.text}</div>)}
     </div> : <ReviewGate loading={loading} error={error} hasMove={!!move} completed={analysis?.status === 'completed'} />}
     <div className="review-chat-bottom">
-      <ChatFooter canEdit={false} />
+      <ChatFooter canDownload={canDownload} onPdf={onPdf} result={step === 5} />
       <form className="review-chat-input" onSubmit={send}>
         <input value={message} onChange={event => setMessage(event.target.value)} placeholder="수정할 내용을 알려주세요" aria-label="검토 내용" disabled={!ready || step === 0 || step === 4} />
         <button type="submit" aria-label="내용 보내기" disabled={!message.trim() || !ready || step === 0 || step === 4}><img src={sendIcon} alt="" /></button>
       </form>
       <p>문서는 목록과 이사 조건을 확인한 뒤 만들 수 있어요</p>
     </div>
+    {pdfNotice !== null && <PdfNotice guest={!!move?.guest_token} error={pdfNotice} onClose={() => setPdfNotice(null)} />}
   </main>;
 }
 
@@ -171,23 +220,26 @@ export function InventoryPage() {
 }
 
 export function ResultPage() {
-  const { move, analysis, draft, loading, error, total, preview } = useReview();
-  const [pdfOpen, setPdfOpen] = useState(false);
+  const { move, analysis, draft, loading, error, total, preview, items, added, updateDraft } = useReview();
+  const [pdfNotice, setPdfNotice] = useState<string | null>(null);
   const ready = analysis?.status === 'completed' && !!draft;
+  const canDownload = ready && !!draft.selectedMoveType;
+  async function onPdf() {
+    if (!move || !draft || !canDownload) return;
+    try {
+      await downloadReviewPdf({ moveId: move.move_id, guestToken: move.guest_token, preview, draft, items, added });
+      setPdfNotice('');
+    } catch (cause) { setPdfNotice(cause instanceof Error ? cause.message : '잠시 후 다시 시도해주세요.'); }
+  }
   return <main className="app-page review-result-page"><BrandHeader />
     {ready ? <div className="review-result-body">
-      <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
-      <h1>이사 유형별 예상 비용</h1><p>확인한 이삿짐 목록과 이사 조건을 기준으로 비교해요.</p>
-      <div className="review-result-summary"><strong>{preview ? '서울 강남구 → 서울 마포구' : `검토한 이삿짐 ${total}개`}</strong><p>{preview ? '길찾기 약 18km · 출발 3층 · 도착 5층' : '목록과 이사 조건을 확인하고 있어요.'}</p>{preview && <small>화면의 주소와 거리는 피그마 예시 데이터예요.</small>}</div>
-      <div className="review-result-card"><strong>이사 유형</strong>
-        <div><strong>일반 이사</strong><span>{preview ? '약 18만~25만원' : '비용 계산 전'}</span><p>운반 중심 · 포장과 정리는 직접 해요</p></div>
-        <div><strong>반포장 이사</strong><span>{preview ? '약 27만~36만원' : '비용 계산 전'}</span><p>큰 짐 포장과 운반 · 잔짐 정리는 직접 해요</p></div>
-        <div><strong>포장 이사</strong><span>{preview ? '약 39만~52만원' : '비용 계산 전'}</span><p>포장부터 운반·정리까지 맡겨요</p></div>
-        <p>{preview ? '화면의 금액은 피그마 예시예요. 실제 비용은 업체 제안에 따라 달라져요.' : '예상 비용 API가 연결되면 이사 유형별 금액을 보여드려요. 실제 비용은 이사업체와 확인해주세요.'}</p>
-      </div>
-      <Button onClick={() => setPdfOpen(true)}>이삿짐 명세서 PDF 받기</Button>
-      <button className="review-text-button" onClick={() => navigateReview(routes.inventory)}>이삿짐 목록 다시 확인하기</button>
-      {pdfOpen && <div className="review-dialog-backdrop" onClick={() => setPdfOpen(false)}><div className="review-dialog" role="dialog" aria-modal="true" aria-label="명세서 안내" onClick={event => event.stopPropagation()}><h2>명세서를 아직 만들 수 없어요</h2><p>목록 저장과 PDF 생성 기능이 연결되면 내려받을 수 있어요.</p><Button onClick={() => setPdfOpen(false)}>확인</Button></div></div>}
+      <EstimateConversation preview={preview} total={total} selected={draft.selectedMoveType} onSelect={type => updateDraft(current => ({ ...current, selectedMoveType: type }))} onPdf={onPdf} />
     </div> : <ReviewGate loading={loading} error={error} hasMove={!!move} completed={analysis?.status === 'completed'} />}
+    <div className="review-chat-bottom review-result-bottom">
+      <ChatFooter canDownload={canDownload} onPdf={onPdf} result />
+      <div className="review-chat-input"><span>수정할 내용을 알려주세요</span><button type="button" onClick={() => navigateReview(routes.chat)} aria-label="채팅으로 돌아가기"><img src={sendIcon} alt="" /></button></div>
+      <p>문서는 목록과 이사 조건을 확인한 뒤 만들 수 있어요</p>
+    </div>
+    {pdfNotice !== null && <PdfNotice guest={!!move?.guest_token} error={pdfNotice} onClose={() => setPdfNotice(null)} />}
   </main>;
 }

@@ -11,6 +11,7 @@ export type ReviewDraft = {
   added: { id: string; label: string; quantity: number }[];
   notes: { step: number; text: string }[];
   answers: { step: number; text: string }[];
+  selectedMoveType: 'standard' | 'semi' | 'full' | null;
 };
 
 function activeMove(): MoveSession | null {
@@ -20,7 +21,7 @@ function activeMove(): MoveSession | null {
   } catch { return null; }
 }
 
-const emptyDraft = (analysisId: string): ReviewDraft => ({ analysisId, step: 0, quantities: {}, added: [], notes: [], answers: [] });
+const emptyDraft = (analysisId: string): ReviewDraft => ({ analysisId, step: 0, quantities: {}, added: [], notes: [], answers: [], selectedMoveType: null });
 const storageKey = (moveId: string) => `jimssak-review-${moveId}`;
 export const isReviewPreview = () => import.meta.env.DEV && new URLSearchParams(window.location.search).get('preview') === '1';
 
@@ -34,9 +35,9 @@ function loadDraft(moveId: string, analysisId: string): ReviewDraft {
   try {
     const saved = sessionStorage.getItem(storageKey(moveId));
     const draft = saved ? JSON.parse(saved) as ReviewDraft : null;
-    if (draft?.analysisId === analysisId) return { ...draft, answers: draft.answers ?? draft.notes.map(note => ({ step: note.step, text: note.text })) };
+    if (draft?.analysisId === analysisId) return { ...draft, answers: draft.answers ?? draft.notes.map(note => ({ step: note.step, text: note.text })), selectedMoveType: draft.selectedMoveType ?? null };
   } catch { /* Damaged browser data is discarded. */ }
-  return emptyDraft(analysisId);
+  return { ...emptyDraft(analysisId), selectedMoveType: isReviewPreview() ? 'full' : null };
 }
 
 export function useReview() {
