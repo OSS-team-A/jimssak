@@ -124,7 +124,7 @@ export function MoveInfoPage() {
   if (!move && !preview) return <main className="app-page move-info-page"><BrandHeader />
     <h1>이사 정보를 찾을 수 없어요</h1><Button onClick={() => navigate(routes.capture)}>촬영 준비로 돌아가기</Button></main>;
 
-  return <main className="app-page move-info-page">
+  return <main className={`app-page move-info-page${confirm ? ' move-info-page--confirm' : ''}`}>
     <BrandHeader />
     {!confirm ? <>
       <h1>이사 정보를 알려주세요</h1>
@@ -166,13 +166,14 @@ export function MoveInfoPage() {
       <span className="capture-eyebrow">이사 정보 최종 확인</span>
       <h1>이사 정보를<br />마지막으로 확인할게요</h1>
       <p className="move-intro">입력한 주소를 통해 정보를 확인했어요.</p>
-      {(['origin', 'destination'] as const).map(side => <div className="confirm-card" key={side}>
+      <div className="confirm-cards">{(['origin', 'destination'] as const).map(side => <div className="confirm-card" key={side}>
         <small>{side === 'origin' ? '출발지 주소' : '도착지 주소'}</small>
         <strong>{draft[side].address}</strong>
-        <p>상세주소 {draft[side].detail || '직접 입력'}</p>
-        <p>이사 층 {draft[side].floor}층 · 승강기 확인 필요</p>
+        <p>상세주소&nbsp; {draft[side].detail || '직접 입력'}</p>
+        <p>이사 층&nbsp; {draft[side].floor === -1 ? '지하' : `${draft[side].floor}층`}&emsp; 승강기&nbsp; {previewConfirm && side === 'origin' ? '있음' : '확인 필요'}</p>
+        <p className={previewConfirm && side === 'origin' ? 'confirm-note confirm-note--found' : 'confirm-note'}>{previewConfirm && side === 'origin' ? '건물 정보에서 찾았어요 · 실제 조건과 다르면 수정해주세요' : '건물 정보를 찾지 못했어요. 직접 입력해도 돼요.'}</p>
       </div>)}
-      <div className="confirm-card"><small>이사 날짜와 시간</small><strong>{draft.date} · {draft.time}</strong></div>
+      <div className="confirm-card confirm-card--schedule"><small>이사 날짜와 시간</small><strong>{draft.date.replaceAll('-', '. ')} · {Number(draft.time.slice(0, 2)) < 12 ? '오전' : '오후'} {Number(draft.time.slice(0, 2)) % 12 || 12}시</strong></div></div>
       {error && <p className="form-error" role="alert">{error}</p>}
       <div className="move-actions confirm-actions">
         <button type="button" aria-label="수정하기" onClick={() => setConfirm(false)}>‹</button>
