@@ -131,15 +131,15 @@ button { font: inherit; }
 .capture-prep .brand-header { margin-bottom: 30px; }
 .capture-eyebrow { color: #00a58d; font-size: 13px; font-weight: 700; }
 .capture-prep h1 { margin: 20px 0 0; font-size: 25px; line-height: 1.4; letter-spacing: -.04em; }
-.capture-mascot { width: 168px; height: 158px; align-self: center; margin: 18px 0 22px; flex: none; overflow: hidden; }
+.capture-mascot { width: 155px; height: 132px; align-self: center; margin: 67px 0 13px; flex: none; overflow: hidden; }
 .capture-mascot img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.capture-tips { display: grid; gap: 26px; margin-top: 12px; }
-.capture-tip { display: flex; align-items: center; gap: 16px; }
+.capture-tips { display: grid; gap: 29px; margin-top: 12px; }
+.capture-tip { display: flex; align-items: flex-start; gap: 14px; }
 .capture-tip-icon { width: 42px; height: 42px; border-radius: 50%; flex: none; display: grid; place-items: center; background: #e8f2ff; color: #3280ed; font-size: 23px; }
 .capture-tip:first-child .capture-tip-icon { background: #fff3bd; }
 .capture-tip:last-child .capture-tip-icon { background: #3280ed; color: #fff; }
-.capture-tip strong { font-size: 15px; }
-.capture-tip p { margin-top: 4px; font-size: 13px; }
+.capture-tip strong { font-size: 16px; line-height: 24px; }
+.capture-tip p { margin-top: 4px; color: #4e5968; font-size: 14px; line-height: 21px; }
 .capture-prep-actions { margin-top: auto; display: grid; gap: 12px; }
 .capture-prep-actions .button { width: 100%; }
 .capture-permission-backdrop { position: absolute; inset: 0; z-index: 5; background: #0007; display: flex; align-items: end; padding: 16px 16px max(38px, env(safe-area-inset-bottom)); }
@@ -150,13 +150,14 @@ button { font: inherit; }
 .capture-permission p { margin-bottom: 66px; }
 .capture-camera { position: relative; width: 100%; height: 100dvh; overflow: hidden; background: #17211f; color: white; }
 .capture-camera video { width: 100%; height: 100%; object-fit: cover; }
-.capture-camera-guide { position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%); width: 180px; height: 100px; border: 1px solid #fff9; border-radius: 50%; }
-.capture-camera-guide::after { content: ''; position: absolute; left: -45px; right: -45px; top: 50%; border-top: 1px solid #fff9; }
-.capture-camera-hint { position: absolute; top: 60%; width: 100%; padding: 0 18px; text-align: center; color: white !important; font-weight: 700; }
-.capture-camera-controls { position: absolute; bottom: max(48px, env(safe-area-inset-bottom)); left: 0; width: 100%; display: grid; place-items: center; gap: 12px; }
-.capture-shutter { width: 76px; height: 76px; padding: 0; border: 7px solid white; border-radius: 50%; background: #f44355; }
+.capture-camera-guide { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 180px; height: 85px; display: grid; place-items: center; }
+.capture-camera-guide img:first-child { width: 85px; height: 85px; }
+.capture-camera-guide img:last-child { position: absolute; width: 180px; height: 1px; }
+.capture-camera-hint { position: absolute; top: calc(50% + 97px); left: 0; width: 100%; margin: 0; padding: 0 18px; display: flex; justify-content: center; align-items: center; text-align: center; color: white !important; font-size: 16px !important; line-height: 21px !important; font-weight: 700; }
+.capture-camera-controls { position: absolute; bottom: max(55px, env(safe-area-inset-bottom)); left: 0; width: 100%; display: grid; place-items: center; gap: 12px; }
+.capture-shutter { width: 76px; height: 76px; padding: 0; border: 7px solid white; border-radius: 50%; background: #f04452; }
 .capture-shutter--recording { background: white; display: grid; place-items: center; }
-.capture-shutter--recording::after { content: ''; width: 28px; height: 28px; border-radius: 5px; background: #f44355; }
+.capture-shutter--recording::after { content: ''; width: 28px; height: 28px; border-radius: 6px; background: #f04452; }
 .capture-camera-controls span { color: #fff; font-size: 14px; font-weight: 700; }
 
 .capture-camera-error { position: absolute; bottom: 158px; left: 24px; right: 24px; color: #fff !important; text-align: center; background: #0009; padding: 10px; border-radius: 8px; }

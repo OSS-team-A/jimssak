@@ -4,13 +4,15 @@ import { ApiError } from '../api/client';
 import { navigate, routes } from '../app/routes';
 import { BrandHeader } from '../components/common/BrandHeader';
 import { Button } from '../components/common/Button';
-import mascot from '../assets/capture-mascot.webp';
+import mascot from '../assets/capture-mascot-final.png';
 import analysisMascot from '../assets/analysis-mascot.webp';
 import bulbIcon from '../assets/capture-bulb.svg';
 import cameraIcon from '../assets/capture-camera.svg';
 import arrowIcon from '../assets/capture-arrow.svg';
 import permissionCameraIcon from '../assets/capture-permission-camera.svg';
 import doubleArrowIcon from '../assets/capture-double-arrow.svg';
+import levelEllipse from '../assets/capture-level-ellipse.svg';
+import levelLine from '../assets/capture-level-line.svg';
 
 type Screen = 'prep' | 'camera' | 'status';
 const acceptedVideo = (file: File) => /\.(mp4|mov)$/i.test(file.name)
@@ -153,7 +155,7 @@ export function CapturePage() {
     </div>}
     {screen === 'camera' && <div className="capture-camera">
       <video ref={videoRef} autoPlay muted playsInline aria-label="카메라 미리보기" />
-      <div className="capture-camera-guide" aria-hidden="true" />
+      <div className="capture-camera-guide" aria-hidden="true"><img src={levelEllipse} alt="" /><img src={levelLine} alt="" /></div>
       <p className="capture-camera-hint">{recording ? <>한 방향으로 천천히 이동해주세요 <img className="capture-double-arrow" src={doubleArrowIcon} alt="" /></> : '수평을 맞추고 천천히 움직여주세요'}</p>
       {error && <p role="alert" className="capture-camera-error">{error}</p>}
       <div className="capture-camera-controls"><button type="button" className={recording ? 'capture-shutter capture-shutter--recording' : 'capture-shutter'} onClick={() => recording ? recorderRef.current?.stop() : start()} aria-label={recording ? '촬영 종료' : '촬영 시작'} /></div>
