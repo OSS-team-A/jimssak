@@ -95,7 +95,7 @@ export function CapturePage() {
     setScreen('review');
   }
 
-  async function upload(file: File) {
+  async function upload(file: File, continueAfterUpload = false) {
     setScreen('status');
     setUploading(true);
     setUploaded(false);
@@ -116,7 +116,11 @@ export function CapturePage() {
       else await uploadMoveVideo(move.move_id, move.guest_token, file);
       sessionStorage.setItem(move.guest_token ? 'jimssak-guest-move' : 'jimssak-member-move', JSON.stringify(move));
       setUploaded(true);
-      showReview(file);
+      if (continueAfterUpload && !afterMove) navigate(routes.moveInfo);
+      else {
+        showReview(file);
+        if (continueAfterUpload) setError('이사 후 영상은 전송됐어요. 영상 비교 분석 API는 아직 연결되지 않았어요.');
+      }
     } catch (cause) {
       if (cause instanceof ApiError) {
         setError(cause.status === 413 ? '영상 용량이 너무 커요. 짧게 다시 촬영해주세요.'
@@ -153,7 +157,7 @@ export function CapturePage() {
   function chooseFile(event: ChangeEvent<HTMLInputElement>) {
     const selected = event.target.files?.[0];
     event.target.value = '';
-    if (selected) void upload(selected);
+    if (selected) { setUploaded(false); showReview(selected); }
   }
 
   async function startCapture() {
@@ -200,7 +204,7 @@ export function CapturePage() {
     {screen === 'camera' && <div className="capture-camera">
       {preview ? <img className="capture-camera-preview" src="/capture-preview-room.png" alt="촬영 화면 미리보기" /> : <video ref={videoRef} autoPlay muted playsInline aria-label="카메라 미리보기" />}
       <div className={`capture-camera-guide${preview && previewState === 'tilted' ? ' capture-camera-guide--tilted' : ''}`} aria-hidden="true"><img src={levelEllipse} alt="" /><img src={preview && previewState === 'tilted' ? tiltedLevelLine : levelLine} alt="" /></div>
-      <p className="capture-camera-hint">{recording ? <>화면 안에 가구가 담겨야 정확도가 높아요 <img className="capture-double-arrow" src={doubleArrowIcon} alt="" /></> : '이동하며 방 전체를 충분히 촬영해주세요'}</p>
+      <p className="capture-camera-hint">{recording ? <>화면 안에 가구가 담겨야 정확도가 높아요 <span className="capture-double-arrow"><img src={doubleArrowIcon} alt="" /></span></> : '이동하며 방 전체를 충분히 촬영해주세요'}</p>
       {error && <p role="alert" className="capture-camera-error">{error}</p>}
       <div className="capture-camera-controls"><button type="button" className={recording ? 'capture-shutter capture-shutter--recording' : 'capture-shutter'} onClick={() => { if (preview) { if (recording) setScreen('review'); setRecording(!recording); } else if (recording) recorderRef.current?.stop(); else start(); }} aria-label={recording ? '촬영 종료 및 영상 전송' : '촬영 시작'} disabled={uploading} /></div>
     </div>}
@@ -213,7 +217,7 @@ export function CapturePage() {
         <div className="capture-review-note">촬영한 영상을 확인하고 영상을 다시 업로드할 수 있어요.</div>
         {error && <p role="alert" className="capture-review-error">{error}</p>}
       </div>
-      <div className="capture-review-actions"><Button onClick={() => { if (preview) { window.history.pushState({}, '', afterMove ? `${routes.analysis}?mode=after&preview=1&state=waiting` : `${routes.moveInfo}?preview=1`); window.dispatchEvent(new PopStateEvent('popstate')); } else if (afterMove) setError('이사 후 영상은 전송됐어요. 영상 비교 분석 API는 아직 연결되지 않았어요.'); else navigate(routes.moveInfo); }} disabled={!reviewFile && !preview}>이 영상으로 분석 시작하기</Button><Button variant="secondary" onClick={() => { setError(''); setReviewFile(null); setReviewUrl(null); if (reviewUrlRef.current) URL.revokeObjectURL(reviewUrlRef.current); reviewUrlRef.current = null; setScreen('prep'); }}>다시 촬영하기</Button></div>
+      <div className="capture-review-actions"><Button onClick={() => { if (preview) { window.history.pushState({}, '', afterMove ? `${routes.analysis}?mode=after&preview=1&state=waiting` : `${routes.moveInfo}?preview=1`); window.dispatchEvent(new PopStateEvent('popstate')); } else if (!uploaded && reviewFile) void upload(reviewFile, true); else if (afterMove) setError('이사 후 영상은 전송됐어요. 영상 비교 분석 API는 아직 연결되지 않았어요.'); else navigate(routes.moveInfo); }} disabled={!reviewFile && !preview}>이 영상으로 분석 시작하기</Button><Button variant="secondary" onClick={() => { setError(''); setReviewFile(null); setReviewUrl(null); if (reviewUrlRef.current) URL.revokeObjectURL(reviewUrlRef.current); reviewUrlRef.current = null; setScreen('prep'); }}>다시 촬영하기</Button></div>
     </div>}
     {screen === 'status' && <div className="capture-status">
       <BrandHeader />
