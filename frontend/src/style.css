@@ -432,10 +432,12 @@ input.move-field { margin-top: 8px; color: #191f28; }
 .after-review-list .review-inventory-stats { margin-top: 14px; }
 .after-review-list .review-inventory-table { margin-top: 0; }
 .after-review-list .review-inventory-row { min-height: 67px; }
+.after-review-list button:focus-visible { outline: none; }
 .after-review-list .after-item-concern { background: #ffd8d8; }
-.after-review-list .after-item-concern .review-inventory-row { padding: 0 8px; border-bottom-color: #ffcece; }
+.after-review-list .after-item-concern .review-inventory-row { border-bottom-color: #ffcece; }
 .after-review-detail { padding: 18px 16px; background: #f2faf7; }
 .after-item-concern .after-review-detail { background: #ffd8d8; }
+.after-wardrobe-confirmed .after-review-detail { background: #fff; }
 .after-review-detail > p { margin: 0 0 10px; color: #8b95a1; font-size: 11px; line-height: 16px; }
 .after-review-photo-stack { display: flex; flex-direction: column; gap: 7px; }
 .after-review-photo { position: relative; width: 100%; aspect-ratio: 310 / 176; overflow: hidden; border-radius: 16px; }
@@ -452,6 +454,6 @@ input.move-field { margin-top: 8px; color: #191f28; }
 .after-question-icon { position: relative; }
 .after-question-icon img:first-child { display: block; width: 20px; height: 20px; }
 .after-question-icon img:last-child { position: absolute; top: 5px; left: 7px; width: 6px; height: 10px; }
-.after-review-confirm button.selected { box-shadow: inset 0 0 0 2px currentColor; }
+.after-review-confirm button.selected { background: #e0e0e0; }
 .after-review-toast { position: fixed; z-index: 20; left: 50%; bottom: max(72px, calc(env(safe-area-inset-bottom) + 50px)); transform: translateX(-50%); display: flex; align-items: center; gap: 8px; width: max-content; max-width: calc(100vw - 32px); min-height: 40px; padding: 8px 16px 8px 12px; border-radius: 999px; background: #fff; box-shadow: 0 2px 15px #001b371a; color: #333d4b; font-size: 12px; font-weight: 600; }
 .after-review-toast img { display: block; width: 24px; height: 24px; flex: none; }
