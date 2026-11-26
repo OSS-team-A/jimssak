@@ -14,11 +14,6 @@ type PlaceDraft = { address: string; candidate: AddressCandidate | null; detail:
 type Draft = { origin: PlaceDraft; destination: PlaceDraft; date: string; time: string };
 const emptyPlace = (): PlaceDraft => ({ address: '', candidate: null, detail: '', floor: null });
 const emptyDraft = (): Draft => ({ origin: emptyPlace(), destination: emptyPlace(), date: '', time: '' });
-const confirmPreviewDraft = (): Draft => ({
-  origin: { address: '서울 중구 퇴계로36길 2', candidate: null, detail: '302호', floor: 3 },
-  destination: { address: '서울 성동구 월계로44가길 8', candidate: null, detail: '', floor: 5 },
-  date: '2026-12-20', time: '09:00',
-});
 const times = ['07:00', '09:00', '10:00', '13:00', '14:00'];
 const savedMove = () => {
   for (const key of ['jimssak-member-move', 'jimssak-guest-move']) {
@@ -49,12 +44,9 @@ const fromSnapshot = (record: MoveSnapshot): Draft => ({
 
 export function MoveInfoPage() {
   const move = savedMove();
-  const preview = import.meta.env.DEV && new URLSearchParams(window.location.search).has('preview');
-  const previewConfirm = import.meta.env.DEV && new URLSearchParams(window.location.search).get('preview') === 'confirm';
   const draftKey = move ? `jimssak-draft-${move.move_id}` : '';
   const [hadDraft] = useState(() => Boolean(draftKey && sessionStorage.getItem(draftKey)));
   const [draft, setDraft] = useState<Draft>(() => {
-    if (previewConfirm) return confirmPreviewDraft();
     try { return JSON.parse(sessionStorage.getItem(draftKey) || 'null') || emptyDraft(); }
     catch { return emptyDraft(); }
   });
@@ -67,7 +59,7 @@ export function MoveInfoPage() {
   const [results, setResults] = useState<AddressCandidate[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
-  const [confirm, setConfirm] = useState(previewConfirm);
+  const [confirm, setConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [month, setMonth] = useState(() => {
@@ -78,13 +70,13 @@ export function MoveInfoPage() {
   const [tipOpen, setTipOpen] = useState(false);
   const [tipAnchor, setTipAnchor] = useState({ right: 24, bottom: 0 });
 
-  useEffect(() => { if (draftKey && !previewConfirm) sessionStorage.setItem(draftKey, JSON.stringify(draft)); }, [draft, draftKey, previewConfirm]);
+  useEffect(() => { if (draftKey) sessionStorage.setItem(draftKey, JSON.stringify(draft)); }, [draft, draftKey]);
   useEffect(() => {
-    if (!move || previewConfirm) return;
+    if (!move) return;
     void getMove(move.move_id, move.guest_token).then(record => {
       if (!hadDraft) setDraft(fromSnapshot(record));
     }).catch(() => setError('저장된 이사 정보를 불러오지 못했어요.'));
-  }, [draftKey, hadDraft, move?.move_id, move?.guest_token, previewConfirm]);
+  }, [draftKey, hadDraft, move?.move_id, move?.guest_token]);
   useEffect(() => {
     if (!keyword.trim() || keyword.trim().length < 2 || sheet === 'schedule' || sheet === null) {
       setResults([]); setSearchError(''); return;
@@ -109,7 +101,7 @@ export function MoveInfoPage() {
 
   async function save() {
     if (!complete) return;
-    if (!move || previewConfirm) { setError('미리보기에서는 저장할 수 없어요.'); return; }
+    if (!move) return;
     setSaving(true); setError('');
     try {
       await updateMove(move.move_id, move.guest_token, {
@@ -122,7 +114,7 @@ export function MoveInfoPage() {
     finally { setSaving(false); }
   }
 
-  if (!move && !preview) return <main className="app-page move-info-page"><BrandHeader />
+  if (!move) return <main className="app-page move-info-page"><BrandHeader />
     <h1>이사 정보를 찾을 수 없어요</h1><Button onClick={() => navigate(routes.capture)}>촬영 준비로 돌아가기</Button></main>;
 
   return <main className={`app-page move-info-page${confirm ? ' move-info-page--confirm' : ''}`}>
@@ -171,8 +163,8 @@ export function MoveInfoPage() {
         <small>{side === 'origin' ? '출발지 주소' : '도착지 주소'}</small>
         <strong>{draft[side].address}</strong>
         <p>상세주소&nbsp; {draft[side].detail || '직접 입력'}</p>
-        <p>이사 층&nbsp; {draft[side].floor === -1 ? '지하' : `${draft[side].floor}층`}&emsp; 승강기&nbsp; {previewConfirm && side === 'origin' ? '있음' : '확인 필요'}</p>
-        <p className={previewConfirm && side === 'origin' ? 'confirm-note confirm-note--found' : 'confirm-note'}>{previewConfirm && side === 'origin' ? '건물 정보에서 찾았어요 · 실제 조건과 다르면 수정해주세요' : '건물 정보를 찾지 못했어요. 직접 입력해도 돼요.'}</p>
+        <p>이사 층&nbsp; {draft[side].floor === -1 ? '지하' : `${draft[side].floor}층`}&emsp; 승강기&nbsp; 확인 필요</p>
+        <p className="confirm-note">건물 정보는 저장 후 확인할 수 있어요.</p>
       </div>)}
       <div className="confirm-card confirm-card--schedule"><small>이사 날짜와 시간</small><strong>{draft.date.replaceAll('-', '. ')} · {Number(draft.time.slice(0, 2)) < 12 ? '오전' : '오후'} {Number(draft.time.slice(0, 2)) % 12 || 12}시</strong></div></div>
       {error && <p className="form-error" role="alert">{error}</p>}
