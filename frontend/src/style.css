@@ -345,7 +345,14 @@ input.move-field { margin-top: 8px; color: #191f28; }
 .review-result-body { padding-top: 42px; }
 .review-result-body h1 { margin-top: 18px; color: #333d4b; font-size: 20px; line-height: 28px; letter-spacing: normal; }
 .review-result-body > p { margin-top: 16px; color: #6b7684; font-size: 14px; line-height: 21px; }
+.review-result-summary { margin-top: 16px; padding: 18px 16px; border-radius: 18px; background: #f7f8fa; }
+.review-result-summary strong { color: #333d4b; font-size: 14px; }
+.review-result-summary p { margin-top: 8px; color: #8b95a1; font-size: 12px; }
 .review-result-card { margin: 16px 0; padding: 20px; border-radius: 20px; background: #f7f8fa; }
-.review-result-card strong { font-size: 16px; }
-.review-result-card p { margin-top: 16px; color: #6b7684; font-size: 14px; line-height: 22px; }
+.review-result-card > strong { display: block; padding-bottom: 12px; border-bottom: 1px solid #e8ebee; color: #333d4b; font-size: 16px; }
+.review-result-card > div { margin-top: 10px; padding: 16px; border-radius: 18px; background: #fff; }
+.review-result-card > div strong { color: #333d4b; font-size: 16px; }
+.review-result-card > div span { float: right; color: #8b95a1; font-size: 13px; }
+.review-result-card > div p { margin-top: 8px; color: #8b95a1; font-size: 12px; line-height: 18px; }
+.review-result-card > p { margin-top: 14px; padding-top: 14px; border-top: 1px solid #e8ebee; color: #8b95a1; font-size: 12px; line-height: 18px; }
 .review-text-button { width: 100%; margin-top: 12px; background: white; color: #8b95a1; font-size: 13px; }

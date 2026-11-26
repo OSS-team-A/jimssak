@@ -127,8 +127,22 @@ export function InventoryPage() {
 
 export function ResultPage() {
   const { move, analysis, draft, loading, error, total } = useReview();
+  const [pdfOpen, setPdfOpen] = useState(false);
   const ready = analysis?.status === 'completed' && !!draft;
   return <main className="app-page review-result-page"><BrandHeader />
-    {ready ? <div className="review-result-body"><div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div><h1>이사 유형별 예상 비용</h1><p>확인한 이삿짐 목록과 이사 조건을 기준으로 비교해요.</p><div className="review-result-card"><strong>검토한 이삿짐 {total}개</strong><p>예상 비용을 계산하는 서버 기능이 아직 연결되지 않았어요. 실제 금액은 이사업체와 상담해 확인해주세요.</p></div><Button variant="secondary" onClick={() => navigate(routes.inventory)}>이삿짐 목록 다시 확인하기</Button><button className="review-text-button" onClick={() => navigate(routes.chat)}>채팅으로 돌아가기</button></div> : <ReviewGate loading={loading} error={error} hasMove={!!move} completed={analysis?.status === 'completed'} />}
+    {ready ? <div className="review-result-body">
+      <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
+      <h1>이사 유형별 예상 비용</h1><p>확인한 이삿짐 목록과 이사 조건을 기준으로 비교해요.</p>
+      <div className="review-result-summary"><strong>검토한 이삿짐 {total}개</strong><p>목록과 이사 조건을 확인하고 있어요.</p></div>
+      <div className="review-result-card"><strong>이사 유형</strong>
+        <div><strong>일반 이사</strong><span>비용 계산 전</span><p>운반 중심 · 포장과 정리는 직접 해요</p></div>
+        <div><strong>반포장 이사</strong><span>비용 계산 전</span><p>큰 짐 포장과 운반 · 잔짐 정리는 직접 해요</p></div>
+        <div><strong>포장 이사</strong><span>비용 계산 전</span><p>포장부터 운반·정리까지 맡겨요</p></div>
+        <p>예상 비용 API가 연결되면 이사 유형별 금액을 보여드려요. 실제 비용은 이사업체와 확인해주세요.</p>
+      </div>
+      <Button onClick={() => setPdfOpen(true)}>이삿짐 명세서 PDF 받기</Button>
+      <button className="review-text-button" onClick={() => navigate(routes.inventory)}>이삿짐 목록 다시 확인하기</button>
+      {pdfOpen && <div className="review-dialog-backdrop" onClick={() => setPdfOpen(false)}><div className="review-dialog" role="dialog" aria-modal="true" aria-label="명세서 안내" onClick={event => event.stopPropagation()}><h2>명세서를 아직 만들 수 없어요</h2><p>목록 저장과 PDF 생성 기능이 연결되면 내려받을 수 있어요.</p><Button onClick={() => setPdfOpen(false)}>확인</Button></div></div>}
+    </div> : <ReviewGate loading={loading} error={error} hasMove={!!move} completed={analysis?.status === 'completed'} />}
   </main>;
 }
