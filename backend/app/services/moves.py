@@ -184,6 +184,21 @@ class MoveStore:
             )
         return Media(**dict(old)) if old else None
 
+    def replace_after_video(self, media: Media) -> Media | None:
+        """Store an after-move video without touching the initial room video."""
+        with self.db.connect() as db:
+            db.execute("SELECT 1 FROM moves WHERE id = %s FOR UPDATE", (media.move_id,))
+            old = db.execute(
+                f"DELETE FROM move_after_videos WHERE move_id = %s RETURNING {MEDIA_COLUMNS}",
+                (media.move_id,),
+            ).fetchone()
+            db.execute(
+                f"INSERT INTO move_after_videos({MEDIA_COLUMNS}) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (media.id, media.move_id, media.filename, media.content_type,
+                 media.size_bytes, media.storage_path, media.created_at),
+            )
+        return Media(**dict(old)) if old else None
+
     def get_details(self, move_id: str) -> tuple[dict[str, PlaceRecord], ScheduleRecord | None]:
         with self.db.connect() as db:
             places = {

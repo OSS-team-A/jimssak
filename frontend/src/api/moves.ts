@@ -37,3 +37,13 @@ export const uploadMoveVideo = (moveId: string, guestToken: string, file: File) 
     body: form,
   });
 };
+
+export const uploadAfterMoveVideo = (moveId: string, guestToken: string, file: File) => {
+  const form = new FormData();
+  form.append('file', file);
+  return apiRequest<UploadedVideo>(`/api/v1/moves/${encodeURIComponent(moveId)}/after-media`, {
+    method: 'POST',
+    headers: guestToken ? { 'X-Guest-Token': guestToken } : undefined,
+    body: form,
+  });
+};

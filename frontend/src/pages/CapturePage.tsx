@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
-import { createMove, uploadMoveVideo } from '../api/moves';
+import { createMove, uploadAfterMoveVideo, uploadMoveVideo } from '../api/moves';
 import { ApiError } from '../api/client';
 import { navigate, routes } from '../app/routes';
 import { BrandHeader } from '../components/common/BrandHeader';
@@ -96,13 +96,6 @@ export function CapturePage() {
   }
 
   async function upload(file: File) {
-    if (afterMove) {
-      if (preview) {
-        window.history.pushState({}, '', `${routes.analysis}?mode=after&preview=1&state=waiting`);
-        window.dispatchEvent(new PopStateEvent('popstate'));
-      } else setError('이사 후 영상 업로드 API가 아직 연결되지 않았어요. 이사 전 영상은 그대로 보관돼요.');
-      return;
-    }
     setScreen('status');
     setUploading(true);
     setUploaded(false);
@@ -112,16 +105,18 @@ export function CapturePage() {
     try {
       if (!acceptedVideo(file)) throw new Error('MP4 또는 MOV 영상만 업로드할 수 있어요.');
       let move = moveRef.current;
+      if (afterMove && !move) throw new Error('이사 기록을 찾을 수 없어요. 나의 이사 기록에서 다시 시작해주세요.');
       if (!move) {
         const created = await createMove();
         move = { move_id: created.move_id, guest_token: created.guest_token ?? '' };
         moveRef.current = move;
         sessionStorage.setItem(move.guest_token ? 'jimssak-guest-move' : 'jimssak-member-move', JSON.stringify(move));
       }
-      await uploadMoveVideo(move.move_id, move.guest_token, file);
+      if (afterMove) await uploadAfterMoveVideo(move.move_id, move.guest_token, file);
+      else await uploadMoveVideo(move.move_id, move.guest_token, file);
       sessionStorage.setItem(move.guest_token ? 'jimssak-guest-move' : 'jimssak-member-move', JSON.stringify(move));
       setUploaded(true);
-      navigate(routes.moveInfo);
+      showReview(file);
     } catch (cause) {
       if (cause instanceof ApiError) {
         setError(cause.status === 413 ? '영상 용량이 너무 커요. 짧게 다시 촬영해주세요.'
@@ -145,7 +140,7 @@ export function CapturePage() {
         setRecording(false);
         if (cancelledRef.current) return;
         if (!chunksRef.current.length) { setError('촬영된 영상이 없어요. 다시 시도해주세요.'); return; }
-        showReview(new File(chunksRef.current, 'room-video.mp4', { type: 'video/mp4' }));
+        void upload(new File(chunksRef.current, 'room-video.mp4', { type: 'video/mp4' }));
       };
       recorder.start();
       setRecording(true);
@@ -158,7 +153,7 @@ export function CapturePage() {
   function chooseFile(event: ChangeEvent<HTMLInputElement>) {
     const selected = event.target.files?.[0];
     event.target.value = '';
-    if (selected) showReview(selected);
+    if (selected) void upload(selected);
   }
 
   async function startCapture() {
@@ -207,7 +202,7 @@ export function CapturePage() {
       <div className={`capture-camera-guide${preview && previewState === 'tilted' ? ' capture-camera-guide--tilted' : ''}`} aria-hidden="true"><img src={levelEllipse} alt="" /><img src={preview && previewState === 'tilted' ? tiltedLevelLine : levelLine} alt="" /></div>
       <p className="capture-camera-hint">{recording ? <>화면 안에 가구가 담겨야 정확도가 높아요 <img className="capture-double-arrow" src={doubleArrowIcon} alt="" /></> : '이동하며 방 전체를 충분히 촬영해주세요'}</p>
       {error && <p role="alert" className="capture-camera-error">{error}</p>}
-      <div className="capture-camera-controls"><button type="button" className={recording ? 'capture-shutter capture-shutter--recording' : 'capture-shutter'} onClick={() => { if (preview) { if (recording) setScreen('review'); setRecording(!recording); } else if (recording) recorderRef.current?.stop(); else start(); }} aria-label={recording ? '촬영 종료' : '촬영 시작'} /></div>
+      <div className="capture-camera-controls"><button type="button" className={recording ? 'capture-shutter capture-shutter--recording' : 'capture-shutter'} onClick={() => { if (preview) { if (recording) setScreen('review'); setRecording(!recording); } else if (recording) recorderRef.current?.stop(); else start(); }} aria-label={recording ? '촬영 종료 및 영상 전송' : '촬영 시작'} disabled={uploading} /></div>
     </div>}
     {screen === 'review' && <div className="capture-review">
       <BrandHeader />
@@ -218,7 +213,7 @@ export function CapturePage() {
         <div className="capture-review-note">촬영한 영상을 확인하고 영상을 다시 업로드할 수 있어요.</div>
         {error && <p role="alert" className="capture-review-error">{error}</p>}
       </div>
-      <div className="capture-review-actions"><Button onClick={() => { if (reviewFile) void upload(reviewFile); else if (preview) { window.history.pushState({}, '', afterMove ? `${routes.analysis}?mode=after&preview=1&state=waiting` : `${routes.moveInfo}?preview=1`); window.dispatchEvent(new PopStateEvent('popstate')); } }}>이 영상으로 분석 시작하기</Button><Button variant="secondary" onClick={() => { setError(''); setReviewFile(null); setReviewUrl(null); if (reviewUrlRef.current) URL.revokeObjectURL(reviewUrlRef.current); reviewUrlRef.current = null; setScreen('prep'); }}>다시 촬영하기</Button></div>
+      <div className="capture-review-actions"><Button onClick={() => { if (preview) { window.history.pushState({}, '', afterMove ? `${routes.analysis}?mode=after&preview=1&state=waiting` : `${routes.moveInfo}?preview=1`); window.dispatchEvent(new PopStateEvent('popstate')); } else if (afterMove) setError('이사 후 영상은 전송됐어요. 영상 비교 분석 API는 아직 연결되지 않았어요.'); else navigate(routes.moveInfo); }} disabled={!reviewFile && !preview}>이 영상으로 분석 시작하기</Button><Button variant="secondary" onClick={() => { setError(''); setReviewFile(null); setReviewUrl(null); if (reviewUrlRef.current) URL.revokeObjectURL(reviewUrlRef.current); reviewUrlRef.current = null; setScreen('prep'); }}>다시 촬영하기</Button></div>
     </div>}
     {screen === 'status' && <div className="capture-status">
       <BrandHeader />

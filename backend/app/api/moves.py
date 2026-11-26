@@ -622,6 +622,44 @@ def upload_media(
     return UploadedVideo(**_media_info(media).model_dump(), replaced=replaced is not None)
 
 
+@router.post(
+    "/{move_id}/after-media",
+    status_code=status.HTTP_201_CREATED,
+    summary="이사 후 방 영상 업로드",
+    description=(
+        "SC-15 촬영 종료 시 이사 후 영상을 저장한다. 이사 전 영상은 유지된다. "
+        "이사 후 영상을 다시 올리면 이전 이사 후 영상만 교체한다. "
+        "영상 비교 분석은 아직 시작하지 않는다."
+    ),
+    responses={
+        401: {"description": "인증 정보 없음"},
+        404: {"description": "없거나, 만료되었거나, 다른 사용자의 이사"},
+        413: {"description": "최대 용량 초과"},
+        415: {"description": "mp4·mov가 아니거나 영상으로 읽을 수 없는 파일"},
+    },
+)
+def upload_after_media(
+    move: AccessibleMove,
+    file: Annotated[UploadFile, File(description="이사 후 방 촬영 영상 (mp4, mov)")],
+    moves: MoveStoreDep,
+    storage: MediaStorageDep,
+) -> UploadedVideo:
+    try:
+        media = storage.save_video(move.id, file.file, file.filename, file.content_type)
+    except UnsupportedMedia as exc:
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, str(exc)) from exc
+    except MediaTooLarge as exc:
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, str(exc)) from exc
+    try:
+        replaced = moves.replace_after_video(media)
+    except BaseException:
+        storage.discard(media)
+        raise
+    if replaced is not None:
+        storage.discard(replaced)
+    return UploadedVideo(**_media_info(media).model_dump(), replaced=replaced is not None)
+
+
 def _media_info(media: Media) -> MediaInfo:
     return MediaInfo(
         media_id=media.id, filename=media.filename, content_type=media.content_type,
