@@ -9,3 +9,13 @@ export function navigate(path: AppRoute) {
   window.history.pushState({}, '', path);
   window.dispatchEvent(new PopStateEvent('popstate'));
 }
+
+export function openGuide() {
+  window.history.pushState({ guideReturnTo: window.location.pathname + window.location.search }, '', routes.guide);
+  window.dispatchEvent(new PopStateEvent('popstate'));
+}
+
+export function closeGuide() {
+  if (window.history.state?.guideReturnTo) window.history.back();
+  else navigate(routes.home);
+}
