@@ -1,0 +1,52 @@
+# 짐싹 통합 품목 분류 체계 (학습·평가 전에 고정)
+#
+# code     : 정답 CSV category, 학습 데이터셋 클래스명, API class_name 에 쓰는 값
+# coco     : COCO 사전학습 모델(B0) 클래스 중 '같은 개념'만. 없으면 null → B0에서 미지원
+# lvis     : LVIS v1 카테고리 이름(들). 이 마스크 라벨로 세그멘테이션 학습 (실제 윤곽 마스크)
+# homeobj  : Ultralytics HomeObjects-3K 클래스명 (박스 라벨만 → 탐지 전용 모델·박스 평가에만 사용)
+#
+# 최종 학습 클래스는 이 목록 중 '학습 데이터에 실제 인스턴스가 충분한 것'만으로 전처리 단계에서 자동 확정되며
+# outputs/<run>/datasets/class_availability.csv 에 근거(학습·검증·테스트 인스턴스 수)가 남는다.
+# 비슷하지만 다른 개념은 합치지 않는다. 합친 경우(예: table ← dining_table/coffee_table)는 lvis 목록에 모두 드러나 있다.
+
+version: 2
+
+categories:
+  - {code: sofa,            ko: 소파,         coco: couch,        lvis: [sofa],                                   homeobj: [sofa]}
+  - {code: bed,             ko: 침대,         coco: bed,          lvis: [bed, bunk_bed],                          homeobj: [bed]}
+  - {code: mattress,        ko: 매트리스,     coco: null,         lvis: [mattress]}
+  - {code: desk,            ko: 책상,         coco: null,         lvis: [desk]}
+  - {code: table,           ko: 테이블,       coco: dining table, lvis: [table, dining_table, coffee_table, kitchen_table], homeobj: [table]}
+  - {code: chair,           ko: 의자,         coco: chair,        lvis: [chair, armchair, folding_chair, rocking_chair, recliner, highchair], homeobj: [chair]}
+  - {code: stool,           ko: 스툴,         coco: null,         lvis: [stool, step_stool, footstool]}
+  - {code: ottoman,         ko: 오토만·푸프,  coco: null,         lvis: [ottoman]}
+  - {code: cabinet,         ko: 수납장,       coco: null,         lvis: [cabinet, cupboard, file_cabinet]}
+  - {code: drawer_chest,    ko: 서랍장,       coco: null,         lvis: [dresser]}
+  - {code: wardrobe,        ko: 옷장,         coco: null,         lvis: [wardrobe, armoire],                      homeobj: [wardrobe]}
+  - {code: bookshelf,       ko: 책장,         coco: null,         lvis: [bookcase]}
+  - {code: television,      ko: TV,           coco: tv,           lvis: [television_set],                         homeobj: [tv]}
+  - {code: monitor,         ko: 모니터,       coco: null,         lvis: ["monitor_(computer_equipment) computer_monitor"]}
+  - {code: refrigerator,    ko: 냉장고,       coco: refrigerator, lvis: [refrigerator]}
+  - {code: washing_machine, ko: 세탁기,       coco: null,         lvis: [automatic_washer]}
+  - {code: dishwasher,      ko: 식기세척기,   coco: null,         lvis: [dishwasher]}
+  - {code: microwave,       ko: 전자레인지,   coco: microwave,    lvis: [microwave_oven]}
+  - {code: oven,            ko: 오븐,         coco: oven,         lvis: [oven]}
+  - {code: air_conditioner, ko: 에어컨,       coco: null,         lvis: [air_conditioner]}
+  - {code: mirror,          ko: 거울,         coco: null,         lvis: [mirror]}
+  - {code: lamp,            ko: 조명·스탠드,  coco: null,         lvis: [lamp, table_lamp],                       homeobj: [lamp]}
+  - {code: fan,             ko: 선풍기,       coco: null,         lvis: [fan]}
+  - {code: suitcase,        ko: 캐리어,       coco: suitcase,     lvis: [suitcase]}
+  - {code: box,             ko: 상자,         coco: null,         lvis: [box, carton],  note: "이사 박스 전용 클래스가 아니라 일반 상자·골판지 상자"}
+  - {code: bicycle,         ko: 자전거,       coco: bicycle,      lvis: [bicycle]}
+  - {code: piano,           ko: 피아노,       coco: null,         lvis: [piano]}
+  - {code: other,           ko: 기타,         coco: null,         lvis: []}
+
+# 요청 후보였지만 공개 데이터에서 근거를 찾지 못했거나 다른 개념이라 제외한 것 (보고서에 그대로 기록)
+excluded_candidates:
+  - {candidate: dining_chair / office_chair, reason: "LVIS·COCO·HomeObjects 모두 의자 세부 유형을 구분하지 않음 → chair로 통합"}
+  - {candidate: drawer, reason: "LVIS 'drawer'는 가구의 서랍 한 칸(부품). 서랍장은 'dresser'로 drawer_chest에 매핑"}
+  - {candidate: storage_rack, reason: "LVIS에 해당 카테고리 없음 (spice_rack·towel_rack은 소형 부착물)"}
+  - {candidate: desktop_computer, reason: "LVIS v1에 해당 카테고리 없음 (laptop_computer·keyboard만 존재)"}
+  - {candidate: floor_lamp, reason: "LVIS는 lamp/table_lamp만 구분 → lamp로 통합"}
+  - {candidate: moving_box, reason: "이사용 박스 전용 라벨 없음 → 일반 box(box+carton)로 학습하고 이름을 그대로 box로 둠"}
+  - {candidate: wardrobe (마스크), reason: "LVIS v1 val 인스턴스 0, armoire 1 → 세그멘테이션 학습 불가 가능성 높음. HomeObjects-3K 박스 라벨로 탐지 전용 모델에서만 학습"}

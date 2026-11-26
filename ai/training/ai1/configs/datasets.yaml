@@ -1,0 +1,90 @@
+# 공개 데이터셋 레지스트리
+# 모든 URL·용량은 2026-11-25 개발 PC에서 HTTP 요청으로 실제 응답(200)과 Content-Length를 확인했다.
+# 라이선스는 'license_source'에 적힌 곳에서 확인한 문구다. 서버 실행 시 다운로드한 파일의 라이선스 파일/필드도 다시 기록한다.
+
+lvis_v1:
+  name: LVIS v1 (Large Vocabulary Instance Segmentation)
+  role: 이사 물품 인스턴스 세그멘테이션 학습·평가 (실제 다각형 마스크)
+  homepage: https://www.lvisdataset.org
+  files:
+    train_ann: {url: https://dl.fbaipublicfiles.com/LVIS/lvis_v1_train.json.zip, bytes: 350264821}
+    val_ann:   {url: https://dl.fbaipublicfiles.com/LVIS/lvis_v1_val.json.zip,   bytes: 64026968}
+  images: "COCO 2017 이미지를 이미지별 coco_url(http://images.cocodataset.org/...)로 필요한 것만 개별 다운로드"
+  license: "주석: LVIS 홈페이지 기준 CC BY 4.0 (홈페이지가 JS 렌더링이라 자동 확인 실패 → 보고서에 '수동 확인 필요' 표시). 이미지: COCO/Flickr 이미지별 라이선스 (json의 licenses 필드: CC BY-NC-SA 2.0 등 이미지마다 다름)"
+  license_source: "lvis_v1_val.json 'licenses' 필드(확인), lvisdataset.org"
+  label_format: "COCO JSON (polygon segmentation, federated - neg_category_ids / not_exhaustive_category_ids)"
+  notes: "연합(federated) 주석: 이미지마다 확인된 카테고리만 정답. 평가 시 확인되지 않은 카테고리의 예측은 무시."
+
+coco_images:
+  name: COCO 2017 images
+  role: LVIS 이미지 원본
+  homepage: https://cocodataset.org
+  check_url: http://images.cocodataset.org/val2017/000000000139.jpg
+  files:
+    annotations: {url: http://images.cocodataset.org/annotations/annotations_trainval2017.zip, bytes: 252907541}
+    train_zip: {url: http://images.cocodataset.org/zips/train2017.zip, bytes: 19336861798}
+    val_zip: {url: http://images.cocodataset.org/zips/val2017.zip, bytes: 815585330}
+  role_annotations: "COCO 원본 인스턴스 주석 — 80개 클래스를 이미지마다 빠짐없이 라벨링. 공통 클래스(의자·소파·침대 등) 라벨로 사용"
+  license: "주석 CC BY 4.0(COCO 이용약관 기준), 이미지별 Flickr 라이선스 (LVIS json licenses 필드로 이미지마다 기록)"
+
+homeobjects_3k:
+  name: Ultralytics HomeObjects-3K
+  role: 실내 가구 객체 탐지(박스) 학습·평가 — 옷장 등 마스크 없는 품목 보완, 실내 도메인 독립 테스트
+  homepage: https://docs.ultralytics.com/datasets/detect/homeobjects-3k
+  files:
+    zip: {url: https://github.com/ultralytics/assets/releases/download/v0.0.0/homeobjects-3K.zip, bytes: 409423784}
+  images_total: 2689   # 문서 기준 train 2285 / val 404
+  license: "AGPL-3.0 (Ultralytics 문서의 dataset license 필드: https://www.ultralytics.com/license)"
+  license_source: https://docs.ultralytics.com/datasets/detect/homeobjects-3k
+  label_format: YOLO detection (박스만, 마스크 없음)
+
+crack_seg:
+  name: Ultralytics Crack Segmentation
+  role: 균열(crack) 손상 세그멘테이션 학습·평가 (도로·벽 균열 — 가구 아님)
+  homepage: https://docs.ultralytics.com/datasets/segment/crack-seg
+  files:
+    zip: {url: https://github.com/ultralytics/assets/releases/download/v0.0.0/crack-seg.zip, bytes: 96089865}
+  images_total: 4029   # 문서 기준 train 3717 / val 200 / test 112
+  license: "Public Domain Mark 1.0 (Ultralytics 문서 dataset license 필드)"
+  license_source: https://docs.ultralytics.com/datasets/segment/crack-seg
+  label_format: YOLO segmentation (polygon)
+  domain_gap: "도로·콘크리트 벽 균열. 가구·가전 표면 손상과 재질·형태가 다름"
+
+abo:
+  name: Amazon Berkeley Objects (ABO)
+  role: 물품 재식별(같은 상품의 다중 시점 사진) 학습·평가, 이사 전후 매칭 합성 평가, 합성 손상 변화 평가 기반 이미지
+  homepage: https://amazon-berkeley-objects.s3.amazonaws.com/index.html
+  files:
+    listings: {url: https://amazon-berkeley-objects.s3.amazonaws.com/archives/abo-listings.tar, bytes: 87480320}
+    images_meta: {url: https://amazon-berkeley-objects.s3.amazonaws.com/images/metadata/images.csv.gz, bytes: 6430535}
+  images: "images/small/<path> 를 필요한 상품만 개별 다운로드 (최대 256px)"
+  license: "CC BY 4.0 (홈페이지 문구 및 abo-listings.tar 안의 LICENSE-CC-BY-4.0.txt 확인)"
+  license_source: https://amazon-berkeley-objects.s3.amazonaws.com/index.html
+  label_format: "상품 메타데이터 JSON (item_id, product_type, main_image_id, other_image_id)"
+  domain_gap: "쇼핑몰 카탈로그 사진(흰 배경·연출 사진 포함). 실제 방 영상의 조명·가림·흐림과 다름"
+
+visa:
+  name: VisA (Visual Anomaly)
+  role: 비정형 표면 이상(손상) 탐지 — PatchCore 이상 탐지 학습·평가
+  homepage: https://github.com/amazon-science/spot-diff
+  files:
+    tar: {url: https://amazon-visual-anomaly.s3.us-west-2.amazonaws.com/VisA_20220922.tar, bytes: 1929840640}
+  license: "CC BY 4.0 (spot-diff README 'The data is released under the CC BY 4.0 license.')"
+  license_source: https://github.com/amazon-science/spot-diff
+  label_format: 이미지 + 이상 영역 마스크, split_csv/1cls.csv
+  domain_gap: "PCB·캡슐·양초·과자 등 산업 부품. 가구 손상과 동일하지 않음 — 이상 탐지 알고리즘 검증용"
+
+excluded:
+  - {name: MVTec AD, reason: "다운로드 페이지가 신청 양식(이름·이메일) 뒤에 있어 자동 다운로드 불가, 라이선스 CC BY-NC-SA 4.0 (비상업). VisA로 대체"}
+  - {name: Objects365, reason: "박스 라벨만 있고 전체 용량이 매우 큼(Ultralytics 설정 기준 수백 GB). 마스크 학습 불가, 서버 쿼터·시간 대비 비효율"}
+  - {name: Open Images V7, reason: "세그멘테이션 마스크 zip이 대용량 묶음 단위로 제공되어 일부 클래스만 받기 어렵고 fiftyone 추가 의존. full 프로필 확장 후보로만 남김"}
+  - {name: ADE20K, reason: "Ultralytics 설정은 의미 분할(semantic)용이며 다운로드 안내가 수동(manual). 인스턴스 학습에 바로 쓰기 어려움"}
+  - {name: COCO 원본 주석, reason: "LVIS가 같은 이미지에 더 많은 가구 카테고리 마스크를 제공 → LVIS로 대체 (COCO 사전학습 가중치는 B0로 사용)"}
+  - {name: 가구 파손 데이터셋(Roboflow Universe 등), reason: "API 키(계정) 필요 → 무인 자동화 불가. 실제 가구 손상 성능은 미측정으로 보고"}
+  - {name: CO3D / TAO (다중 시점·추적), reason: "수 TB 규모 또는 하위 데이터별 별도 동의 필요 → 합성 추적 벤치마크와 ABO 재식별로 대체"}
+
+pretrained:
+  yolo11_seg: "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11{n,s,m}-seg.pt (n 5.9MB, s 20.7MB, m 45.4MB 확인) — AGPL-3.0"
+  yolo11_det: "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11{n,s,m}.pt — AGPL-3.0"
+  dinov2: "timm/vit_small_patch14_dinov2.lvd142m (Hugging Face, 88.2MB, Apache-2.0 확인)"
+  wide_resnet50_2: "https://download.pytorch.org/models/wide_resnet50_2-95faca4d.pth (138MB, torchvision ImageNet 가중치)"

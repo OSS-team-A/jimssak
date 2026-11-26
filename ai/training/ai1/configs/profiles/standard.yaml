@@ -1,0 +1,76 @@
+# standard: 공개SW프로젝트 발표용 기본 실험 (GPU 1장 기준 추정 6~10시간, 아래 '추정'은 미측정)
+profile: standard
+description: 발표용 실험 — 이사 물품 세그멘테이션(n,s), 실내 탐지(s), 재식별, 전후 매칭, 균열 세그멘테이션, PatchCore
+
+input_video: data/input_videos/언니방영상.mp4
+input_video_id: unnie_room_01
+
+gpu:
+  require_gpu: true          # GPU가 없으면 실패 (CPU 자동 전환 없음). 로컬 점검은 --allow-cpu
+  use_all_visible_gpus: true # 컨테이너에 보이는 GPU가 2장 이상이면 YOLO 학습을 DDP로 (Ultralytics device="0,1")
+  monitor_interval_sec: 5
+
+lvis:
+  use_train_json: true       # 학습/검증 = LVIS train(COCO train2017 이미지), 테스트 = LVIS val(COCO val2017 이미지)
+  max_train_images: 12000
+  max_val_images: 1200       # LVIS train 중 이미지 단위로 분리한 검증용
+  max_test_images: 2000
+  per_class_image_cap: 1500  # 흔한 클래스(의자 등)가 데이터를 독점하지 않도록 클래스별 이미지 상한
+  min_train_instances: 40    # 이보다 적은 클래스는 최종 학습 클래스에서 제외(근거 기록)
+  min_test_instances: 5
+  download_workers: 16
+
+seg_models:                  # 이사 물품 세그멘테이션 파인튜닝 (B1 후보)
+  - {name: yolo11n-seg, epochs: 60, batch: 32, imgsz: 640}
+  - {name: yolo11s-seg, epochs: 60, batch: 16, imgsz: 640}
+train_common:
+  patience: 15
+  optimizer: auto            # Ultralytics: 반복 수에 따라 SGD/AdamW 자동 선택 (manifest에 실제 선택 기록)
+  cos_lr: true
+  seed: 0
+  workers: 8
+  save_period: 10
+  oom_retry: 3               # OOM 시 batch를 절반으로 줄여 재시도하는 횟수
+
+homeobjects:
+  enabled: true
+  det_model: {name: yolo11s, epochs: 60, batch: 32, imgsz: 640}
+  val_fraction: 0.1          # HomeObjects train 중 검증 분리 비율 (원래 val 404장은 테스트로 사용)
+
+reid:
+  backbone: vit_small_patch14_dinov2.lvd142m
+  product_types: [CHAIR, SOFA, TABLE, LAMP, OTTOMAN, STOOL_SEATING, SUITCASE, HOME_FURNITURE_AND_DECOR, HOME, BED, DRESSER, SHELF, CABINET, DESK, BOOKCASE]
+  min_images_per_item: 3
+  max_items: 4000
+  split: {train: 0.7, val: 0.1, test: 0.2}
+  epochs: 30
+  batch_items: 32            # 배치당 상품 수 (상품당 2~4장 → batch-hard triplet)
+  imgs_per_item: 3
+  lr: 0.001
+  weight_decay: 0.0001
+  embed_dim: 256
+  margin: 0.2
+  patience: 6
+  download_workers: 16
+
+tracking_bench:              # 합성 카메라 이동 영상 (LVIS 테스트 이미지 + 정답 마스크로 생성)
+  n_val_sequences: 20
+  n_test_sequences: 40
+  frames_per_sequence: 150
+  out_size: [640, 384]
+
+matching_bench:              # B3 이사 전후 매칭 합성 시나리오 (ABO)
+  n_val_scenarios: 150
+  n_test_scenarios: 300
+  items_per_scenario: [8, 16]
+  missing_per_scenario: [0, 3]
+  unexpected_per_scenario: [0, 2]
+
+damage:
+  crack_model: {name: yolo11n-seg, epochs: 50, batch: 32, imgsz: 640}
+  visa_categories: [candle, capsules, cashew, macaroni1, pcb1, pipe_fryum]
+  patchcore: {backbone: wide_resnet50_2, coreset_ratio: 0.01, imgsz: 256, max_train_images: 200}
+  change_bench: {n_val_pairs: 150, n_test_pairs: 300}
+
+video:
+  vid_stride: 1

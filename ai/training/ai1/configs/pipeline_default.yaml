@@ -1,0 +1,54 @@
+# 짐싹 AI1 추론·추적·목록 집계 설정 (B0/B1/B2 공통, 최종 test 평가 전에 고정)
+#
+# B1은 이 파일에서 weights만 바꾸고 나머지는 그대로 쓴다.
+# 값을 바꾸면 run manifest의 config_sha256이 달라지므로 비교표에서 구분된다.
+
+detector:
+  # Ultralytics model.track()의 기본 동작과 동일하게, 추적기 입력용 검출은 conf 0.1까지 받는다.
+  # (BoT-SORT가 track_low_thresh 이상 저신뢰 검출을 2차 연결에 사용하기 때문)
+  conf: 0.1
+  iou: 0.7          # NMS IoU (Ultralytics 기본값)
+  imgsz: 640
+  max_det: 300
+  retina_masks: true  # 마스크를 원본 해상도로 복원
+
+tracker:
+  # null이면 설치된 Ultralytics 패키지에 들어 있는 기본 botsort.yaml을 그대로 쓰고,
+  # 실행마다 그 내용을 run 폴더에 복사·해시 기록한다.
+  config: null
+  # 참고: Ultralytics 8.4.218의 BoT-SORT는 track_buffer를 '처리 프레임 수'로 해석한다(FPS 보정 없음).
+  # vid_stride를 바꾸면 같은 track_buffer라도 실제 유지 시간이 달라진다.
+
+video:
+  vid_stride: 1      # 1 = 모든 프레임 처리
+
+listing:
+  # 개별 운반 '후보' 목록에 올릴 품목. taxonomy.yaml의 code 기준.
+  # 모델 클래스는 taxonomy의 매핑(B0: coco 열, B1: 데이터셋 클래스명 = code)으로만 변환한다.
+  include_categories: all_mapped   # all_mapped = taxonomy에 매핑된 모든 품목 (other 제외)
+  # 트랙 → 물품 후보 확정 조건 (화면 면적으로 크기를 판정하지 않는다)
+  confirm_min_frames: 8        # 처리 프레임 기준
+  confirm_min_mean_conf: 0.35
+  # 이 조건만 넘으면 '확인 필요(needs_review)'로 목록에 따로 남긴다. 미만은 목록에서 제외(트랙 표에는 남음)
+  review_min_frames: 3
+  review_min_mean_conf: 0.2
+  # 클래스 투표: 트랙 안 검출들의 confidence 합이 가장 큰 클래스
+
+evidence:
+  rep_images_per_item: 3       # 물품별 대표 이미지 수 (시간적으로 떨어진 고신뢰 프레임)
+  rep_min_gap_sec: 0.5
+  mask_sample_every_sec: 2.0   # 원본 좌표계 마스크 PNG 샘플 저장 간격
+  appearance_samples_per_track: 24
+  annotated_video_scale: 0.5   # 결과 영상 축소 비율 (1.0 = 원본 크기)
+
+relink:
+  # 재등장 연결(B2). 기본 추론에서는 실행하지 않고 link_reappearance.py로 따로 적용한다.
+  # 자동 병합 조건: 같은 품목, 시간 겹침 없음, 짧은 공백, 이전 끝 박스와 다음 시작 박스의 IoU, 외형 유사도 모두 만족
+  auto_max_gap_sec: 1.0
+  auto_min_box_iou: 0.3
+  auto_min_appearance: 0.80
+  # 확인 요청: 같은 품목, 시간 겹침 없음, 공백 제한 이내, 외형 유사도 이상 → 병합하지 않고 사람 확인 요청
+  # 방 촬영 영상은 카메라가 한 바퀴 돌아 같은 가구로 돌아오는 경우가 많아 영상 길이 수준(60초)으로 둔다.
+  # (개발 영상에서 16.6초 만에 같은 소파가 다시 나타난 사례 관찰 후 15→60으로 변경. 자동 병합 조건은 그대로)
+  suggest_max_gap_sec: 60.0
+  suggest_min_appearance: 0.70
