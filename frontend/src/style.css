@@ -267,7 +267,7 @@ input.move-field { margin-top: 8px; color: #191f28; }
 @media (max-width: 340px) { .move-info-page { padding-left: 16px; padding-right: 16px; } .move-sheet { padding-left: 16px; padding-right: 16px; } .floor-options { gap: 4px; } }
 
 /* SC-07 review conversation, inventory document, and estimate handoff. */
-.review-chat-page { display: flex; flex-direction: column; height: 100dvh; padding-top: max(12px, env(safe-area-inset-top)); padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+.review-chat-page { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; padding-top: max(12px, env(safe-area-inset-top)); padding-bottom: max(12px, env(safe-area-inset-bottom)); }
 .review-chat-scroll { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; padding-top: 42px; padding-bottom: 24px; }
 .review-chat-scroll::-webkit-scrollbar { display: none; }
 .review-avatar { display: flex; align-items: center; gap: 8px; color: #6b7684; font-size: 13px; }
@@ -287,7 +287,7 @@ input.move-field { margin-top: 8px; color: #191f28; }
 .review-example strong { color: #00a58d; font-size: 13px; }
 .review-example p { margin-top: 8px; color: #333d4b; font-size: 15px; line-height: 23px; }
 .review-local-note { margin-top: 12px !important; color: #8b95a1; font-size: 12px; line-height: 18px; }
-.review-chat-bottom { flex: none; display: grid; gap: 9px; padding-top: 8px; background: white; }
+.review-chat-bottom { position: sticky; bottom: 0; z-index: 2; flex: none; display: grid; gap: 9px; margin-top: auto; padding-top: 8px; background: white; }
 .review-footer-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .review-footer-tabs button { min-width: 0; height: 36px; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 7px 6px; border-radius: 20px; background: #f2f4f6; color: #3182f6; font-size: 11px; white-space: nowrap; }
 .review-footer-tabs button:last-child { color: #8b95a1; }
@@ -305,6 +305,7 @@ input.move-field { margin-top: 8px; color: #191f28; }
 .review-dialog h2 { color: #191f28; font-size: 20px; }
 .review-dialog p { margin: 12px 0 24px; color: #6b7684; font-size: 14px; line-height: 21px; }
 .review-gate { padding-top: 48px; }
+.review-chat-page .review-gate { flex: 1; min-height: 0; overflow-y: auto; }
 .review-gate p { color: #6b7684; font-size: 16px; line-height: 24px; }
 .review-gate .button { margin-top: 24px; }
 .review-inventory-page { padding-top: max(12px, env(safe-area-inset-top)); }
