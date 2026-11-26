@@ -194,3 +194,50 @@ def test_longer_history_bridges_unmatched_frames(history, components):
     if components == 1:
         moved = poses[5].center - poses[0].center
         assert np.allclose(moved, [0.20, 0, 0], atol=0.02)
+
+
+def test_frame_hiding_the_floor_borrows_it_from_the_same_camera_path(monkeypatch):
+    from ai.measurement import moving_video
+
+    size, f, camera_height = 100, 100.0, 1.0
+    rows = np.arange(size, dtype=float)[:, None] - 50
+
+    def floor_depth():
+        # Camera 1 m above a level floor, looking straight ahead: rows below the
+        # horizon see the floor at depth h * f / (row - cy).
+        depth = np.full((size, size), 4.0)
+        below = rows[:, 0] > 2
+        depth[below] = np.minimum(camera_height * f / rows[below], 4.0)
+        return depth
+
+    class MockDepth:
+        device = "cpu"
+
+        def __call__(self, image, turns):
+            if image[0, 0, 0] == 1:  # close-up: a box fills the lower frame
+                return np.full((size, size), 1.5)
+            return floor_depth()
+
+    wide = np.zeros((size, size, 3), dtype=np.uint8)
+    close = np.ones((size, size, 3), dtype=np.uint8)
+    pose = {"world_to_camera_rotation": np.eye(3).tolist(),
+            "world_to_camera_translation_m": [0, 0, 0]}
+    box = {"x1": 10, "x2": 90, "y1": 10, "y2": 99}
+    clip = VideoInput(
+        video_id="close-up", path="mock.avi", annotation_size_px=(size, size),
+        intrinsics={"fx": f, "fy": f, "cx": 50, "cy": 50},
+        capture_poses=[{"frame_index": 0, **pose}, {"frame_index": 5, **pose}],
+        views=[
+            {"frame_index": 0, "track_id": "lamp", "label": "lamp",
+             "mask_polygon_px": [[45, 10], [55, 10], [55, 30], [45, 30]]},
+            {"frame_index": 5, "track_id": "box", "label": "cabinet",
+             "mask_polygon_px": [[box["x1"], box["y1"]], [box["x2"], box["y1"]],
+                                 [box["x2"], box["y2"]], [box["x1"], box["y2"]]]},
+        ],
+    )
+    monkeypatch.setattr(moving_video, "_video_frames", lambda *args: [(0, wide), (5, close)])
+    result = moving_video.estimate_video(clip, MockDepth())
+    cabinet = next(o for o in result.objects if o.track_id == "box")
+    assert cabinet.status != "unavailable"
+    assert cabinet.dimensions["height"].cm == pytest.approx(150 * 89 / 100, rel=0.1)
+    assert "floor_from_other_frames" in cabinet.qualifiers

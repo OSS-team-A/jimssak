@@ -42,6 +42,7 @@ class ObservedView:
     mask: np.ndarray | None
     up: np.ndarray | None
     dimensions: dict[str, float]
+    shared_up: bool = False
 
 
 def _camera(clip, frame_index=None):
@@ -93,10 +94,22 @@ def _shape_mask(view, shape):
     return None
 
 
-def _observe(view, pose, image, depth, camera):
+def _world_up(ups):
+    """Mean floor normal in world coordinates, or None without any estimate."""
+    if not ups:
+        return None
+    mean = np.mean(ups, axis=0)
+    norm = np.linalg.norm(mean)
+    return mean / norm if norm > 1e-6 else None
+
+
+def _observe(view, pose, image, depth, camera, fallback_up=None):
+    """Measure one view. ``fallback_up`` is the floor normal (camera coordinates) seen in
+    other frames of the same camera path, used when this frame shows too little floor."""
     shape = _shape_mask(view, depth.shape)
     dimensions = {}
     up = None
+    shared_up = False
     if view.camera_up is not None:
         up = np.asarray(view.camera_up, dtype=float)
         up /= np.linalg.norm(up)
@@ -105,6 +118,8 @@ def _observe(view, pose, image, depth, camera):
     if shape is not None:
         if up is None:
             up = floor_up(depth, camera, shape)
+        if up is None and fallback_up is not None:
+            up, shared_up = fallback_up, True
         generic = object_dimensions(view, shape, depth, camera, up)
         dimensions = generic | dimensions
     if view.overall_width_px is not None and view.complete:
@@ -114,7 +129,7 @@ def _observe(view, pose, image, depth, camera):
             if up is not None:
                 diff -= (diff @ up) * up
             dimensions["overall_width"] = float(np.linalg.norm(diff) * 100)
-    return ObservedView(view, pose, camera, image, depth, shape, up, dimensions)
+    return ObservedView(view, pose, camera, image, depth, shape, up, dimensions, shared_up)
 
 
 def _table_from_motion(observations):
@@ -228,6 +243,8 @@ def _estimate_track(observations, has_capture_poses):
         qualifiers.add("bounding_box_is_approximate")
     if any(item["method"] == "metric_depth_view_median" for item in dimensions.values()):
         qualifiers.add("single_view_depth_scale_used")
+    if dimensions and any(item.shared_up for item in observations):
+        qualifiers.add("floor_from_other_frames")
     return {"track_id": first.track_id, "label": first.label, "status": status,
             "dimensions": {key: dimensions.get(key) for key in fields},
             "frames": [item.view.frame_index for item in observations],
@@ -284,6 +301,8 @@ def estimate_video(
     if tracker is not None:
         keyframes.update(range(first, last + 1, stride))
     observations = defaultdict(list)
+    world_ups = defaultdict(list)
+    pending = []
     poses = []
     timings = []
     for index, image in _video_frames(clip, first, last, keyframes):
@@ -300,9 +319,25 @@ def estimate_video(
             "inliers": pose.inliers, "median_reprojection_error_px": pose.error_px,
             "parallax_deg": pose.parallax_deg, "camera_center_m": pose.center.tolist(),
         })
-        for view in lookup.get(index, ()):
+        # Floor normal of every processed frame, in world coordinates, so a frame where
+        # furniture hides the floor can borrow it from frames on the same camera path.
+        views = lookup.get(index, ())
+        occupied = np.zeros(depth.shape, np.uint8)
+        for view in views:
+            shape = _shape_mask(view, depth.shape)
+            if shape is not None:
+                occupied |= shape.astype(np.uint8)
+        frame_up = floor_up(depth, frame_camera, occupied)
+        if frame_up is not None:
+            world_ups[pose.component].append(pose.rotation.T @ frame_up)
+        if views:
+            pending.append((views, pose, image, depth, frame_camera))
+    for views, pose, image, depth, frame_camera in pending:
+        shared = _world_up(world_ups[pose.component])
+        fallback = pose.rotation @ shared if shared is not None else None
+        for view in views:
             observations[view.track_id].append(
-                _observe(view, pose, image, depth, frame_camera)
+                _observe(view, pose, image, depth, frame_camera, fallback)
             )
 
     objects = [
