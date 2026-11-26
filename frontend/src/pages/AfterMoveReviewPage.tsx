@@ -25,6 +25,7 @@ type Confirmation = 'confirmed' | 'missing' | null;
 type ReviewToast = { message: string; kind: 'warning' | 'success' } | null;
 type AfterReviewState = { step: 0 | 1 | 2; chairConfirmed: boolean; wardrobe: Confirmation; notes: string[]; quantities: Record<string, number> };
 const initial: AfterReviewState = { step: 0, chairConfirmed: false, wardrobe: null, notes: [], quantities: { 'preview-bed': 1, 'preview-desk': 1, 'preview-chair': 1, 'preview-wardrobe': 1, 'preview-monitor': 1 } };
+const previewItemOrder = ['preview-bed', 'preview-chair', 'preview-desk', 'preview-wardrobe', 'preview-monitor'];
 const preview = () => import.meta.env.DEV && new URLSearchParams(location.search).get('preview') === '1';
 const storageKey = 'jimssak-after-review-preview';
 const load = (): AfterReviewState => {
@@ -53,7 +54,8 @@ export function AfterMoveReviewPage() {
   const params = new URLSearchParams(query);
   const isPreview = preview();
   const [state, setState] = useState<AfterReviewState>(load);
-  const [expanded, setExpanded] = useState<string | null>(params.get('view') === 'list' ? 'preview-chair' : null);
+  const [expanded, setExpanded] = useState<string[]>(() => params.get('view') === 'list'
+    ? params.get('state') === 'normal' ? ['preview-chair'] : ['preview-chair', 'preview-wardrobe'] : []);
   const [message, setMessage] = useState('');
   const [toast, setToast] = useState<ReviewToast>(null);
   const [pdfNotice, setPdfNotice] = useState<string | null>(null);
@@ -62,7 +64,9 @@ export function AfterMoveReviewPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const listView = params.get('view') === 'list';
   const normalPreview = params.get('state') === 'normal';
-  const shown = (sample?.items ?? []).map(item => ({ ...item, quantity: state.quantities[item.item_id] ?? item.quantity }));
+  const shown = [...(sample?.items ?? [])]
+    .sort((left, right) => previewItemOrder.indexOf(left.item_id) - previewItemOrder.indexOf(right.item_id))
+    .map(item => ({ ...item, quantity: state.quantities[item.item_id] ?? item.quantity }));
   const visibleItems = shown.filter(item => item.quantity > 0);
   const roomPhoto = sample?.items.find(item => item.snapshots[0]?.image_url)?.snapshots[0]?.image_url ?? '';
   const total = shown.reduce((sum, item) => sum + item.quantity, 0);
@@ -70,6 +74,7 @@ export function AfterMoveReviewPage() {
     + (state.quantities['preview-wardrobe'] > 0 && state.wardrobe !== 'confirmed' ? 1 : 0);
 
   useEffect(() => { const sync = () => setQuery(location.search); window.addEventListener('popstate', sync); return () => window.removeEventListener('popstate', sync); }, []);
+  useEffect(() => { if (listView) setExpanded(normalPreview ? ['preview-chair'] : ['preview-chair', 'preview-wardrobe']); }, [listView, normalPreview]);
   useEffect(() => { if (isPreview) sessionStorage.setItem(storageKey, JSON.stringify(state)); }, [isPreview, state]);
   useEffect(() => { if (!isPreview) return; let active = true; void import('../features/reviewPreview').then(({ reviewPreview }) => { if (active) setSample(reviewPreview); }); return () => { active = false; }; }, [isPreview]);
   useEffect(() => { if (!toast) return; const timer = window.setTimeout(() => setToast(null), 2600); return () => window.clearTimeout(timer); }, [toast]);
@@ -97,7 +102,7 @@ export function AfterMoveReviewPage() {
     if (!pendingDelete) return;
     const { id } = pendingDelete;
     setState(current => ({ ...current, quantities: { ...current.quantities, [id]: 0 } }));
-    setExpanded(current => current === id ? null : current);
+    setExpanded(current => current.filter(entry => entry !== id));
     setPendingDelete(null);
     setToast(null);
   }
@@ -128,22 +133,23 @@ export function AfterMoveReviewPage() {
       <div className="review-inventory-table"><div className="review-inventory-table-head"><span>번호</span><span>품목</span><span>수량</span><span>예상 크기 (cm)</span></div>
         {visibleItems.map((item, index) => {
           const concern = !normalPreview && ((item.item_id === 'preview-chair' && !state.chairConfirmed) || (item.item_id === 'preview-wardrobe' && state.wardrobe !== 'confirmed'));
-          const opened = expanded === item.item_id;
+          const opened = expanded.includes(item.item_id);
           return <div className={`review-inventory-item${concern ? ' after-item-concern' : ''}${item.item_id === 'preview-wardrobe' && state.wardrobe === 'confirmed' ? ' after-wardrobe-confirmed' : ''}`} key={item.item_id}>
-            <div className="review-inventory-row"><small>{String(index + 1).padStart(2, '0')}</small><strong>{item.label_ko}</strong><div className="review-quantity"><button type="button" aria-label={`${item.label_ko} 수량 줄이기`} onClick={() => decrease(item.item_id, item.label_ko, item.quantity)}><img src={minusIcon} alt="" /></button><b>{pendingDelete?.id === item.item_id ? 0 : item.quantity}</b><button type="button" aria-label={`${item.label_ko} 수량 늘리기`} onClick={() => setState(current => ({ ...current, quantities: { ...current.quantities, [item.item_id]: item.quantity + 1 } }))}><img src={plusIcon} alt="" /></button></div><span>{dimensions(item)}</span><button className="review-expand" type="button" aria-label={`${item.label_ko} 상세 ${opened ? '닫기' : '보기'}`} onClick={() => { setExpanded(opened ? null : item.item_id); if (!opened && concern) setToast({ message: item.item_id === 'preview-chair' ? '상태 변화가 의심돼요' : '영상에서 확인되지 않았어요', kind: 'warning' }); else setToast(null); }}><img src={opened ? upIcon : downIcon} alt="" /></button></div>
+            <div className="review-inventory-row"><small>{String(index + 1).padStart(2, '0')}</small><strong>{item.label_ko}</strong><div className="review-quantity"><button type="button" aria-label={`${item.label_ko} 수량 줄이기`} onClick={() => decrease(item.item_id, item.label_ko, item.quantity)}><img src={minusIcon} alt="" /></button><b>{pendingDelete?.id === item.item_id ? 0 : item.quantity}</b><button type="button" aria-label={`${item.label_ko} 수량 늘리기`} onClick={() => setState(current => ({ ...current, quantities: { ...current.quantities, [item.item_id]: item.quantity + 1 } }))}><img src={plusIcon} alt="" /></button></div><span>{dimensions(item)}</span><button className="review-expand" type="button" aria-expanded={opened} aria-label={`${item.label_ko} 상세 ${opened ? '닫기' : '보기'}`} onClick={() => { setExpanded(current => opened ? current.filter(entry => entry !== item.item_id) : [...current, item.item_id]); if (!opened && concern) setToast({ message: item.item_id === 'preview-chair' ? '상태 변화가 의심돼요' : '영상에서 확인되지 않았어요', kind: 'warning' }); else setToast(null); }}><img src={opened ? upIcon : downIcon} alt="" /></button></div>
             {opened && <div className="after-review-detail">
               {item.item_id === 'preview-wardrobe' && <p>촬영 범위 밖이거나 다른 물품에 가려졌을 수 있어요.</p>}
               {(item.item_id === 'preview-chair' || item.item_id === 'preview-wardrobe' || item.snapshots[0]?.image_url) && <div className="after-review-photo-stack">
                 {item.item_id === 'preview-chair' && concern && <><span>before</span><div className="after-review-photo"><img src={roomPhoto} alt="이사 전 의자" /></div><span>after</span></>}
                 <div className={`after-review-photo${item.item_id === 'preview-wardrobe' ? ' after-wardrobe-photo' : ''}`}><img src={item.snapshots[0]?.image_url || roomPhoto} alt={`${item.label_ko} 이사 후 사진`} /></div>
               </div>}
-              {item.item_id === 'preview-wardrobe' ? <div className="after-review-confirm"><button type="button" className={state.wardrobe === 'confirmed' ? 'selected' : ''} aria-pressed={state.wardrobe === 'confirmed'} onClick={() => selectConfirmation('confirmed')}><img src={confirmIcon} alt="" />직접 확인했어요</button><button type="button" className={state.wardrobe === 'missing' ? 'selected' : ''} aria-pressed={state.wardrobe === 'missing'} onClick={() => selectConfirmation('missing')}><span className="after-question-icon"><img src={questionIcon} alt="" /><img src={questionMark} alt="" /></span>아직 못 찾았어요</button></div> : item.item_id === 'preview-chair' && concern ? null : <dl><dt>크기</dt><dd>{dimensions(item)} cm</dd><dt>예상 무게</dt><dd>확인 필요</dd><dt>분리 여부</dt><dd>{item.disassembly_required ? '분리 필요' : '다리 분리 가능 여부 확인'}</dd><dt>위치</dt><dd>창가 왼쪽 · 모니터 아래</dd></dl>}
+              {item.item_id === 'preview-wardrobe' && <div className="after-review-confirm"><button type="button" className={state.wardrobe === 'confirmed' ? 'selected' : ''} aria-pressed={state.wardrobe === 'confirmed'} onClick={() => selectConfirmation('confirmed')}><img src={confirmIcon} alt="" />직접 확인했어요</button><button type="button" className={state.wardrobe === 'missing' ? 'selected' : ''} aria-pressed={state.wardrobe === 'missing'} onClick={() => selectConfirmation('missing')}><span className="after-question-icon"><img src={questionIcon} alt="" /><img src={questionMark} alt="" /></span>아직 못 찾았어요</button></div>}
+              {(item.item_id !== 'preview-chair' || !concern) && <dl><dt>크기</dt><dd>{dimensions(item)} cm</dd><dt>예상 무게</dt><dd>확인 필요</dd><dt>분리 여부</dt><dd>{item.disassembly_required ? '분리 필요' : '다리 분리 가능 여부 확인'}</dd><dt>위치</dt><dd>창가 왼쪽 · 모니터 아래</dd></dl>}
             </div>}
           </div>;
         })}
       </div>
       <div className="review-inventory-total"><strong>합계</strong><strong>{total}개</strong></div>
-      <div className="review-inventory-help"><strong>확인해 주세요</strong><p>• 크기는 가로 × 깊이 × 높이 순서의 추정값이에요.<br />• 무게와 분리 여부는 실제 물품 확인이 필요해요.<br />• 누락된 물품이나 두고 갈 물품은 채팅으로 알려주세요.</p><small>확정된 목록 · 검토 후 명세서로 저장할 수 있어요.</small></div>
+      <div className="review-inventory-help"><strong>확인해 주세요</strong><p>• 크기는 가로 × 깊이 × 높이 순서의 추정값이에요.<br />• 무게와 분리 여부는 실제 물품 확인이 필요해요.<br />• 누락된 물품이나 두고 갈 물품은 채팅으로 알려주세요.</p><small>확정 전 목록 · 검토 후 명세서로 저장할 수 있어요.</small></div>
     </div>{toast && <div className="after-review-toast" role="status"><img src={toast.kind === 'success' ? confirmIcon : warningIcon} alt="" />{toast.message}</div>}
     {pendingDelete && <InventoryDeleteDialog label={pendingDelete.label} onCancel={() => setPendingDelete(null)} onConfirm={confirmDelete} />}
   </main>;
