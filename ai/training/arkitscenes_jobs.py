@@ -342,43 +342,65 @@ def hull_polygon(pixels: np.ndarray, turns: int, size: tuple[int, int]) -> list[
     return np.clip(hull, 0, limit).round(2).tolist()
 
 
+def _azimuths(frames: list[Frame], indices: list[int], center: np.ndarray) -> np.ndarray:
+    """Horizontal direction (degrees) from the box center to each camera, unwrapped in time."""
+    angles = []
+    for i in indices:
+        camera = -frames[i].rotation.T @ frames[i].translation
+        offset = camera - center
+        angles.append(np.degrees(np.arctan2(offset[1], offset[0])))
+    return np.degrees(np.unwrap(np.radians(angles)))
+
+
 def plan_capture(frames: list[Frame], corners: np.ndarray, *, views: int = 6,
-                 step_s: float = 0.2, max_frames: int = 90,
+                 step_s: float = 0.2, max_frames: int = 90, window_s: float = 20.0,
+                 min_spread_deg: float = 15.0, max_checks: int = 60,
                  visibility=None, min_visible: float = 0.7) -> tuple[list[int], list[int]] | None:
-    """Pick observed frames spread over the box's full-view span and the frames between them.
+    """Pick observed frames that see the box from the widest range of directions.
+
+    Within any ``window_s`` seconds of video, the window whose fully-in-view frames sweep the
+    widest horizontal angle around the box wins; views are then spread evenly by angle.
+    Frames a few centimeters apart leave the box's extent along the view direction
+    unconstrained, so a box seen over less than ``min_spread_deg`` is skipped.
 
     Returns (frame indices written to the replay, indices among them that carry a mask).
     The in-between frames let RGB camera tracking chain the observed ones as a phone video
-    would, instead of jumping a second or more between views. With ``visibility`` (frame index
-    -> visible share or None), observed frames whose box is hidden behind nearer surfaces are
-    skipped; a frame without sensor depth is not trusted either.
+    would. With ``visibility`` (frame index -> visible share or None), observed frames whose
+    box is hidden behind nearer surfaces are skipped; a frame without sensor depth is not
+    trusted either. At most ``max_checks`` in-view frames, spread over the video, are checked.
     """
     visible = [i for i, frame in enumerate(frames) if project_box(corners, frame) is not None]
     if len(visible) < 3:
         return None
-    # Use the longest run of nearly continuous full views.
-    runs, current = [], [visible[0]]
-    for i in visible[1:]:
-        if float(frames[i].stamp) - float(frames[current[-1]].stamp) <= 1.0:
-            current.append(i)
-        else:
-            runs.append(current)
-            current = [i]
-    runs.append(current)
-    run = max(runs, key=lambda r: (len(r), -float(frames[r[0]].stamp)))
-    if len(run) < 3:
-        return None
-    if visibility is None:
-        candidates = run
-    else:
-        spread = sorted({run[j] for j in np.linspace(0, len(run) - 1, min(3 * views, len(run)))
+    if visibility is not None:
+        # Drop hidden views first, so the widest sweep is chosen among frames that see the box.
+        sample = sorted({visible[j] for j in np.linspace(0, len(visible) - 1,
+                                                         min(max_checks, len(visible)))
                          .round().astype(int)})
-        candidates = [i for i in spread if (visibility(i) or 0.0) >= min_visible]
-        if len(candidates) < 3:
+        visible = [i for i in sample if (visibility(i) or 0.0) >= min_visible]
+        if len(visible) < 3:
             return None
-    observed = sorted({candidates[j] for j in np.linspace(0, len(candidates) - 1,
-                                                          min(views, len(candidates)))
-                       .round().astype(int)})
+    center = corners.mean(axis=0)
+    times = np.array([float(frames[i].stamp) for i in visible])
+    azimuth = _azimuths(frames, visible, center)
+    best = None
+    for a in range(len(visible)):
+        b = int(np.searchsorted(times, times[a] + window_s, side="right"))
+        if b - a < 3:
+            continue
+        spread = float(np.ptp(azimuth[a:b]))
+        key = (spread, b - a)
+        if best is None or key > best[0]:
+            best = (key, a, b)
+    if best is None or best[0][0] < min_spread_deg:
+        return None
+    _, a, b = best
+    window = visible[a:b]
+    angles = azimuth[a:b]
+    targets = np.linspace(angles.min(), angles.max(), min(views, len(window)))
+    observed = sorted({window[int(np.argmin(np.abs(angles - t)))] for t in targets})
+    if len(observed) < 3:
+        return None
     written, last = [], None
     for i in range(observed[0], observed[-1] + 1):
         stamp = float(frames[i].stamp)
