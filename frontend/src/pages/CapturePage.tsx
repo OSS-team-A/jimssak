@@ -6,6 +6,8 @@ import { BrandHeader } from '../components/common/BrandHeader';
 import { Button } from '../components/common/Button';
 import mascot from '../assets/capture-mascot-prep.png';
 import analysisMascot from '../assets/analysis-mascot.webp';
+import failedMascot from '../assets/analysis-mascot-failed.png';
+import warningIcon from '../assets/analysis-warning.svg';
 import bulbIcon from '../assets/capture-bulb.svg';
 import cameraIcon from '../assets/capture-camera.svg';
 import shoesIcon from '../assets/capture-shoes.png';
@@ -38,7 +40,7 @@ export function CapturePage() {
       return saved ? JSON.parse(saved) : null;
     } catch { return null; }
   })());
-  const [screen, setScreen] = useState<Screen>(preview && previewState === 'review' ? 'review' : preview && (previewState === 'camera' || previewState === 'recording' || previewState === 'tilted') ? 'camera' : 'prep');
+  const [screen, setScreen] = useState<Screen>(preview && previewState === 'upload-failed' ? 'status' : preview && previewState === 'review' ? 'review' : preview && (previewState === 'camera' || previewState === 'recording' || previewState === 'tilted') ? 'camera' : 'prep');
   const [permissionOpen, setPermissionOpen] = useState(false);
   const [recording, setRecording] = useState(preview && (previewState === 'recording' || previewState === 'tilted'));
   const [reviewFile, setReviewFile] = useState<File | null>(null);
@@ -96,6 +98,7 @@ export function CapturePage() {
   }
 
   async function upload(file: File, continueAfterUpload = false) {
+    setReviewFile(file);
     setScreen('status');
     setUploading(true);
     setUploaded(false);
@@ -127,6 +130,7 @@ export function CapturePage() {
           : cause.status === 415 ? '영상 형식을 확인하지 못했어요. MP4·MOV로 다시 촬영해주세요.'
           : '영상 업로드에 실패했어요. 연결 상태를 확인하고 다시 촬영해주세요.');
         if (cause.status === 404) moveRef.current = null;
+        if (cause.status === 413 || cause.status === 415) setReviewFile(null);
       } else setError(cause instanceof Error ? cause.message : '영상 업로드에 실패했어요. 다시 촬영해주세요.');
     } finally {
       setUploading(false);
@@ -157,7 +161,7 @@ export function CapturePage() {
   function chooseFile(event: ChangeEvent<HTMLInputElement>) {
     const selected = event.target.files?.[0];
     event.target.value = '';
-    if (selected) { setUploaded(false); showReview(selected); }
+    if (selected) { setUploaded(false); if (screen === 'status') void upload(selected); else showReview(selected); }
   }
 
   async function startCapture() {
@@ -219,7 +223,17 @@ export function CapturePage() {
       </div>
       <div className="capture-review-actions"><Button onClick={() => { if (preview) { window.history.pushState({}, '', afterMove ? `${routes.analysis}?mode=after&preview=1&state=waiting` : `${routes.moveInfo}?preview=1`); window.dispatchEvent(new PopStateEvent('popstate')); } else if (!uploaded && reviewFile) void upload(reviewFile, true); else if (afterMove) setError('이사 후 영상은 전송됐어요. 영상 비교 분석 API는 아직 연결되지 않았어요.'); else navigate(routes.moveInfo); }} disabled={!reviewFile && !preview}>이 영상으로 분석 시작하기</Button><Button variant="secondary" onClick={() => { setError(''); setReviewFile(null); setReviewUrl(null); if (reviewUrlRef.current) URL.revokeObjectURL(reviewUrlRef.current); reviewUrlRef.current = null; setScreen('prep'); }}>다시 촬영하기</Button></div>
     </div>}
-    {screen === 'status' && <div className="capture-status">
+    {screen === 'status' && !uploading && !uploaded ? <div className="capture-status capture-upload-failed">
+      <BrandHeader />
+      <div className="analysis-content">
+        <h1>영상을 업로드하지 못했어요</h1>
+        <p className="analysis-intro">일시적인 문제로 영상을 업로드하지 못했어요. 다시 시도해주세요.</p>
+        <div className="analysis-mascot-frame"><img src={failedMascot} alt="" /></div>
+        <div className="analysis-state analysis-state--failed" role="status"><img src={warningIcon} alt="" />영상 업로드 실패!</div>
+        <Button variant="secondary" onClick={() => { if (reviewFile) void upload(reviewFile); else fileRef.current?.click(); }}>다시 업로드하기</Button>
+        <input ref={fileRef} type="file" accept=".mp4,.mov,video/mp4,video/quicktime" onChange={chooseFile} hidden aria-label="다시 업로드할 영상 선택" />
+      </div>
+    </div> : screen === 'status' && <div className="capture-status">
       <BrandHeader />
       <h1>{uploading ? '영상을 저장하고 있어요' : uploaded ? '영상이 저장됐어요' : '영상을 저장하지 못했어요'}</h1>
       <p>{uploading ? '촬영한 영상을 업로드하고 있어요.' : uploaded ? '영상 분석은 아직 연결되지 않았어요.' : error}</p>

@@ -197,6 +197,7 @@ button { font: inherit; }
 .capture-status-strip { padding: 16px; background: #f2f3f5; color: #8b95a1; border-radius: 10px; font-size: 13px; }
 .capture-status .capture-status-detail { margin-top: 12px; font-size: 12px; }
 .capture-status-actions { margin-top: auto; }
+.capture-upload-failed .analysis-mascot-frame img { width: 144px; height: 144px; }
 
 /* SC-06: move information and the address/date sheets. */
 .move-info-page { position: relative; display: flex; flex-direction: column; padding-top: max(12px, env(safe-area-inset-top)); padding-bottom: max(34px, env(safe-area-inset-bottom)); }
