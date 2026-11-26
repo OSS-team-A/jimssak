@@ -35,6 +35,12 @@ export function AnalysisPage() {
   const status = snapshot?.data.analysis.status;
   const screen: AnalysisScreen = status === 'completed' ? 'complete' : status === 'failed' ? 'failed' : 'waiting';
 
+  useEffect(() => {
+    if (status !== 'completed') return;
+    const timer = window.setTimeout(() => navigate(routes.chat), 2500);
+    return () => window.clearTimeout(timer);
+  }, [status]);
+
   if (!moveId) return <main className="app-page analysis-page"><BrandHeader />
     <div className="analysis-content"><h1>이사 정보를 찾을 수 없어요</h1><Button onClick={() => navigate(routes.capture)}>촬영 준비로 돌아가기</Button></div>
   </main>;
