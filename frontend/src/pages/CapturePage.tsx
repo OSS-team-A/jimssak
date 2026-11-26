@@ -15,6 +15,7 @@ import levelEllipse from '../assets/capture-level-ellipse.svg';
 import levelLine from '../assets/capture-level-line.svg';
 
 type Screen = 'prep' | 'camera' | 'status';
+const cameraPermissionKey = 'jimssak-camera-permission-granted';
 const acceptedVideo = (file: File) => /\.(mp4|mov)$/i.test(file.name)
   && ['video/mp4', 'video/quicktime', 'application/octet-stream', ''].includes(file.type);
 
@@ -64,6 +65,7 @@ export function CapturePage() {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: true });
       streamRef.current?.getTracks().forEach(track => track.stop());
       streamRef.current = stream;
+      sessionStorage.setItem(cameraPermissionKey, 'true');
       setScreen('camera');
     } catch {
       setError('카메라를 사용할 수 없어요. 브라우저의 카메라·마이크 권한을 확인해주세요.');
@@ -129,6 +131,24 @@ export function CapturePage() {
     if (selected) void upload(selected);
   }
 
+  async function startCapture() {
+    if (sessionStorage.getItem(cameraPermissionKey) === 'true') {
+      await openCamera();
+      return;
+    }
+    try {
+      const [camera, microphone] = await Promise.all([
+        navigator.permissions.query({ name: 'camera' as PermissionName }),
+        navigator.permissions.query({ name: 'microphone' as PermissionName }),
+      ]);
+      if (camera.state === 'granted' && microphone.state === 'granted') {
+        await openCamera();
+        return;
+      }
+    } catch { /* Some browsers do not expose camera permissions through this API. */ }
+    setPermissionOpen(true);
+  }
+
   return <main className="app-page capture-page">
     {screen === 'prep' && <div className="capture-prep">
       <BrandHeader />
@@ -141,7 +161,7 @@ export function CapturePage() {
         <div className="capture-tip"><img className="capture-tip-icon" src={shoesIcon} alt="" /><div><strong>이동하며 방 전체를 촬영해 주세요</strong><p>천천히 이동하면서 방 구석구석 빠짐없이 담기도록<br/>충분히 촬영해 주세요.</p></div></div>
       </div>
       {error && <p role="alert">{error}</p>}
-      <div className="capture-prep-actions"><Button onClick={() => setPermissionOpen(true)}>촬영 시작하기</Button></div>
+      <div className="capture-prep-actions"><Button onClick={() => void startCapture()}>촬영 시작하기</Button></div>
       <input ref={fileRef} type="file" accept=".mp4,.mov,video/mp4,video/quicktime" capture="environment" onChange={chooseFile} hidden aria-label="카메라로 영상 촬영" />
       {permissionOpen && <div className="capture-permission-backdrop" onClick={() => setPermissionOpen(false)}>
         <div className="capture-permission" role="dialog" aria-modal="true" aria-label="카메라 사용 안내" onClick={event => event.stopPropagation()}>
