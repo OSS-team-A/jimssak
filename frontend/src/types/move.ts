@@ -19,7 +19,7 @@ export type MoveSnapshot = {
   move_id: string; owner: 'member' | 'guest'; stage: 'collecting';
   data: {
     room_video: { status: 'empty' | 'uploaded'; video: { media_id: string; filename: string } | null };
-    analysis: { status: 'not_started' | 'empty' };
+    analysis: { status: 'not_started' | 'queued' | 'running' | 'completed' | 'failed'; progress?: number | null; item_count?: number | null; error?: { code?: string; message?: string } | null };
     inventory: { status: 'not_started' | 'empty' };
     origin: { status: 'empty' | 'partial' | 'filled'; value: (PlaceInput & { building: { status: string }; elevator: string }) | null };
     destination: { status: 'empty' | 'partial' | 'filled'; value: (PlaceInput & { building: { status: string }; elevator: string }) | null };
