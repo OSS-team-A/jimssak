@@ -193,7 +193,8 @@ class MoveStore:
                 (media.move_id,),
             ).fetchone()
             db.execute(
-                f"INSERT INTO move_after_videos({MEDIA_COLUMNS}) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                f"INSERT INTO move_after_videos({MEDIA_COLUMNS}) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
                 (media.id, media.move_id, media.filename, media.content_type,
                  media.size_bytes, media.storage_path, media.created_at),
             )

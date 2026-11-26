@@ -192,8 +192,10 @@ def test_after_move_upload_keeps_initial_video_and_replaces_only_after_video(cli
     )
     assert second.status_code == 201
     assert second.json()["replaced"] is True
-    assert client.get(url, headers=headers).json()["data"]["room_video"]["video"]["media_id"] == before["media_id"]
-    assert stored_files(settings) == sorted([f"{before['media_id']}.mp4", f"{second.json()['media_id']}.mov"])
+    room_video = client.get(url, headers=headers).json()["data"]["room_video"]["video"]
+    assert room_video["media_id"] == before["media_id"]
+    expected_files = [f"{before['media_id']}.mp4", f"{second.json()['media_id']}.mov"]
+    assert stored_files(settings) == sorted(expected_files)
 
 
 def test_failed_reupload_keeps_previous_video(client, settings):
