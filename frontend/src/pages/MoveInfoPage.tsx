@@ -4,6 +4,7 @@ import { Button } from '../components/common/Button';
 import { navigate, routes } from '../app/routes';
 import { getMove, searchAddresses, updateMove } from '../api/moves';
 import type { AddressCandidate, MoveSnapshot, PlaceInput } from '../types/move';
+import calendarClockIcon from '../assets/move-calendar-clock.svg';
 
 type Side = 'origin' | 'destination';
 type PlaceDraft = { address: string; candidate: AddressCandidate | null; detail: string; floor: number | null };
@@ -139,7 +140,7 @@ export function MoveInfoPage() {
       </section>)}
       <section className="move-block schedule-block"><h2>이사 일정</h2>
         <button type="button" className="move-field" onClick={() => { setPickedDate(draft.date); setPickedTime(draft.time); setSheet('schedule'); }}>
-          {draft.date && draft.time ? `${draft.date} · ${draft.time}` : '날짜·시간 선택'} <span>▦</span>
+          {draft.date && draft.time ? `${draft.date} · ${draft.time}` : '날짜·시간 선택'} <span className="move-calendar-icon"><img src={calendarClockIcon} alt="" /></span>
         </button>
       </section>
       {error && <p className="form-error" role="alert">{error}</p>}

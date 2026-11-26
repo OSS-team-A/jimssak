@@ -177,7 +177,10 @@ button { font: inherit; }
 .move-block h2 { margin: 0 0 10px; font-size: 16px; }
 .move-field { display: flex; align-items: center; justify-content: space-between; text-align: left; width: 100%; min-height: 52px; padding: 0 16px; border: 0; border-radius: 14px; background: #f2f4f6; color: #8b95a1; font: inherit; font-size: 14px; }
 input.move-field { margin-top: 8px; color: #191f28; }
+.move-info-page input.move-field::placeholder { color: #8b95a1; opacity: 1; }
 .move-field span { color: #a9b3bf; font-size: 20px; }
+.move-field .move-calendar-icon { width: 18px; height: 18px; display: grid; place-items: center; flex: none; }
+.move-calendar-icon img { display: block; width: 15.6031px; height: 15.558px; }
 .move-label { display: block; color: #8b95a1; font-size: 13px; margin: 20px 0 10px; }
 .floor-options { display: flex; gap: 8px; }
 .floor-options button { flex: 1; min-width: 0; padding: 10px 4px; border: 0; border-radius: 12px; background: #f2f4f6; color: #6b7684; font-size: 13px; white-space: nowrap; }
