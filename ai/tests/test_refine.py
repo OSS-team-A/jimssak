@@ -1,7 +1,7 @@
 import pytest
 
 from ai.measurement.moving_contract import MeasurementResponse
-from ai.measurement.refine import canonical_label, derive_size_ranges, fuse, review_track
+from ai.measurement.refine import LABEL_KO, canonical_label, derive_size_ranges, fuse, review_track
 
 
 def estimate(cm, views=3, method="registered_multiview"):
@@ -91,6 +91,22 @@ def test_canonical_label_handles_dataset_and_compound_names():
     assert canonical_label("bookshelf") == "shelf"
     assert canonical_label("tv_monitor") == "tv_monitor"
     assert canonical_label("furniture") == "furniture"
+
+
+def test_canonical_label_maps_ai1_category_codes():
+    assert canonical_label("dishwasher") == "dishwasher"
+    assert canonical_label("washing_machine") == "washer"
+    assert canonical_label("television") == "tv_monitor"
+    assert canonical_label("monitor") == "tv_monitor"
+    assert canonical_label("drawer_chest") == "drawer"
+    assert canonical_label("bookshelf") == "shelf"
+    assert canonical_label("air_conditioner") == "air_conditioner"
+    ai1_codes = (
+        "sofa bed mattress desk table chair stool ottoman cabinet drawer_chest wardrobe "
+        "bookshelf television monitor refrigerator washing_machine dishwasher microwave oven "
+        "air_conditioner mirror lamp fan suitcase box bicycle piano"
+    ).split()
+    assert all(canonical_label(code) in LABEL_KO for code in ai1_codes)
 
 
 def test_derive_size_ranges_uses_percentiles_and_skips_small_classes():

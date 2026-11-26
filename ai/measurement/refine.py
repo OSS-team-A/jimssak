@@ -65,11 +65,19 @@ LABEL_ALIASES = {
     "couch": "sofa", "dining table": "table", "tv": "tv_monitor", "bookshelf": "shelf",
     "bookcase": "shelf", "dresser": "drawer", "closet": "wardrobe",
     "washing machine": "washer", "fridge": "refrigerator",
+    # AI 1 category codes (ai/training/ai1/configs/taxonomy.yaml).
+    "drawer chest": "drawer", "television": "tv_monitor", "monitor": "tv_monitor",
+    # Checked before keywords so the "washer" substring does not make it a washing machine.
+    "dishwasher": "dishwasher",
 }
 LABEL_KO = {
     "bed": "침대", "sofa": "소파", "chair": "의자", "stool": "스툴", "table": "테이블",
     "desk": "책상", "cabinet": "수납장", "shelf": "선반", "wardrobe": "옷장",
     "drawer": "서랍장", "refrigerator": "냉장고", "washer": "세탁기", "tv_monitor": "TV",
+    "mattress": "매트리스", "ottoman": "오토만·푸프", "dishwasher": "식기세척기",
+    "microwave": "전자레인지", "oven": "오븐", "air_conditioner": "에어컨", "mirror": "거울",
+    "lamp": "조명·스탠드", "fan": "선풍기", "suitcase": "캐리어", "box": "상자",
+    "bicycle": "자전거", "piano": "피아노",
 }
 MISSING_REASON = {
     "width": "양 끝이 함께 보이지 않아 가로를 구하지 못했어요",
@@ -99,7 +107,7 @@ def canonical_label(label: str) -> str:
     for keyword, canonical in LABEL_KEYWORDS:
         if keyword in words or (len(keyword) > 4 and keyword in name):
             return canonical
-    return name
+    return name.replace(" ", "_")
 
 
 def _family_order(pose_source: str, axis: str, families: list[str]) -> list[str]:
