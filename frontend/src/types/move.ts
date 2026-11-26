@@ -27,8 +27,12 @@ export type QuoteOption = {
   type: 'general' | 'partial' | 'full'; min_amount: number; max_amount: number;
   description: string;
 };
+export type ComparisonItem = {
+  id: string; name: string; status: 'unchanged' | 'suspected' | 'not_visible';
+  before_photo_url?: string | null; after_photo_url?: string | null; note?: string | null;
+};
 export type MoveSnapshot = {
-  move_id: string; owner: 'member' | 'guest'; stage: 'collecting';
+  move_id: string; owner: 'member' | 'guest'; stage: 'collecting' | 'completed';
   data: {
     room_video: { status: 'empty' | 'uploaded'; video: { media_id: string; filename: string } | null };
     analysis: { status: 'not_started' | 'empty' | 'queued' | 'running' | 'completed' | 'failed'; error?: string | null };
@@ -40,4 +44,5 @@ export type MoveSnapshot = {
   };
   missing: MoveStep[]; next_step: MoveStep | null;
   quote?: { status: 'not_started' | 'calculating' | 'ready' | 'failed'; options?: QuoteOption[]; inventory_version?: string; calculated_at?: string };
+  postmove?: { status: 'not_started' | 'uploaded' | 'comparing' | 'ready' | 'failed'; items?: ComparisonItem[]; error?: string | null };
 };
