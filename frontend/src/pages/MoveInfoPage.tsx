@@ -123,9 +123,15 @@ export function MoveInfoPage() {
       <p className="move-intro">영상 분석 중에 입력해두면 바로 목록을 확인할 수 있어요.</p>
       {(['origin', 'destination'] as const).map(side => <section className="move-block" key={side}>
         <h2>{side === 'origin' ? '출발지' : '도착지'}</h2>
-        <button type="button" className="move-field" onClick={() => { setSheet(side); setKeyword(''); }}>
-          {draft[side].address || '주소 검색'} <span className="move-search-icon"><img src={searchIcon} alt="" /></span>
-        </button>
+        <div className="move-field move-address-field">
+          <button type="button" className="move-address-value" onClick={() => { setSheet(side); setKeyword(''); }}>
+            {draft[side].address || '주소 검색'}
+          </button>
+          {draft[side].address
+            ? <button type="button" className="move-address-icon" aria-label={`${side === 'origin' ? '출발지' : '도착지'} 주소 지우기`}
+                onClick={() => updatePlace(side, { address: '', candidate: null, detail: '' })}><img src={searchClearIcon} alt="" /></button>
+            : <span className="move-search-icon"><img src={searchIcon} alt="" /></span>}
+        </div>
         {draft[side].address && <input className="move-field" aria-label={side === 'origin' ? '출발지 상세주소' : '도착지 상세주소'}
           placeholder="상세주소 (동·호)" value={draft[side].detail}
           onChange={e => updatePlace(side, { detail: e.target.value })} />}

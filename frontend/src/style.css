@@ -181,6 +181,10 @@ input.move-field { margin-top: 8px; color: #191f28; }
 .move-field span { color: #a9b3bf; font-size: 20px; }
 .move-field .move-search-icon { width: 18px; height: 18px; display: grid; place-items: center; flex: none; }
 .move-search-icon img { display: block; width: 15.6387px; height: 15.638px; }
+.move-address-value { flex: 1; min-width: 0; padding: 0; background: transparent; color: inherit; text-align: left; font-size: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.move-address-icon { width: 18px; height: 18px; padding: 0; margin-left: 12px; flex: none; background: transparent; display: grid; place-items: center; }
+.move-address-icon img { width: 18px; height: 18px; display: block; }
+.move-address-field:has(.move-address-icon) { color: #333d4b; }
 .move-field .move-calendar-icon { width: 18px; height: 18px; display: grid; place-items: center; flex: none; }
 .move-calendar-icon img { display: block; width: 15.6031px; height: 15.558px; }
 .move-label { display: block; color: #8b95a1; font-size: 13px; margin: 20px 0 10px; }
