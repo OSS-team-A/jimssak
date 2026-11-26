@@ -133,6 +133,54 @@ def test_analysis_result_has_the_same_shape_before_completion(client):
     assert queued["video"]["video_id"] == media["media_id"] and queued["items"] == []
 
 
+def test_demo_inventory_edits_and_confirmation(demo_client):
+    clock = Clock(demo_client)
+    url, headers = new_move(demo_client)
+    inventory = f"{url}/inventory"
+    _, other = new_move(demo_client)
+    assert demo_client.get(inventory, headers=other).status_code == 404
+    upload(demo_client, url, headers)
+    assert demo_client.get(inventory, headers=headers).json()["status"] == "empty"
+    clock.advance(6)
+    original = demo_client.get(f"{url}/analysis", headers=headers).json()["items"]
+    chair = original[1]
+    listed = demo_client.get(inventory, headers=headers).json()["items"][1]
+    for field in ("needs_review", "review_reasons", "dimensions_status", "confidence"):
+        assert listed[field] == chair[field]
+    item_url = f"{inventory}/items/{chair['item_id']}"
+    update = {"quantity": 2, "dimensions_cm": {"depth": 48}, "notes": "포장",
+              "disassembly_required": True}
+    edited = demo_client.patch(item_url, headers=headers, json=update).json()
+    assert edited["needs_review"] and edited["review_reasons"] == chair["review_reasons"]
+    assert edited["dimensions_cm"] == {**chair["dimensions_cm"], "depth": 48}
+    assert edited["notes"] == "포장" and edited["disassembly_required"]
+    assert demo_client.patch(item_url, headers=headers, json={"quantity": 0}).status_code == 422
+
+    extra = demo_client.post(f"{inventory}/items", headers=headers, json={"label_ko": "박스"})
+    assert extra.status_code == 201 and extra.json()["source"] == "user"
+    added_url = f"{inventory}/items/{extra.json()['item_id']}"
+    assert demo_client.delete(added_url, headers=headers).status_code == 204
+    summary = demo_client.get(url, headers=headers).json()["data"]["inventory"]
+    assert summary == {"status": "draft", "item_count": 2, "total_quantity": 3}
+    assert demo_client.post(f"{inventory}/confirm", headers=headers).status_code == 204
+    confirmed = demo_client.get(inventory, headers=headers).json()
+    assert confirmed["status"] == "confirmed" and confirmed["items"][1]["quantity"] == 2
+    assert demo_client.delete(item_url, headers=headers).status_code == 409
+    assert demo_client.delete(f"{inventory}/confirm", headers=headers).status_code == 204
+    assert demo_client.get(inventory, headers=headers).json()["status"] == "draft"
+    for length, expected in ((501, 422), (500, 200)):
+        response = demo_client.patch(item_url, headers=headers, json={"notes": "x" * length})
+        assert response.status_code == expected
+    assert demo_client.post(f"{inventory}/confirm", headers=headers).status_code == 204
+    assert demo_client.get(f"{url}/analysis", headers=headers).json()["items"] == original
+
+    upload(demo_client, url, headers, name="retake.mp4")
+    assert demo_client.get(inventory, headers=headers).json()["items"] == []
+    clock.advance(6)
+    fresh = demo_client.get(inventory, headers=headers).json()
+    assert fresh["status"] == "draft" and fresh["items"][1]["quantity"] == 1
+
+
 def test_demo_photos_are_private(demo_client):
     url, headers = new_move(demo_client)
     _, other = new_move(demo_client)

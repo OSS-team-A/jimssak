@@ -12,6 +12,7 @@ from pydantic import (
 )
 
 from .analysis import AnalysisSection
+from .inventory import InventorySection
 
 # Moves happen in Korea, which has no daylight saving time.
 KST = timezone(timedelta(hours=9))
@@ -71,14 +72,6 @@ class MoveCreated(BaseModel):
             "비회원만. 이 시각이 지나면 이사를 열 수 없다(UTC). 이 이사에 요청할 때마다 "
             "마지막 사용 시각 기준으로 다시 늘어난다(기본 24시간). 회원 이사는 null."
         ),
-    )
-
-
-class Section(BaseModel):
-    """아직 구현 전인 단계(이삿짐 목록)의 자리."""
-
-    status: Literal["empty"] = Field(
-        description="empty(목록 없음). 이삿짐 목록 편집 기능이 생기면 상태와 결과가 추가된다."
     )
 
 
@@ -379,7 +372,7 @@ class MoveData(BaseModel):
 
     room_video: RoomVideo = Field(description="방 영상(SC-05)")
     analysis: AnalysisSection = Field(description="영상 분석(SC-06 분석 대기·완료·실패)")
-    inventory: Section = Field(description="이삿짐 목록(SC-07). 아직 구현 전")
+    inventory: InventorySection = Field(description="이삿짐 목록 상태, 항목 수와 총수량(SC-07)")
     origin: PlaceSection = Field(description="출발지(SC-06)")
     destination: PlaceSection = Field(description="도착지(SC-06)")
     route: RouteSection = Field(description="출발지→도착지 자동차 거리")

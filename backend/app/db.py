@@ -130,6 +130,17 @@ CREATE TABLE IF NOT EXISTS move_analyses (
 );
 CREATE INDEX IF NOT EXISTS move_analyses_move ON move_analyses(move_id);
 CREATE INDEX IF NOT EXISTS move_analyses_queue ON move_analyses(status, created_at);
+CREATE TABLE IF NOT EXISTS move_inventories (
+    analysis_id TEXT PRIMARY KEY REFERENCES move_analyses(analysis_id) ON DELETE CASCADE,
+    items JSONB NOT NULL,
+    confirmed BOOLEAN NOT NULL DEFAULT FALSE
+);
+-- Include successful analyses saved before editable inventories existed.
+INSERT INTO move_inventories (analysis_id, items)
+SELECT a.analysis_id, a.result_json::jsonb -> 'items' FROM move_analyses a
+WHERE a.status = 'completed'
+AND NOT EXISTS (SELECT 1 FROM move_inventories i WHERE i.analysis_id = a.analysis_id)
+ON CONFLICT DO NOTHING;
 """
 
 

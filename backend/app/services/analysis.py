@@ -120,12 +120,17 @@ class AnalysisStore:
     def _finish(self, job: AnalysisJob, status: str, result_json: str | None,
                 error_json: str | None, now: int) -> AnalysisJob:
         with self.db.connect() as db:
-            db.execute(
+            updated = db.execute(
                 "UPDATE move_analyses SET status = %s, progress = 1, result_json = %s, "
                 "error_json = %s, updated_at = %s WHERE analysis_id = %s "
                 "AND status IN ('queued', 'running')",
                 (status, result_json, error_json, now, job.analysis_id),
             )
+            if updated.rowcount and status == "completed":
+                db.execute(
+                    "INSERT INTO move_inventories (analysis_id, items) "
+                    "VALUES (%s, %s::jsonb -> 'items')", (job.analysis_id, result_json),
+                )
         return replace(job, status=status, progress=1.0, result_json=result_json,
                        error_json=error_json, updated_at=now)
 
