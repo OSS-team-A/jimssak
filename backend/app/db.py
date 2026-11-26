@@ -52,6 +52,16 @@ CREATE TABLE IF NOT EXISTS move_videos (
     storage_path TEXT NOT NULL,
     created_at BIGINT NOT NULL
 );
+-- Keep the post-move recording separate from the room video used for the initial inventory.
+CREATE TABLE IF NOT EXISTS move_after_videos (
+    id TEXT PRIMARY KEY,
+    move_id TEXT NOT NULL UNIQUE REFERENCES moves(id) ON DELETE CASCADE,
+    filename TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    size_bytes BIGINT NOT NULL,
+    storage_path TEXT NOT NULL,
+    created_at BIGINT NOT NULL
+);
 -- SC-06: origin and destination are kept apart, since one end can have stairs and the
 -- other an elevator.
 CREATE TABLE IF NOT EXISTS move_places (
