@@ -330,6 +330,7 @@ input.move-field { margin-top: 8px; color: #191f28; }
 .review-quantity b { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: white; color: #333d4b; }
 .review-expand { padding: 0; background: none; color: #8b95a1; font-size: 18px; }
 .review-inventory-detail { padding: 16px; background: #f2faf7; }
+.review-inventory-photo { display: block; width: 100%; aspect-ratio: 310 / 176; margin-bottom: 12px; border-radius: 16px; object-fit: cover; }
 .review-inventory-detail dl { display: grid; grid-template-columns: 75px 1fr; gap: 12px; margin: 0; font-size: 12px; line-height: 18px; }
 .review-inventory-detail dt { color: #8b95a1; }
 .review-inventory-detail dd { margin: 0; color: #333d4b; }
@@ -348,6 +349,7 @@ input.move-field { margin-top: 8px; color: #191f28; }
 .review-result-summary { margin-top: 16px; padding: 18px 16px; border-radius: 18px; background: #f7f8fa; }
 .review-result-summary strong { color: #333d4b; font-size: 14px; }
 .review-result-summary p { margin-top: 8px; color: #8b95a1; font-size: 12px; }
+.review-result-summary small { display: block; margin-top: 8px; color: #8b95a1; font-size: 11px; }
 .review-result-card { margin: 16px 0; padding: 20px; border-radius: 20px; background: #f7f8fa; }
 .review-result-card > strong { display: block; padding-bottom: 12px; border-bottom: 1px solid #e8ebee; color: #333d4b; font-size: 16px; }
 .review-result-card > div { margin-top: 10px; padding: 16px; border-radius: 18px; background: #fff; }

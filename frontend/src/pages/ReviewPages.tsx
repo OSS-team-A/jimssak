@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { BrandHeader } from '../components/common/BrandHeader';
 import { Button } from '../components/common/Button';
 import { navigate, routes } from '../app/routes';
-import { dimensions, useReview } from '../features/review';
+import { dimensions, isReviewPreview, navigateReview, useReview } from '../features/review';
 import chatAvatar from '../assets/chat-avatar.svg';
 import listIcon from '../assets/chat-list.svg';
 import sendIcon from '../assets/chat-send.svg';
@@ -27,7 +27,7 @@ function ChatFooter({ canEdit }: { canEdit: boolean }) {
   const [pdfOpen, setPdfOpen] = useState(false);
   return <div className="review-chat-footer">
     <div className="review-footer-tabs">
-      <button type="button" onClick={() => navigate(routes.inventory)}><img src={listIcon} alt="" />이삿짐 목록 보러가기</button>
+      <button type="button" onClick={() => navigateReview(routes.inventory)}><img src={listIcon} alt="" />이삿짐 목록 보러가기</button>
       <button type="button" onClick={() => setPdfOpen(true)}><img src={downloadIcon} alt="" />이삿짐 명세서 PDF 받기</button>
     </div>
     {!canEdit && <p>문서는 목록과 이사 조건을 확인한 뒤 만들 수 있어요</p>}
@@ -59,7 +59,7 @@ export function ChatPage() {
       <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
       {step === 0 ? <>
         <p className="review-chat-intro">영상에서 찾은 이삿짐을 정리했어요.<br />목록 탭을 눌러 맞는지 확인해주세요.</p>
-        <button className="review-summary" type="button" onClick={() => navigate(routes.inventory)}>
+        <button className="review-summary" type="button" onClick={() => navigateReview(routes.inventory)}>
           <span className="review-summary-title">이삿짐 목록<img src={chevronIcon} alt="" /></span>
           {items.filter(item => item.quantity > 0).slice(0, 5).map(item => <span className="review-summary-row" key={item.item_id}><span>{item.label_ko}</span><strong>{item.quantity}개</strong><img src={rowChevronIcon} alt="" /></span>)}
           {added.filter(item => item.quantity > 0).slice(0, Math.max(0, 5 - items.length)).map(item => <span className="review-summary-row" key={item.id}><span>{item.label}</span><strong>{item.quantity}개</strong><img src={rowChevronIcon} alt="" /></span>)}
@@ -76,7 +76,7 @@ export function ChatPage() {
       </> : <>
         <h1>이 내용으로 견적을 비교할까요?</h1>
         <p className="review-chat-intro">확인한 이삿짐과 이사 조건을 바탕으로 이사 유형별 예상 비용을 비교해요. 실제 견적은 업체와 상담할 때 확인해주세요.</p>
-        <Button onClick={() => navigate(routes.result)}>예상 비용 비교하기</Button>
+        <Button onClick={() => navigateReview(routes.result)}>예상 비용 비교하기</Button>
       </>}
     </div> : <ReviewGate loading={loading} error={error} hasMove={!!move} completed={analysis?.status === 'completed'} />}
     <div className="review-chat-bottom">
@@ -92,7 +92,7 @@ export function ChatPage() {
 
 export function InventoryPage() {
   const { move, analysis, draft, loading, error, items, added, total, updateDraft } = useReview();
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(() => isReviewPreview() ? 'preview-chair' : null);
   const [newLabel, setNewLabel] = useState('');
   const ready = analysis?.status === 'completed' && !!draft;
 
@@ -105,7 +105,7 @@ export function InventoryPage() {
   }
 
   return <main className="app-page review-inventory-page">
-    <header className="sub-header"><strong>이삿짐 목록</strong><button type="button" onClick={() => navigate(routes.chat)} aria-label="목록 닫기">×</button></header>
+    <header className="sub-header"><strong>이삿짐 목록</strong><button type="button" onClick={() => navigateReview(routes.chat)} aria-label="목록 닫기">×</button></header>
     {ready ? <div className="review-inventory-body">
       <div className="review-inventory-heading"><h1>이삿짐 목록</h1><span>검토중</span></div>
       <p>영상 분석을 바탕으로 작성한 목록이에요.<br />확인한 내용을 검토해 주세요.</p>
@@ -113,35 +113,35 @@ export function InventoryPage() {
       <div className="review-inventory-table"><div className="review-inventory-table-head"><span>번호</span><span>품목</span><span>수량</span><span>예상 크기 (cm)</span></div>
         {items.map((item, index) => <div className="review-inventory-item" key={item.item_id}>
           <div className="review-inventory-row"><small>{String(index + 1).padStart(2, '0')}</small><strong>{item.label_ko}</strong><div className="review-quantity"><button type="button" onClick={() => updateDraft(current => ({ ...current, quantities: { ...current.quantities, [item.item_id]: Math.max(0, item.quantity - 1) } }))} aria-label={`${item.label_ko} 수량 줄이기`}>−</button><b>{item.quantity}</b><button type="button" onClick={() => updateDraft(current => ({ ...current, quantities: { ...current.quantities, [item.item_id]: item.quantity + 1 } }))} aria-label={`${item.label_ko} 수량 늘리기`}>+</button></div><span>{dimensions(item)}</span><button className="review-expand" type="button" onClick={() => setExpanded(expanded === item.item_id ? null : item.item_id)} aria-label={`${item.label_ko} 상세 ${expanded === item.item_id ? '닫기' : '보기'}`}>{expanded === item.item_id ? '⌃' : '⌄'}</button></div>
-          {expanded === item.item_id && <div className="review-inventory-detail"><dl><dt>크기</dt><dd>{dimensions(item)} cm</dd><dt>분리 여부</dt><dd>{item.disassembly_required == null ? '확인 필요' : item.disassembly_required ? '분리 필요' : '분리 불필요'}</dd><dt>검토</dt><dd>{item.needs_review ? item.review_reasons.join(' · ') || '확인 필요' : '확인 완료'}</dd></dl></div>}
+          {expanded === item.item_id && <div className="review-inventory-detail">{item.snapshots[0]?.image_url && <img className="review-inventory-photo" src={item.snapshots[0].image_url} alt={`${item.label_ko} 분석 사진`} />}<dl><dt>크기</dt><dd>{dimensions(item)} cm</dd><dt>분리 여부</dt><dd>{item.disassembly_required == null ? '확인 필요' : item.disassembly_required ? '분리 필요' : '분리 불필요'}</dd><dt>검토</dt><dd>{item.needs_review ? item.review_reasons.join(' · ') || '확인 필요' : '확인 완료'}</dd></dl></div>}
         </div>)}
         {added.map((item, index) => <div className="review-inventory-row review-inventory-added" key={item.id}><small>{String(items.length + index + 1).padStart(2, '0')}</small><strong>{item.label}</strong><div className="review-quantity"><button type="button" onClick={() => updateDraft(current => ({ ...current, added: current.added.map(entry => entry.id === item.id ? { ...entry, quantity: Math.max(0, entry.quantity - 1) } : entry) }))} aria-label={`${item.label} 수량 줄이기`}>−</button><b>{item.quantity}</b><button type="button" onClick={() => updateDraft(current => ({ ...current, added: current.added.map(entry => entry.id === item.id ? { ...entry, quantity: entry.quantity + 1 } : entry) }))} aria-label={`${item.label} 수량 늘리기`}>+</button></div><span>직접 추가</span></div>)}
       </div>
       <form className="review-add-item" onSubmit={addItem}><label htmlFor="review-add-name">빠진 물품 추가</label><div><input id="review-add-name" value={newLabel} onChange={event => setNewLabel(event.target.value)} placeholder="물품 이름" /><button type="submit" disabled={!newLabel.trim()}>추가</button></div></form>
       <div className="review-inventory-total"><strong>합계</strong><strong>{total}개</strong></div>
       <div className="review-inventory-help"><strong>확인해 주세요</strong><p>크기는 가로 × 깊이 × 높이 순서의 추정값이에요.<br />무게와 분리 여부는 실제 물품 확인이 필요해요.</p><p>수정한 목록은 이 브라우저에 임시로 보관돼요.</p></div>
-      <Button onClick={() => navigate(routes.chat)}>채팅으로 돌아가기</Button>
+      <Button onClick={() => navigateReview(routes.chat)}>채팅으로 돌아가기</Button>
     </div> : <ReviewGate loading={loading} error={error} hasMove={!!move} completed={analysis?.status === 'completed'} />}
   </main>;
 }
 
 export function ResultPage() {
-  const { move, analysis, draft, loading, error, total } = useReview();
+  const { move, analysis, draft, loading, error, total, preview } = useReview();
   const [pdfOpen, setPdfOpen] = useState(false);
   const ready = analysis?.status === 'completed' && !!draft;
   return <main className="app-page review-result-page"><BrandHeader />
     {ready ? <div className="review-result-body">
       <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
       <h1>이사 유형별 예상 비용</h1><p>확인한 이삿짐 목록과 이사 조건을 기준으로 비교해요.</p>
-      <div className="review-result-summary"><strong>검토한 이삿짐 {total}개</strong><p>목록과 이사 조건을 확인하고 있어요.</p></div>
+      <div className="review-result-summary"><strong>{preview ? '서울 강남구 → 서울 마포구' : `검토한 이삿짐 ${total}개`}</strong><p>{preview ? '길찾기 약 18km · 출발 3층 · 도착 5층' : '목록과 이사 조건을 확인하고 있어요.'}</p>{preview && <small>화면의 주소와 거리는 피그마 예시 데이터예요.</small>}</div>
       <div className="review-result-card"><strong>이사 유형</strong>
-        <div><strong>일반 이사</strong><span>비용 계산 전</span><p>운반 중심 · 포장과 정리는 직접 해요</p></div>
-        <div><strong>반포장 이사</strong><span>비용 계산 전</span><p>큰 짐 포장과 운반 · 잔짐 정리는 직접 해요</p></div>
-        <div><strong>포장 이사</strong><span>비용 계산 전</span><p>포장부터 운반·정리까지 맡겨요</p></div>
-        <p>예상 비용 API가 연결되면 이사 유형별 금액을 보여드려요. 실제 비용은 이사업체와 확인해주세요.</p>
+        <div><strong>일반 이사</strong><span>{preview ? '약 18만~25만원' : '비용 계산 전'}</span><p>운반 중심 · 포장과 정리는 직접 해요</p></div>
+        <div><strong>반포장 이사</strong><span>{preview ? '약 27만~36만원' : '비용 계산 전'}</span><p>큰 짐 포장과 운반 · 잔짐 정리는 직접 해요</p></div>
+        <div><strong>포장 이사</strong><span>{preview ? '약 39만~52만원' : '비용 계산 전'}</span><p>포장부터 운반·정리까지 맡겨요</p></div>
+        <p>{preview ? '화면의 금액은 피그마 예시예요. 실제 비용은 업체 제안에 따라 달라져요.' : '예상 비용 API가 연결되면 이사 유형별 금액을 보여드려요. 실제 비용은 이사업체와 확인해주세요.'}</p>
       </div>
       <Button onClick={() => setPdfOpen(true)}>이삿짐 명세서 PDF 받기</Button>
-      <button className="review-text-button" onClick={() => navigate(routes.inventory)}>이삿짐 목록 다시 확인하기</button>
+      <button className="review-text-button" onClick={() => navigateReview(routes.inventory)}>이삿짐 목록 다시 확인하기</button>
       {pdfOpen && <div className="review-dialog-backdrop" onClick={() => setPdfOpen(false)}><div className="review-dialog" role="dialog" aria-modal="true" aria-label="명세서 안내" onClick={event => event.stopPropagation()}><h2>명세서를 아직 만들 수 없어요</h2><p>목록 저장과 PDF 생성 기능이 연결되면 내려받을 수 있어요.</p><Button onClick={() => setPdfOpen(false)}>확인</Button></div></div>}
     </div> : <ReviewGate loading={loading} error={error} hasMove={!!move} completed={analysis?.status === 'completed'} />}
   </main>;
