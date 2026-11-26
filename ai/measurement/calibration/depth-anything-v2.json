@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "min_samples": 10,
+  "factors": {
+    "arkit": {
+      "factor": 0.926,
+      "samples": 213
+    },
+    "arkit/depth": {
+      "factor": 0.925,
+      "samples": 71
+    },
+    "arkit/depth/metric_depth_view_median": {
+      "factor": 0.6289,
+      "samples": 11
+    },
+    "arkit/depth/registered_multiview": {
+      "factor": 0.9525,
+      "samples": 60
+    },
+    "arkit/height": {
+      "factor": 1.0087,
+      "samples": 71
+    },
+    "arkit/height/metric_depth_view_median": {
+      "factor": 0.7322,
+      "samples": 20
+    },
+    "arkit/height/registered_multiview": {
+      "factor": 1.0598,
+      "samples": 51
+    },
+    "arkit/width": {
+      "factor": 0.8758,
+      "samples": 71
+    },
+    "arkit/width/metric_depth_view_median": {
+      "factor": 0.5435,
+      "samples": 11
+    },
+    "arkit/width/registered_multiview": {
+      "factor": 0.9146,
+      "samples": 60
+    },
+    "rgb": {
+      "factor": 0.7192,
+      "samples": 213
+    },
+    "rgb/depth": {
+      "factor": 0.6628,
+      "samples": 71
+    },
+    "rgb/depth/metric_depth_view_median": {
+      "factor": 0.6551,
+      "samples": 24
+    },
+    "rgb/depth/registered_multiview": {
+      "factor": 0.6628,
+      "samples": 47
+    },
+    "rgb/height": {
+      "factor": 0.8385,
+      "samples": 71
+    },
+    "rgb/height/metric_depth_view_median": {
+      "factor": 0.7682,
+      "samples": 31
+    },
+    "rgb/height/registered_multiview": {
+      "factor": 0.9128,
+      "samples": 40
+    },
+    "rgb/width": {
+      "factor": 0.6502,
+      "samples": 71
+    },
+    "rgb/width/metric_depth_view_median": {
+      "factor": 0.6037,
+      "samples": 24
+    },
+    "rgb/width/registered_multiview": {
+      "factor": 0.7248,
+      "samples": 47
+    }
+  },
+  "trained_on": {
+    "dimensions": 426,
+    "videos": 142,
+    "rooms": 42
+  },
+  "leave_one_room_out": {
+    "rooms": 42,
+    "kinds": {
+      "arkit": {
+        "dimensions": 213,
+        "calibrated": 10.204,
+        "calibrated/depth": 8.865,
+        "calibrated/height": 8.697,
+        "calibrated/width": 13.049,
+        "calibrated/within10": 0.413,
+        "raw": 14.93,
+        "raw/depth": 12.557,
+        "raw/height": 13.397,
+        "raw/width": 18.835,
+        "raw/within10": 0.338
+      },
+      "rgb": {
+        "dimensions": 213,
+        "calibrated": 12.453,
+        "calibrated/depth": 10.142,
+        "calibrated/height": 11.045,
+        "calibrated/width": 16.173,
+        "calibrated/within10": 0.352,
+        "raw": 25.302,
+        "raw/depth": 23.435,
+        "raw/height": 18.423,
+        "raw/width": 34.048,
+        "raw/within10": 0.122
+      }
+    }
+  }
+}
