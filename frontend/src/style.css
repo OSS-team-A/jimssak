@@ -249,10 +249,19 @@ input.move-field { margin-top: 8px; color: #191f28; }
 .manual-address { background: #e6f7f3; color: #009b82; width: 100%; padding: 16px; margin-top: 20px; }
 .move-info-page button:focus-visible, .move-info-page input:focus-visible { outline: none; }
 .analysis-page { display: flex; flex-direction: column; padding-top: max(12px, env(safe-area-inset-top)); }
-.analysis-page h1 { margin-top: 25px; font-size: 24px; line-height: 1.4; }
-.analysis-page > p { margin-top: 18px; font-size: 16px; color: #333d4b; line-height: 1.5; }
-.analysis-mascot { display: block; width: 180px; height: 125px; object-fit: contain; align-self: center; margin: 48px 0 36px; }
-.analysis-state { background: #f2f4f6; color: #8b95a1; padding: 16px; border-radius: 12px; font-size: 14px; }
-.analysis-page .analysis-detail { font-size: 13px; margin-top: 14px; }
-.analysis-actions { margin-top: auto; display: grid; gap: 10px; padding-top: 32px; }
+.analysis-content { margin-top: 94px; }
+.analysis-content h1 { margin: 0; color: #191f28; font-size: 25px; line-height: 37.5px; letter-spacing: normal; }
+.analysis-content .analysis-intro { margin: 16px 0 0; color: #333d4b; font-size: 16px; line-height: 24px; }
+.analysis-mascot-frame { height: 156px; margin-top: 16px; display: grid; place-items: center; }
+.analysis-mascot-frame img { display: block; width: 197px; height: 132px; object-fit: contain; }
+.analysis-page:has(.analysis-state--failed) .analysis-mascot-frame img { width: 144px; height: 144px; }
+.analysis-state { display: flex; align-items: center; gap: 7px; min-height: 52px; margin-top: 16px; padding: 15px 16px; border-radius: 12px; font-size: 15px; }
+.analysis-state img { display: block; width: 22px; height: 22px; }
+.analysis-state--waiting { background: #f2f4f6; color: #8b95a1; }
+.analysis-state--complete { background: #3182f6; color: #fff; }
+.analysis-state--failed { background: #ff332c; color: #fff; }
+.analysis-spinner { width: 20px; height: 20px; border: 1.5px dotted #8b95a1; border-radius: 50%; flex: none; }
+.analysis-content .analysis-detail { margin-top: 16px; color: #333d4b; font-size: 14px; line-height: 21px; }
+.analysis-content > .button { width: 100%; margin-top: 16px; min-height: 52px; border: 1px solid #e1e9e5; background: #fff; color: #415650; border-radius: 16px; }
+.analysis-content .analysis-error { margin-top: 12px; font-size: 13px; }
 @media (max-width: 340px) { .move-info-page { padding-left: 16px; padding-right: 16px; } .move-sheet { padding-left: 16px; padding-right: 16px; } .floor-options { gap: 4px; } }
