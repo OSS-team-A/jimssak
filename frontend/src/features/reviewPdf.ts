@@ -5,7 +5,6 @@ import type { AnalysisItem, MoveSnapshot } from '../types/move';
 type PdfInput = {
   moveId: string;
   guestToken: string;
-  preview: boolean;
   draft: ReviewDraft;
   items: AnalysisItem[];
   added: { label: string; quantity: number }[];
@@ -58,8 +57,7 @@ function place(record: MoveSnapshot | null, side: 'origin' | 'destination') {
   return `${value.road_address}${value.detail_address ? ` ${value.detail_address}` : ''}${floor}`;
 }
 
-function building(record: MoveSnapshot | null, side: 'origin' | 'destination', preview: boolean) {
-  if (preview) return `${side === 'origin' ? 3 : 5}층 · 엘리베이터 확인 필요`;
+function building(record: MoveSnapshot | null, side: 'origin' | 'destination') {
   const value = record?.data[side].value;
   if (!value) return '확인 필요';
   const floor = value.floor == null ? '층수 확인 필요' : value.floor === -1 ? '지하' : `${value.floor}층`;
@@ -104,9 +102,13 @@ function encodePdf(images: Uint8Array[]) {
   return new Blob(chunks as BlobPart[], { type: 'application/pdf' });
 }
 
-export async function downloadReviewPdf({ moveId, guestToken, preview, draft, items, added }: PdfInput) {
+export async function downloadReviewPdf({ moveId, guestToken, draft, items, added }: PdfInput) {
   if (!draft.selectedMoveType) throw new Error('이사 유형을 선택해주세요.');
-  const record = preview ? null : await getMove(moveId, guestToken);
+  if (!items.some(item => item.quantity > 0) && !added.some(item => item.quantity > 0)) throw new Error('명세서에 담을 물품이 없어요.');
+  const record = await getMove(moveId, guestToken);
+  if (record.data.origin.status !== 'filled' || record.data.destination.status !== 'filled' || record.data.schedule.status !== 'filled') {
+    throw new Error('출발지, 도착지와 이사 일정을 먼저 입력해주세요.');
+  }
   await document.fonts.ready;
   const entries = [
     ...items.filter(item => item.quantity > 0).map(item => ({ label: item.label_ko, quantity: item.quantity, size: Object.values(item.dimensions_cm).every(value => value != null) ? `${item.dimensions_cm.width} × ${item.dimensions_cm.depth} × ${item.dimensions_cm.height}` : '확인 필요', disassembly: item.disassembly_required == null ? '확인 필요' : item.disassembly_required ? '분리 필요' : '해당 없음', note: item.review_reasons.join(', ') || '해당 없음' })),
@@ -114,7 +116,7 @@ export async function downloadReviewPdf({ moveId, guestToken, preview, draft, it
   ];
   const moveType = { standard: '일반 이사', semi: '반포장 이사', full: '포장 이사' }[draft.selectedMoveType];
   const schedule = record?.data.schedule.value;
-  const date = schedule ? `${schedule.move_date} · ${schedule.start_time.slice(0, 5)}` : preview ? '2026. 12. 20. 오전 9시' : '입력되지 않음';
+  const date = schedule ? `${schedule.move_date} · ${schedule.start_time.slice(0, 5)}` : '입력되지 않음';
   const pages: Uint8Array[] = [];
   const pageCount = Math.max(1, Math.ceil(entries.length / 9));
   for (let page = 0; page < pageCount; page++) {
@@ -141,8 +143,8 @@ export async function downloadReviewPdf({ moveId, guestToken, preview, draft, it
     const destination = place(record, 'destination');
     const fields: [string, string, string, string][] = [
       ['고객명', '미입력', '연락처', '미입력'],
-      ['출발지', preview ? '서울특별시 강남구 테헤란로 00 · 3층' : origin, '', ''],
-      ['도착지', preview ? '서울특별시 마포구 월드컵북로 00 · 5층' : destination, '', ''],
+      ['출발지', origin, '', ''],
+      ['도착지', destination, '', ''],
       ['이사 예정일', date, '이사 유형', moveType],
     ];
     fields.forEach(([a, b, c, d], index) => {
@@ -177,9 +179,9 @@ export async function downloadReviewPdf({ moveId, guestToken, preview, draft, it
     sectionTitle(ctx, 3, '운반 및 현장 조건', conditionsY);
     const buildingY = conditionsY + 26;
     cell(ctx, '출발지', 40, buildingY, 70, 26, true);
-    cell(ctx, building(record, 'origin', preview), 110, buildingY, 188, 26);
+    cell(ctx, building(record, 'origin'), 110, buildingY, 188, 26);
     cell(ctx, '도착지', 298, buildingY, 70, 26, true);
-    cell(ctx, building(record, 'destination', preview), 368, buildingY, 187, 26);
+    cell(ctx, building(record, 'destination'), 368, buildingY, 187, 26);
     cell(ctx, '주차', 40, buildingY + 26, 70, 26, true);
     cell(ctx, '업체 확인 필요', 110, buildingY + 26, 188, 26);
     cell(ctx, '사다리차', 298, buildingY + 26, 70, 26, true);
@@ -205,7 +207,7 @@ export async function downloadReviewPdf({ moveId, guestToken, preview, draft, it
   const url = URL.createObjectURL(encodePdf(pages));
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `짐싹_이삿짐_명세서_${preview ? '미리보기' : moveId.slice(0, 8)}.pdf`;
+  anchor.download = `짐싹_이삿짐_명세서_${moveId.slice(0, 8)}.pdf`;
   document.body.append(anchor);
   anchor.click();
   anchor.remove();
