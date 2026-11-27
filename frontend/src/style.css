@@ -58,7 +58,7 @@ button { font: inherit; }
 .sub-header { position: sticky; top: 0; z-index: 2; height: 54px; display: flex; align-items: center; justify-content: center; background: #fff; }
 .sub-header strong { font-size: 16px; }
 .sub-header button { position: absolute; right: 0; width: 44px; height: 44px; font-size: 29px; font-weight: 200; line-height: 1; }
-.guide-page { padding: 0; }
+.guide-page { padding: max(12px, env(safe-area-inset-top)) 0 0; }
 .guide-page .sub-header { padding: 0 24px; }
 .guide-page .sub-header button { right: 14px; }
 .guide-tabs { position: sticky; top: 54px; z-index: 2; height: 56px; display: flex; gap: 24px; align-items: center; padding: 0 24px; background: #fff; white-space: nowrap; overflow-x: auto; scrollbar-width: none; }
@@ -103,7 +103,7 @@ button { font: inherit; }
 .auth-actions p { margin-top: 18px; color: #8b95a1; font-size: 14px; }
 .auth-actions p button { margin-left: 8px; color: #687286; font-size: 14px; }
 
-.history-page { padding-top: 0; }
+.history-page { padding-top: max(12px, env(safe-area-inset-top)); }
 .history-page .sub-header { width: calc(100% + 48px); margin-left: -24px; padding: 0 24px; }
 @media (max-width: 360px) { .history-page .sub-header { width: calc(100% + 36px); margin-left: -18px; padding: 0 18px; } }
 .history-page .sub-header strong { font-size: 18px; }
