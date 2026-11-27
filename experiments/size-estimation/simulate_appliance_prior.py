@@ -1,4 +1,4 @@
-"""Estimate the gain of pulling washers and refrigerators toward catalog sizes.
+"""Estimate the gain of pulling appliances and furniture toward catalog sizes.
 
 Each catalog model in turn plays the real appliance: its size is perturbed with calibrated
 errors observed on development videos (leave-one-room-out calibration), then pulled toward
@@ -6,7 +6,7 @@ the other models of the catalog, so the model being scored never helps itself.
 
     python experiments/size-estimation/simulate_appliance_prior.py \
         outputs/dev-eval-scene/truth.json outputs/dev-eval-scene/dav2.json \
-        --metadata outputs/arkit-depth-fix/metadata.csv
+        --metadata outputs/arkit-depth-fix/metadata.csv [--labels desk shelf]
 """
 
 from __future__ import annotations
@@ -44,6 +44,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--metadata", type=Path, required=True)
     parser.add_argument("--draws", type=int, default=200)
     parser.add_argument("--seed", type=int, default=20261126)
+    parser.add_argument("--labels", nargs="+", default=sorted(standard_sizes.CATALOG_MM),
+                        choices=sorted(standard_sizes.CATALOG_MM))
     args = parser.parse_args(argv)
 
     errors = calibrated_errors(json.loads(args.truth.read_text()),
@@ -51,7 +53,8 @@ def main(argv: list[str] | None = None) -> int:
                                calibration.rooms_from_metadata(args.metadata))
     rng = random.Random(args.seed)
     report = {}
-    for label, models in standard_sizes.APPLIANCES_MM.items():
+    for label in args.labels:
+        models = standard_sizes.CATALOG_MM[label]
         report[label] = {"models": len(models)}
         for kind in ("rgb", "arkit"):
             rel = {m: {a: [] for a in AXES + ("volume",)} for m in ("calibrated", "pulled")}

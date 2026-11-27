@@ -1,4 +1,4 @@
-"""Use known product sizes: snap beds to mattress standards, pull appliances to catalogs.
+"""Use known product sizes: snap beds to mattress standards, pull others to catalogs.
 
 Bed sizes come in a handful of standards, so a bed measured from plain video is usually
 closer to the truth when it is replaced by the most likely standard size. Width (the
@@ -8,7 +8,8 @@ Height varies with the frame and is left as measured.
 Washers and refrigerators come in many models, but their sizes cluster. Their measured
 size is replaced by the average of catalog models weighted by how well each matches the
 measurement (all three dimensions together), which pulls a noisy measurement toward
-sizes that real products have.
+sizes that real products have. Desks, bookshelves, wardrobes and chests of drawers are
+pulled the same way toward Korean-market catalogs, only for ``--region kr``.
 
     python -m ai.measurement.standard_sizes apply outputs/result-calibrated.json \
         --region kr --output outputs/result-beds.json
@@ -51,6 +52,7 @@ MAX_LOG_RATIO = 0.6
 QUALIFIER = "bed_standard_size"
 NONSTANDARD = "bed_size_nonstandard"
 APPLIANCE_QUALIFIER = "appliance_catalog_prior"
+FURNITURE_QUALIFIER = "furniture_catalog_prior"
 
 # Official sizes (W x D x H, mm) of models sold in Korea, from lge.co.kr, samsung.com and
 # retailer spec tables (checked 2026-11). Sources are listed in docs/appliance-sizes.md.
@@ -74,6 +76,65 @@ APPLIANCES_MM = {
         "lg_gr_x33fgngl": (912, 929, 1784),
     },
 }
+# Official sizes (W x D x H, mm) of furniture sold in Korea: brand spec tables collected on
+# danawa.com and IKEA Korea product pages (checked 2026-11). Sources: docs/furniture-sizes.md.
+FURNITURE_MM = {
+    "desk": {
+        "desker_dsad212": (1200, 600, 720), "desker_dsad012": (1200, 800, 720),
+        "desker_dsad214": (1400, 600, 720), "desker_dsad014": (1400, 800, 720),
+        "desker_dsad016": (1600, 800, 720), "desker_dsad610p": (1000, 590, 720),
+        "danawa_desk_1800x800": (1800, 800, 720), "illuilu_martin_1200": (1200, 600, 720),
+        "iloom_mode_800": (800, 600, 720), "hanssem_desk_1181": (1181, 584, 750),
+        "hanssem_desk_1600": (1600, 600, 740), "costco_desk_1400": (1400, 595, 740),
+        "office_desk_1400x800": (1400, 800, 740), "office_desk_1600x800": (1600, 800, 740),
+        "ikea_lagkapten_alex_120": (1200, 600, 730), "ikea_lagkapten_alex_140": (1400, 600, 730),
+        "ikea_lagkapten_alex_200": (2000, 600, 730),
+    },
+    "shelf": {
+        "iloom_glen_hspc184": (820, 290, 1388), "iloom_libre_4_1200": (1200, 290, 1388),
+        "iloom_roimono_5_800": (800, 291, 1705), "hanssem_saem_5_800": (800, 285, 1959),
+        "hanssem_saemwide_3_1200": (1183, 285, 1182), "hanssem_saemplus_3_600": (600, 295, 1140),
+        "livart_friends_soho_5_800": (800, 280, 1948),
+        "livart_friends_steel_5_800": (800, 285, 1942),
+        "livart_join_wood_5_800": (800, 295, 1810), "livart_haum_3_600": (592, 296, 1076),
+        "premade_balance_5_800": (800, 295, 1520), "comet_3_600": (600, 280, 820),
+        "ikea_billy_80x202": (800, 280, 2020), "ikea_billy_40x202": (400, 280, 2020),
+        "ikea_billy_80x106": (800, 280, 1060), "ikea_kallax_77x147": (770, 390, 1470),
+        "ikea_kallax_77x77": (770, 390, 770), "ikea_kallax_42x147": (420, 390, 1470),
+    },
+    "wardrobe": {
+        "hanssem_sambedding_basic_800": (800, 620, 1940),
+        "hanssem_sambedding_216_800": (800, 620, 2160),
+        "hanssem_sambedding_steady_1200": (1200, 620, 1940),
+        "hanssem_sambedding_close_1200": (1200, 620, 2160),
+        "hanssem_imbig_sliding_1200": (1180, 600, 1940),
+        "hanssem_imbig_low_1200": (1180, 630, 1230), "livart_topi_800": (809, 570, 1946),
+        "livart_topi_sliding_1200": (1172, 595, 1940), "chaeuri_lookcore_800": (810, 585, 1880),
+        "namutteul_may_800": (800, 615, 1960), "dodo_rider_800": (800, 600, 1870),
+        "jangin_macaron_800": (800, 580, 1880), "recent_brien_800": (803, 611, 1885),
+        "funicsm_low_800": (800, 520, 1200), "ikea_kleppstad_3": (1170, 550, 1760),
+        "ikea_songesand_1200": (1200, 600, 1910), "ikea_ankarudden": (980, 600, 1900),
+        "ikea_fagelfjallet": (820, 600, 1940), "ikea_radmanso": (1180, 640, 1900),
+        "ikea_kronoren": (900, 490, 1810), "ikea_godishus_600": (600, 510, 1780),
+        "ikea_lastare_80": (800, 620, 2010),
+    },
+    "drawer": {
+        "hanssem_steady_3_800": (800, 485, 734), "hanssem_steady_5_800": (800, 485, 1238),
+        "hanssem_basic_5_800": (800, 500, 1238), "hanssem_poet_5_800": (790, 500, 1238),
+        "arama_yuracle_5_800": (800, 480, 1200), "livingindomus_5_800": (810, 490, 1230),
+        "jangin_haim_5_800": (800, 460, 1255), "lares_olive_5_800": (800, 400, 1000),
+        "dongseo_block_3_800": (800, 500, 740), "larunj_rubin_5_800": (800, 550, 1450),
+        "livart_comme_4_600": (600, 430, 1204), "paroma_reto_1200": (1186, 500, 728),
+        "uami_hayden_3_1200": (1200, 395, 630), "persuell_dodos_4_1200": (1200, 500, 998),
+        "jd_romi_3_400": (400, 370, 445), "uami_windiro_3_600": (600, 397, 764),
+        "livingindomus_mulbau_3_600": (580, 490, 750), "theone_tember_5_900": (900, 450, 1210),
+        "ikea_malm_3_80": (800, 480, 780), "ikea_malm_3_40": (400, 480, 780),
+        "ikea_malm_4_80": (800, 480, 1000), "ikea_malm_6_160": (1600, 480, 780),
+        "ikea_malm_6_80": (800, 480, 1230), "ikea_kullen_6": (1400, 400, 720),
+        "ikea_kullen_5": (700, 400, 1120), "ikea_kullen_2": (350, 400, 490),
+    },
+}
+CATALOG_MM = {**APPLIANCES_MM, **FURNITURE_MM}
 # Spread of log(calibrated / true) height on development scene videos (rgb, arkit).
 HEIGHT_SIGMA = {"rgb": 0.23, "arkit": 0.20}
 # Width of each catalog model's bump in log space, so neighbouring models blend smoothly.
@@ -83,7 +144,7 @@ CATALOG_BANDWIDTH = 0.05
 def catalog_cm(label: str, exclude: str | None = None) -> list[dict[str, float]]:
     """Catalog sizes in measurement axes: width = longer floor side, depth = shorter."""
     sizes = []
-    for model, (w, d, h) in APPLIANCES_MM.get(label, {}).items():
+    for model, (w, d, h) in CATALOG_MM.get(label, {}).items():
         if model != exclude:
             sizes.append({"width": max(w, d) / 10, "depth": min(w, d) / 10, "height": h / 10})
     return sizes
@@ -127,6 +188,11 @@ def match(estimate: dict[str, float], region: str = "kr", kind: str = "rgb") -> 
     return best
 
 
+def catalog_labels(region: str = "kr") -> frozenset[str]:
+    """Labels pulled toward a catalog in ``region``; size_prior leaves these alone."""
+    return frozenset(APPLIANCES_MM) | (frozenset(FURNITURE_MM) if region == "kr" else frozenset())
+
+
 def _pull_track(track, kind: str):
     label = canonical_label(track.label)
     dims = {axis: track.dimensions.get(axis) for axis in ("width", "depth", "height")}
@@ -137,19 +203,21 @@ def _pull_track(track, kind: str):
     dimensions = dict(track.dimensions)
     for axis, cm in pulled.items():
         dimensions[axis] = dims[axis].model_copy(update={"cm": round(cm, 1)})
-    qualifiers = sorted(set(track.qualifiers) | {APPLIANCE_QUALIFIER})
+    qualifier = APPLIANCE_QUALIFIER if label in APPLIANCES_MM else FURNITURE_QUALIFIER
+    qualifiers = sorted(set(track.qualifiers) | {qualifier})
     return track.model_copy(update={"dimensions": dimensions, "qualifiers": qualifiers})
 
 
 def snap(response: MeasurementResponse, region: str = "kr") -> MeasurementResponse:
-    """Snap beds to a standard and pull appliances to catalog sizes; others unchanged."""
+    """Snap beds to a standard and pull catalog labels toward catalog sizes; others unchanged."""
+    pulled = catalog_labels(region)
     videos = []
     for clip in response.videos:
         kind = KINDS.get(clip.pose_source, "rgb")
         objects = []
         for track in clip.objects:
             label = canonical_label(track.label)
-            if label in APPLIANCES_MM:
+            if label in pulled:
                 objects.append(_pull_track(track, kind))
                 continue
             if label != "bed":

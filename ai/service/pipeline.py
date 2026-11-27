@@ -85,7 +85,9 @@ def analyze(path: Path, recognition: Recognition, measure, *, analysis_id: str,
         # Its error model is that of calibrated estimates, so only after calibration.
         prior = load_size_prior(result.depth_model_family, calibration_dir)
         if prior is not None:
-            response = size_prior.apply(response, prior)
+            # Labels with a catalog for the region are pulled toward it instead (below).
+            response = size_prior.apply(response, prior,
+                                        skip=standard_sizes.catalog_labels(region))
     response = standard_sizes.snap(response, region)
     fps, duration = result_v2.video_info(Path(path))
     return result_v2.completed(

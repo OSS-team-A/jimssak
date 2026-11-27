@@ -1,7 +1,17 @@
 import json
 
 from ai.measurement.moving_contract import MeasurementResponse
-from ai.measurement.standard_sizes import NONSTANDARD, QUALIFIER, main, match, snap
+from ai.measurement.standard_sizes import (
+    APPLIANCE_QUALIFIER,
+    FURNITURE_MM,
+    FURNITURE_QUALIFIER,
+    NONSTANDARD,
+    QUALIFIER,
+    catalog_labels,
+    main,
+    match,
+    snap,
+)
 
 
 def response(label, dims):
@@ -89,3 +99,24 @@ def test_pull_excludes_a_model():
     exact = {"width": 63.7, "depth": 55.0, "height": 82.0}
     assert pull_to_catalog(exact, "washer", exclude="lg_fr9wpb") != pull_to_catalog(exact,
                                                                                    "washer")
+
+
+def test_furniture_pulled_toward_korean_catalog():
+    size, qualifiers = dims(snap(response("bookshelf", {"width": 87, "depth": 34,
+                                                        "height": 124})))
+    assert 27 < size["depth"] < 32 and size["width"] < 87
+    assert FURNITURE_QUALIFIER in qualifiers and APPLIANCE_QUALIFIER not in qualifiers
+
+
+def test_furniture_catalog_is_korea_only():
+    original = response("wardrobe", {"width": 85, "depth": 70, "height": 190})
+    assert snap(original, region="us") == original
+    assert "desk" in catalog_labels("kr") and "desk" not in catalog_labels("us")
+    assert "washer" in catalog_labels("us")
+
+
+def test_every_furniture_model_is_plausible():
+    for label, models in FURNITURE_MM.items():
+        assert len(models) >= 15, label
+        for w, d, h in models.values():
+            assert 300 <= max(w, d) <= 2100 and 250 <= min(w, d) <= 800 and 400 <= h <= 2200
