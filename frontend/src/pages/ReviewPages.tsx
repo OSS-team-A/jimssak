@@ -8,6 +8,7 @@ import { ApiError } from '../api/client';
 import { navigate, openHistoryFromChat, routes } from '../app/routes';
 import { dimensions, navigateReview, useReview, type ReviewDraft } from '../features/review';
 import { downloadReviewPdf } from '../features/reviewPdf';
+import type { Inventory } from '../types/move';
 import chatAvatar from '../assets/chat-avatar.svg';
 import listIcon from '../assets/chat-list.svg';
 import sendIcon from '../assets/chat-send.svg';
@@ -48,6 +49,17 @@ function ReviewGate({ loading, error, hasMove, completed, onRetry }: { loading: 
     <p>{loading ? '분석 결과를 불러오고 있어요.' : error || (!hasMove ? '저장된 이사 정보가 없어요.' : !completed ? '영상 분석이 완료되면 이삿짐 목록을 확인할 수 있어요.' : '')}</p>
     {!loading && <Button variant="secondary" onClick={error && !error.includes('만료') ? onRetry : () => navigate(error.includes('만료') ? routes.login : hasMove ? routes.analysis : routes.capture)}>{error && !error.includes('만료') ? '다시 시도하기' : error.includes('만료') ? '로그인하기' : hasMove ? '분석 화면으로 돌아가기' : '촬영 준비로 돌아가기'}</Button>}
   </div>;
+}
+
+function InventorySummaryCard({ inventory, onOpen }: { inventory: Inventory | null; onOpen: () => void }) {
+  const items = inventory?.items.filter(item => item.quantity > 0) ?? [];
+  const total = inventory?.total_quantity ?? 0;
+  return <button className="review-summary" type="button" onClick={onOpen}>
+    <span className="review-summary-title">이삿짐 목록<img src={chevronIcon} alt="" /></span>
+    {items.slice(0, 5).map(item => <span className="review-summary-row" key={item.item_id}><span>{item.label_ko}</span><strong>{item.quantity}개</strong><img src={rowChevronIcon} alt="" /></span>)}
+    {total === 0 && <span className="review-summary-empty">분석에서 찾은 물품이 없어요.</span>}
+    <span className="review-summary-count">총 {total}개 · 누르면 자세히 볼 수 있어요</span>
+  </button>;
 }
 
 export function ChatFooter({ canDownload, onPdf, result = false, onInventory }: { canDownload: boolean; onPdf: () => void; result?: boolean; onInventory?: () => void }) {
@@ -154,11 +166,12 @@ export function ChatPage() {
       await prepareChat();
       const history = draft.chatMessages.map(({ role, content }) => ({ role, content }));
       const reply = await sendMoveChat(move.move_id, move.guest_token, text, history);
+      if (reply.inventory) setChatInventory(reply.inventory);
       setAnimatedReplyKey(`${draft.step}-${draft.chatMessages.filter(entry => entry.step === draft.step).length + 1}`);
       if (reply.advance && !reply.proposal_id && step >= 1 && step <= 3) setDelayedStep(step + 1);
       updateDraft(current => ({
         ...current,
-        chatMessages: [...current.chatMessages, { step: current.step, role: 'user', content: text }, { step: current.step, role: 'assistant', content: reply.message }],
+        chatMessages: [...current.chatMessages, { step: current.step, role: 'user', content: text }, { step: current.step, role: 'assistant', content: reply.message, ...(reply.inventory ? { inventory: reply.inventory } : {}) }],
         pendingProposal: reply.proposal_id ? { id: reply.proposal_id, summary: reply.summary, step: current.step } : null,
         choices: reply.choices,
         answers: reply.advance && current.step <= 3 ? [...current.answers, { step: current.step, text }] : current.answers,
@@ -216,6 +229,7 @@ export function ChatPage() {
             key={`${questionStep}-${index}`} data-reply-key={`${questionStep}-${index}`}>
           <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
           <p className="review-chat-intro">{entry.content}</p>
+          {entry.inventory && <InventorySummaryCard inventory={entry.inventory} onOpen={() => navigateReview(routes.inventory)} />}
           {index === lastAssistantIndex && draft.pendingProposal?.step === questionStep && <div className="review-chat-proposal">
             <strong>변경 내용을 확인해주세요</strong>
             <ul>{draft.pendingProposal.summary.map((item, summaryIndex) => <li key={summaryIndex}>{item}</li>)}</ul>
@@ -249,13 +263,7 @@ export function ChatPage() {
       <section className="review-chat-turn" data-chat-step="0">
         <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
         <p className="review-chat-intro">{analysis?.demo ? '서버의 예시 이삿짐을 정리했어요.' : '영상에서 찾은 이삿짐을 정리했어요.'}<br />목록 탭을 눌러 맞는지 확인해주세요.</p>
-        <button className="review-summary" type="button" onClick={() => navigateReview(routes.inventory)}>
-          <span className="review-summary-title">이삿짐 목록<img src={chevronIcon} alt="" /></span>
-          {items.filter(item => item.quantity > 0).slice(0, 5).map(item => <span className="review-summary-row" key={item.item_id}><span>{item.label_ko}</span><strong>{item.quantity}개</strong><img src={rowChevronIcon} alt="" /></span>)}
-          {added.filter(item => item.quantity > 0).slice(0, Math.max(0, 5 - items.length)).map(item => <span className="review-summary-row" key={item.id}><span>{item.label}</span><strong>{item.quantity}개</strong><img src={rowChevronIcon} alt="" /></span>)}
-          {total === 0 && <span className="review-summary-empty">분석에서 찾은 물품이 없어요.</span>}
-          <span className="review-summary-count">총 {total}개 · 누르면 자세히 볼 수 있어요</span>
-        </button>
+        <InventorySummaryCard inventory={inventory} onOpen={() => navigateReview(routes.inventory)} />
         {chatExchange(0)}
         {step === 0 && <Button disabled={sending || !!draft.pendingProposal} onClick={() => void next()}>확인했어요</Button>}
       </section>

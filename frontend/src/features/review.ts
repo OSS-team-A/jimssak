@@ -14,7 +14,7 @@ export type ReviewDraft = {
   notes: { step: number; text: string }[];
   answers: { step: number; text: string }[];
   selectedMoveType: 'standard' | 'semi' | 'full' | null;
-  chatMessages: (ChatTurn & { step: number })[];
+  chatMessages: (ChatTurn & { step: number; inventory?: Inventory })[];
   pendingProposal: { id: string; summary: string[]; step: number } | null;
   choices: string[];
 };

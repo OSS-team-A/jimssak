@@ -4,6 +4,7 @@ import type { Inventory } from '../types/move';
 export type ChatTurn = { role: 'user' | 'assistant'; content: string };
 export type ChatReply = {
   message: string;
+  inventory?: Inventory | null;
   proposal_id: string | null;
   summary: string[];
   choices: string[];
