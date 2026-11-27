@@ -8,11 +8,13 @@ from ..schemas.inventory import Inventory
 from .analysis import AnalysisJob
 
 
-def load_inventory(db: Database, job: AnalysisJob | None) -> Inventory:
+def load_inventory(
+    db: Database, job: AnalysisJob | None, *, conn: Connection | None = None,
+) -> Inventory:
     if job is None or job.status != "completed":
         return Inventory()
-    with db.connect() as conn:
-        row = conn.execute(
+    with db.connect() if conn is None else nullcontext(conn) as active:
+        row = active.execute(
             "SELECT items, confirmed FROM move_inventories WHERE analysis_id = %s",
             (job.analysis_id,),
         ).fetchone()

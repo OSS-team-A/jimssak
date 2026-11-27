@@ -230,8 +230,10 @@ class MoveStore:
             ).fetchone()
         return ReviewDetails.model_validate(row) if row else None
 
-    def get_lookups(self, move_id: str) -> dict[str, LookupRecord]:
-        with self.db.connect() as db:
+    def get_lookups(
+        self, move_id: str, *, conn: Connection | None = None,
+    ) -> dict[str, LookupRecord]:
+        with self.db.connect() if conn is None else nullcontext(conn) as db:
             rows = db.execute(
                 "SELECT * FROM move_building_lookups WHERE move_id = %s", (move_id,)
             ).fetchall()
@@ -261,16 +263,18 @@ class MoveStore:
                 (key, entry.status, entry.data_json, entry.fetched_at),
             )
 
-    def get_date_info(self, move_id: str) -> DateInfoRecord | None:
-        with self.db.connect() as db:
+    def get_date_info(
+        self, move_id: str, *, conn: Connection | None = None,
+    ) -> DateInfoRecord | None:
+        with self.db.connect() if conn is None else nullcontext(conn) as db:
             row = db.execute(
                 "SELECT move_date, holiday_status, lunar_status, info_json, checked_at "
                 "FROM move_date_info WHERE move_id = %s", (move_id,)
             ).fetchone()
         return DateInfoRecord(**dict(row)) if row else None
 
-    def get_route(self, move_id: str) -> RouteRecord | None:
-        with self.db.connect() as db:
+    def get_route(self, move_id: str, *, conn: Connection | None = None) -> RouteRecord | None:
+        with self.db.connect() if conn is None else nullcontext(conn) as db:
             row = db.execute("SELECT * FROM move_routes WHERE move_id = %s", (move_id,)).fetchone()
         if row is None:
             return None
