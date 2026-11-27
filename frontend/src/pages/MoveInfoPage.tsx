@@ -10,6 +10,7 @@ import calendarClockIcon from '../assets/move-calendar-clock.svg';
 import searchIcon from '../assets/move-search.svg';
 import searchClearIcon from '../assets/move-search-clear.svg';
 import backChevronIcon from '../assets/move-back-chevron.png';
+import { canRetryInitialVideoUpload, retryInitialVideoUpload, waitForInitialVideoUpload } from '../features/initialVideoUpload';
 
 type Side = 'origin' | 'destination';
 const times = ['07:00', '09:00', '10:00', '13:00', '14:00'];
@@ -42,6 +43,7 @@ export function MoveInfoPage() {
   const [searchError, setSearchError] = useState('');
   const [confirm, setConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [finishing, setFinishing] = useState(false);
   const [savedSnapshot, setSavedSnapshot] = useState<MoveSnapshot | null>(null);
   const [error, setError] = useState('');
   const [month, setMonth] = useState(() => {
@@ -100,6 +102,25 @@ export function MoveInfoPage() {
     finally { setSaving(false); }
   }
 
+  async function finish() {
+    if (!move || finishing) return;
+    setFinishing(true);
+    setError('');
+    try {
+      await waitForInitialVideoUpload();
+      const record = await getMove(move.move_id, move.guest_token);
+      if (record.data.room_video.status !== 'uploaded') {
+        throw new Error('영상이 업로드되지 않았어요. 촬영 화면에서 다시 업로드해주세요.');
+      }
+      navigate(routes.analysis);
+    } catch (cause) {
+      setError(cause instanceof ApiError && cause.status === 401
+        ? '로그인이 만료됐어요. 다시 로그인해주세요.'
+        : canRetryInitialVideoUpload() ? '영상을 업로드하지 못했어요. 다시 시도해주세요.'
+        : cause instanceof Error ? cause.message : '영상을 업로드하지 못했어요. 다시 시도해주세요.');
+    } finally { setFinishing(false); }
+  }
+
   if (!move) return <main className="app-page move-info-page"><BrandHeader />
     <h1>이사 정보를 찾을 수 없어요</h1><Button onClick={() => navigate(routes.capture)}>촬영 준비로 돌아가기</Button></main>;
 
@@ -156,9 +177,13 @@ export function MoveInfoPage() {
       <div className="confirm-card confirm-card--schedule"><small>이사 날짜와 시간</small><strong>{draft.date.replaceAll('-', '. ')} · {Number(draft.time.slice(0, 2)) < 12 ? '오전' : '오후'} {Number(draft.time.slice(0, 2)) % 12 || 12}시</strong></div></div>
       {error && <p className="form-error" role="alert">{error}</p>}
       {error.includes('만료') && <Button variant="secondary" onClick={() => navigate(routes.login)}>로그인하기</Button>}
+      {error && canRetryInitialVideoUpload() && <Button variant="secondary" onClick={() => {
+        setError('');
+        void retryInitialVideoUpload().catch(() => setError('영상을 다시 업로드하지 못했어요. 연결 상태를 확인해주세요.'));
+      }}>영상 다시 업로드하기</Button>}
       <div className="move-actions confirm-actions">
         <button type="button" aria-label="수정하기" onClick={() => setConfirm(false)}><img src={backChevronIcon} alt="" /></button>
-        <Button onClick={() => navigate(routes.analysis)}>저장하기</Button>
+        <Button disabled={finishing} onClick={() => void finish()}>{finishing ? '저장 중...' : '저장하기'}</Button>
       </div>
     </>}
     {sheet && <div className="sheet-backdrop" onClick={() => setSheet(null)}>
