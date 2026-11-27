@@ -49,6 +49,20 @@
 일반 영상(서비스 조건) 오차가 12.5 → 9.9cm로 약 20% 줄었다. 두 번째 장면 묶음은 같은 100개 장면을
 다르게 자른 것이라 완전히 독립된 확인은 아니다.
 
+### 장면 200개로 다시 확인 (2026-11-27)
+
+지금 파일은 장면 200개(방 75개, 치수 504개씩)로 보정 배율과 오차 모델을 다시 학습한 것이다.
+
+| 영상 | 보정만 | 보정 + 크기 분포 | 10% 이내 |
+|---|---:|---:|---|
+| 일반 영상 | 13.6 | **11.3** | 30% → 38% |
+| ARKit | 10.0 | **9.2** | 45% → 42% |
+
+**처음 보는 방으로 확인.** 100개로 학습한 이전 파일을 새로 추가된 방 34개(치수 189개씩)에만 적용했다.
+이 방들은 이전 학습에 한 번도 쓰이지 않았다. 일반 영상은 28.0 → 14.0(보정) → **11.8cm**(크기 분포),
+10% 이내는 12% → 27% → 38%였다. 교차검증 숫자(11.3cm)와 비슷해서 과적합은 크지 않다고 본다.
+단, 크기 분포 자체는 개발용 장면 전체의 3D 상자로 만들었으므로 이 방들의 상자도 일부 들어 있다(6종 약 3,170개 중).
+
 ## 한계
 
 - 크기 분포가 ARKitScenes(대부분 미국 가정) 가구에서 나왔다. 한국 가구와 분포가 다르면 효과가 줄 수 있다.
@@ -61,7 +75,7 @@
 
 ```bash
 python -m ai.measurement.size_prior fit outputs/arkitscenes-dev-objects.csv \
-  outputs/dev-eval-100/truth.json outputs/dev-eval-100/dav2.json \
+  outputs/dev-eval-200/truth.json outputs/dev-eval-200/dav2.json \
   --calibration ai/measurement/calibration/depth-anything-v2.json \
   --metadata outputs/arkit-depth-fix/metadata.csv \
   --output ai/measurement/calibration/size-prior-depth-anything-v2.json

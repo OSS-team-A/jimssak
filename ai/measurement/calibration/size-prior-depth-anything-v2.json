@@ -154,52 +154,52 @@
   },
   "errors": {
     "arkit": {
-      "tau2": 0.00746,
+      "tau2": 0.00666,
       "sigma2": {
-        "width": 0.05826,
-        "depth": 0.06782,
-        "height": 0.02659
+        "width": 0.04991,
+        "depth": 0.07356,
+        "height": 0.04963
       },
-      "samples": 213
+      "samples": 504
     },
     "rgb": {
-      "tau2": 0.01913,
+      "tau2": 0.02657,
       "sigma2": {
-        "width": 0.06527,
-        "depth": 0.10846,
-        "height": 0.03241
+        "width": 0.07797,
+        "depth": 0.0801,
+        "height": 0.03366
       },
-      "samples": 213
+      "samples": 504
     }
   },
   "leave_one_room_out": {
-    "rooms": 42,
+    "rooms": 75,
     "kinds": {
       "arkit": {
-        "dimensions": 213,
-        "calibrated": 10.204,
-        "calibrated/depth": 8.865,
-        "calibrated/height": 8.697,
-        "calibrated/width": 13.049,
-        "calibrated/within10": 0.413,
-        "prior": 8.854,
-        "prior/depth": 6.482,
-        "prior/height": 7.695,
-        "prior/width": 12.386,
-        "prior/within10": 0.413
+        "dimensions": 504,
+        "calibrated": 10.039,
+        "calibrated/depth": 8.267,
+        "calibrated/height": 10.592,
+        "calibrated/width": 11.259,
+        "calibrated/within10": 0.45,
+        "prior": 9.17,
+        "prior/depth": 6.704,
+        "prior/height": 9.8,
+        "prior/width": 11.007,
+        "prior/within10": 0.417
       },
       "rgb": {
-        "dimensions": 213,
-        "calibrated": 12.453,
-        "calibrated/depth": 10.142,
-        "calibrated/height": 11.045,
-        "calibrated/width": 16.173,
-        "calibrated/within10": 0.352,
-        "prior": 9.869,
-        "prior/depth": 6.645,
-        "prior/height": 9.108,
-        "prior/width": 13.855,
-        "prior/within10": 0.418
+        "dimensions": 504,
+        "calibrated": 13.613,
+        "calibrated/depth": 9.671,
+        "calibrated/height": 13.797,
+        "calibrated/width": 17.371,
+        "calibrated/within10": 0.296,
+        "prior": 11.284,
+        "prior/depth": 7.187,
+        "prior/height": 11.913,
+        "prior/width": 14.752,
+        "prior/within10": 0.381
       }
     }
   }

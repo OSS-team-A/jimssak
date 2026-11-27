@@ -16,7 +16,7 @@ error can then be corrected using the other dimensions, and a missing dimension 
 Beds, washers and refrigerators are left to ``ai.measurement.standard_sizes``.
 
     python -m ai.measurement.size_prior fit outputs/arkitscenes-dev-objects.csv \
-        outputs/dev-eval-100/truth.json outputs/dev-eval-100/dav2.json \
+        outputs/dev-eval-200/truth.json outputs/dev-eval-200/dav2.json \
         --calibration ai/measurement/calibration/depth-anything-v2.json \
         --metadata outputs/arkit-depth-fix/metadata.csv \
         --output ai/measurement/calibration/size-prior-depth-anything-v2.json

@@ -44,12 +44,26 @@
 [depth-anything-v2.json](../ai/measurement/calibration/depth-anything-v2.json)에 있다.
 일반 영상 여러 시점 결합 기준 가로 0.72, 깊이 0.66, 높이 0.91배다.
 
+### 장면 200개로 다시 학습 (2026-11-27)
+
+지금 배율 파일은 개발용 장면 200개(방 75개, 가구 168개, 치수 504개씩)로 다시 학습한 것이다.
+
+| 영상 | 보정 | 가로 | 깊이 | 높이 | 전체 | 10% 이내 |
+|---|---|---:|---:|---:|---:|---:|
+| 일반 영상 | 없음 | 39.9 | 22.3 | 21.6 | 27.9 | 12% |
+| 일반 영상 | **보정** | **17.4** | **9.7** | **13.8** | **13.6** | **30%** |
+| ARKit | 없음 | 17.8 | 12.7 | 15.8 | 15.4 | 36% |
+| ARKit | **보정** | **11.3** | **8.3** | **10.6** | **10.0** | **45%** |
+
+100개 때(12.5cm)보다 조금 큰 13.6cm가 나왔다. 가구가 두 배로 늘면서 숫자가 실제에 가까워진 것으로 본다.
+배율은 거의 그대로다(일반 영상 여러 시점 결합: 가로 0.65, 깊이 0.70, 높이 0.91배).
+
 ## 맥에서 실행
 
 학습 (몇 초):
 
 ```bash
-python -m ai.measurement.calibration fit outputs/dev-eval-100/truth.json outputs/dev-eval-100/dav2.json --metadata outputs/arkit-depth-fix/metadata.csv --output ai/measurement/calibration/depth-anything-v2.json
+python -m ai.measurement.calibration fit outputs/dev-eval-200/truth.json outputs/dev-eval-200/dav2.json --metadata outputs/arkit-depth-fix/metadata.csv --output ai/measurement/calibration/depth-anything-v2.json
 ```
 
 출력의 `leave_one_room_out`에서 `raw`(보정 전)와 `calibrated`(보정 후)를 비교한다.

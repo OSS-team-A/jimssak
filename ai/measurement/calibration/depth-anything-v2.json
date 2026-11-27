@@ -3,119 +3,119 @@
   "min_samples": 10,
   "factors": {
     "arkit": {
-      "factor": 0.926,
-      "samples": 213
+      "factor": 0.9285,
+      "samples": 504
     },
     "arkit/depth": {
-      "factor": 0.925,
-      "samples": 71
+      "factor": 0.8999,
+      "samples": 168
     },
     "arkit/depth/metric_depth_view_median": {
-      "factor": 0.6289,
-      "samples": 11
+      "factor": 0.5672,
+      "samples": 28
     },
     "arkit/depth/registered_multiview": {
-      "factor": 0.9525,
-      "samples": 60
+      "factor": 0.9359,
+      "samples": 140
     },
     "arkit/height": {
-      "factor": 1.0087,
-      "samples": 71
+      "factor": 1.0204,
+      "samples": 168
     },
     "arkit/height/metric_depth_view_median": {
-      "factor": 0.7322,
-      "samples": 20
+      "factor": 0.7378,
+      "samples": 47
     },
     "arkit/height/registered_multiview": {
-      "factor": 1.0598,
-      "samples": 51
+      "factor": 1.0651,
+      "samples": 121
     },
     "arkit/width": {
-      "factor": 0.8758,
-      "samples": 71
+      "factor": 0.8897,
+      "samples": 168
     },
     "arkit/width/metric_depth_view_median": {
-      "factor": 0.5435,
-      "samples": 11
+      "factor": 0.5411,
+      "samples": 28
     },
     "arkit/width/registered_multiview": {
-      "factor": 0.9146,
-      "samples": 60
+      "factor": 0.9232,
+      "samples": 140
     },
     "rgb": {
-      "factor": 0.7192,
-      "samples": 213
+      "factor": 0.7033,
+      "samples": 504
     },
     "rgb/depth": {
-      "factor": 0.6628,
-      "samples": 71
+      "factor": 0.6782,
+      "samples": 168
     },
     "rgb/depth/metric_depth_view_median": {
-      "factor": 0.6551,
-      "samples": 24
+      "factor": 0.6556,
+      "samples": 71
     },
     "rgb/depth/registered_multiview": {
-      "factor": 0.6628,
-      "samples": 47
+      "factor": 0.6953,
+      "samples": 97
     },
     "rgb/height": {
-      "factor": 0.8385,
-      "samples": 71
+      "factor": 0.8091,
+      "samples": 168
     },
     "rgb/height/metric_depth_view_median": {
-      "factor": 0.7682,
-      "samples": 31
+      "factor": 0.7746,
+      "samples": 87
     },
     "rgb/height/registered_multiview": {
-      "factor": 0.9128,
-      "samples": 40
+      "factor": 0.9056,
+      "samples": 81
     },
     "rgb/width": {
-      "factor": 0.6502,
-      "samples": 71
+      "factor": 0.6154,
+      "samples": 168
     },
     "rgb/width/metric_depth_view_median": {
-      "factor": 0.6037,
-      "samples": 24
+      "factor": 0.5712,
+      "samples": 71
     },
     "rgb/width/registered_multiview": {
-      "factor": 0.7248,
-      "samples": 47
+      "factor": 0.6509,
+      "samples": 97
     }
   },
   "trained_on": {
-    "dimensions": 426,
-    "videos": 142,
-    "rooms": 42
+    "dimensions": 1008,
+    "videos": 336,
+    "rooms": 75
   },
   "leave_one_room_out": {
-    "rooms": 42,
+    "rooms": 75,
     "kinds": {
       "arkit": {
-        "dimensions": 213,
-        "calibrated": 10.204,
-        "calibrated/depth": 8.865,
-        "calibrated/height": 8.697,
-        "calibrated/width": 13.049,
-        "calibrated/within10": 0.413,
-        "raw": 14.93,
-        "raw/depth": 12.557,
-        "raw/height": 13.397,
-        "raw/width": 18.835,
-        "raw/within10": 0.338
+        "dimensions": 504,
+        "calibrated": 10.039,
+        "calibrated/depth": 8.267,
+        "calibrated/height": 10.592,
+        "calibrated/width": 11.259,
+        "calibrated/within10": 0.45,
+        "raw": 15.431,
+        "raw/depth": 12.71,
+        "raw/height": 15.766,
+        "raw/width": 17.817,
+        "raw/within10": 0.355
       },
       "rgb": {
-        "dimensions": 213,
-        "calibrated": 12.453,
-        "calibrated/depth": 10.142,
-        "calibrated/height": 11.045,
-        "calibrated/width": 16.173,
-        "calibrated/within10": 0.352,
-        "raw": 25.302,
-        "raw/depth": 23.435,
-        "raw/height": 18.423,
-        "raw/width": 34.048,
-        "raw/within10": 0.122
+        "dimensions": 504,
+        "calibrated": 13.613,
+        "calibrated/depth": 9.671,
+        "calibrated/height": 13.797,
+        "calibrated/width": 17.371,
+        "calibrated/within10": 0.296,
+        "raw": 27.922,
+        "raw/depth": 22.341,
+        "raw/height": 21.563,
+        "raw/width": 39.862,
+        "raw/within10": 0.121
       }
     }
   }
