@@ -4,6 +4,7 @@ import { BrandHeader } from '../components/common/BrandHeader';
 import { Button } from '../components/common/Button';
 import { login, saveSession, signup } from '../api/auth';
 import { ApiError } from '../api/client';
+import { claimMove } from '../api/moves';
 
 export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   const isSignup = mode === 'signup';
@@ -25,10 +26,19 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
     try {
       if (isSignup) await signup(email, password);
       saveSession(await login(email, password));
+      const guest = sessionStorage.getItem('jimssak-guest-move');
+      if (guest) {
+        const pending = JSON.parse(guest) as { move_id?: string; guest_token?: string };
+        if (pending.move_id && pending.guest_token) {
+          await claimMove(pending.move_id, pending.guest_token);
+          sessionStorage.setItem('jimssak-member-move', JSON.stringify({ move_id: pending.move_id, guest_token: '' }));
+          sessionStorage.removeItem('jimssak-guest-move');
+        }
+      }
       navigate(routes.history);
     } catch (cause) {
       setMessage(cause instanceof ApiError
-        ? cause.status === 409 ? '이미 가입한 이메일이에요.' : cause.status === 401 ? '이메일 또는 비밀번호를 확인해주세요.' : '요청을 완료하지 못했어요. 잠시 후 다시 시도해주세요.'
+        ? cause.status === 409 ? '이미 가입한 이메일이에요.' : cause.status === 401 ? '이메일 또는 비밀번호를 확인해주세요.' : cause.message
         : '서버에 연결하지 못했어요. 연결 상태를 확인해주세요.');
     } finally { setSubmitting(false); }
   }

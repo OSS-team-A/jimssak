@@ -15,7 +15,6 @@ import permissionCameraIcon from '../assets/capture-permission-camera.svg';
 import doubleArrowIcon from '../assets/capture-double-arrow.svg';
 import levelEllipse from '../assets/capture-level-ellipse.svg';
 import levelLine from '../assets/capture-level-line.svg';
-import tiltedLevelLine from '../assets/capture-level-tilted.svg';
 
 type Screen = 'prep' | 'camera' | 'review' | 'status';
 const cameraPermissionKey = 'jimssak-camera-permission-granted';
@@ -25,8 +24,6 @@ const acceptedVideo = (file: File) => /\.(mp4|mov)$/i.test(file.name)
 export function CapturePage() {
   const params = new URLSearchParams(window.location.search);
   const afterMove = params.get('mode') === 'after';
-  const preview = import.meta.env.DEV && params.get('preview') === '1';
-  const previewState = params.get('state');
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -40,9 +37,9 @@ export function CapturePage() {
       return saved ? JSON.parse(saved) : null;
     } catch { return null; }
   })());
-  const [screen, setScreen] = useState<Screen>(preview && previewState === 'upload-failed' ? 'status' : preview && previewState === 'review' ? 'review' : preview && (previewState === 'camera' || previewState === 'recording' || previewState === 'tilted') ? 'camera' : 'prep');
+  const [screen, setScreen] = useState<Screen>('prep');
   const [permissionOpen, setPermissionOpen] = useState(false);
-  const [recording, setRecording] = useState(preview && (previewState === 'recording' || previewState === 'tilted'));
+  const [recording, setRecording] = useState(false);
   const [reviewFile, setReviewFile] = useState<File | null>(null);
   const [reviewUrl, setReviewUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -67,7 +64,6 @@ export function CapturePage() {
   async function openCamera() {
     setPermissionOpen(false);
     setError('');
-    if (preview) { setScreen('camera'); return; }
     if (!mp4Recording) {
       fileRef.current?.click();
       return;
@@ -128,6 +124,7 @@ export function CapturePage() {
       if (cause instanceof ApiError) {
         setError(cause.status === 413 ? '영상 용량이 너무 커요. 짧게 다시 촬영해주세요.'
           : cause.status === 415 ? '영상 형식을 확인하지 못했어요. MP4·MOV로 다시 촬영해주세요.'
+          : cause.status === 401 ? '로그인이 만료됐어요. 다시 로그인해주세요.'
           : '영상 업로드에 실패했어요. 연결 상태를 확인하고 다시 촬영해주세요.');
         if (cause.status === 404) moveRef.current = null;
         if (cause.status === 413 || cause.status === 415) setReviewFile(null);
@@ -206,40 +203,41 @@ export function CapturePage() {
       </div>}
     </div>}
     {screen === 'camera' && <div className="capture-camera">
-      {preview ? <img className="capture-camera-preview" src="/capture-preview-room.png" alt="촬영 화면 미리보기" /> : <video ref={videoRef} autoPlay muted playsInline aria-label="카메라 미리보기" />}
-      <div className={`capture-camera-guide${preview && previewState === 'tilted' ? ' capture-camera-guide--tilted' : ''}`} aria-hidden="true"><img src={levelEllipse} alt="" /><img src={preview && previewState === 'tilted' ? tiltedLevelLine : levelLine} alt="" /></div>
+      <video ref={videoRef} autoPlay muted playsInline aria-label="카메라 미리보기" />
+      <div className="capture-camera-guide" aria-hidden="true"><img src={levelEllipse} alt="" /><img src={levelLine} alt="" /></div>
       <p className="capture-camera-hint">{recording ? <>화면 안에 가구가 담겨야 정확도가 높아요 <span className="capture-double-arrow"><img src={doubleArrowIcon} alt="" /></span></> : '이동하며 방 전체를 충분히 촬영해주세요'}</p>
       {error && <p role="alert" className="capture-camera-error">{error}</p>}
-      <div className="capture-camera-controls"><button type="button" className={recording ? 'capture-shutter capture-shutter--recording' : 'capture-shutter'} onClick={() => { if (preview) { if (recording) setScreen('review'); setRecording(!recording); } else if (recording) recorderRef.current?.stop(); else start(); }} aria-label={recording ? '촬영 종료 및 영상 전송' : '촬영 시작'} disabled={uploading} /></div>
+      <div className="capture-camera-controls"><button type="button" className={recording ? 'capture-shutter capture-shutter--recording' : 'capture-shutter'} onClick={() => { if (recording) recorderRef.current?.stop(); else start(); }} aria-label={recording ? '촬영 종료 및 영상 전송' : '촬영 시작'} disabled={uploading} /></div>
     </div>}
     {screen === 'review' && <div className="capture-review">
       <BrandHeader />
       <div className="capture-review-content">
         <h1>촬영한 영상을 확인해주세요</h1>
         <p>가구와 가려진 공간이 빠짐없이 담겼는지 확인해주세요.</p>
-        {reviewUrl ? <video src={reviewUrl} controls playsInline preload="metadata" aria-label="촬영한 영상" /> : preview ? <img className="capture-review-placeholder" src="/capture-preview-room.png" alt="촬영 영상 미리보기 예시" /> : <div className="capture-review-placeholder" role="img" aria-label="영상 미리보기" />}
+        {reviewUrl ? <video src={reviewUrl} controls playsInline preload="metadata" aria-label="촬영한 영상" /> : <div className="capture-review-placeholder" role="img" aria-label="영상 미리보기" />}
         <div className="capture-review-note">촬영한 영상을 확인하고 영상을 다시 업로드할 수 있어요.</div>
         {error && <p role="alert" className="capture-review-error">{error}</p>}
       </div>
-      <div className="capture-review-actions"><Button onClick={() => { if (preview) { window.history.pushState({}, '', afterMove ? `${routes.analysis}?mode=after&preview=1&state=waiting` : `${routes.moveInfo}?preview=1`); window.dispatchEvent(new PopStateEvent('popstate')); } else if (!uploaded && reviewFile) void upload(reviewFile, true); else if (afterMove) setError('이사 후 영상은 전송됐어요. 영상 비교 분석 API는 아직 연결되지 않았어요.'); else navigate(routes.moveInfo); }} disabled={!reviewFile && !preview}>이 영상으로 분석 시작하기</Button><Button variant="secondary" onClick={() => { setError(''); setReviewFile(null); setReviewUrl(null); if (reviewUrlRef.current) URL.revokeObjectURL(reviewUrlRef.current); reviewUrlRef.current = null; setScreen('prep'); }}>다시 촬영하기</Button></div>
+      <div className="capture-review-actions"><Button onClick={() => { if (!uploaded && reviewFile) void upload(reviewFile, true); else if (afterMove) setError('이사 후 영상은 전송됐어요. 영상 비교 분석 API는 아직 연결되지 않았어요.'); else navigate(routes.moveInfo); }} disabled={!reviewFile}>이 영상으로 분석 시작하기</Button><Button variant="secondary" onClick={() => { setError(''); setReviewFile(null); setReviewUrl(null); if (reviewUrlRef.current) URL.revokeObjectURL(reviewUrlRef.current); reviewUrlRef.current = null; setScreen('prep'); }}>다시 촬영하기</Button></div>
     </div>}
     {screen === 'status' && !uploading && !uploaded ? <div className="capture-status capture-upload-failed">
       <BrandHeader />
       <div className="analysis-content">
         <h1>영상을 업로드하지 못했어요</h1>
         <p className="analysis-intro">일시적인 문제로 영상을 업로드하지 못했어요. 다시 시도해주세요.</p>
+        {error && <p className="analysis-error" role="alert">{error}</p>}
         <div className="analysis-mascot-frame"><img src={failedMascot} alt="" /></div>
         <div className="analysis-state analysis-state--failed" role="status"><img src={warningIcon} alt="" />영상 업로드 실패!</div>
-        <Button variant="secondary" onClick={() => { if (reviewFile) void upload(reviewFile); else fileRef.current?.click(); }}>다시 업로드하기</Button>
+        <Button variant="secondary" onClick={() => { if (error.includes('만료')) navigate(routes.login); else if (reviewFile) void upload(reviewFile); else fileRef.current?.click(); }}>{error.includes('만료') ? '로그인하기' : '다시 업로드하기'}</Button>
         <input ref={fileRef} type="file" accept=".mp4,.mov,video/mp4,video/quicktime" onChange={chooseFile} hidden aria-label="다시 업로드할 영상 선택" />
       </div>
     </div> : screen === 'status' && <div className="capture-status">
       <BrandHeader />
       <h1>{uploading ? '영상을 저장하고 있어요' : uploaded ? '영상이 저장됐어요' : '영상을 저장하지 못했어요'}</h1>
-      <p>{uploading ? '촬영한 영상을 업로드하고 있어요.' : uploaded ? '영상 분석은 아직 연결되지 않았어요.' : error}</p>
+      <p>{uploading ? '촬영한 영상을 업로드하고 있어요.' : uploaded ? '영상 분석 상태를 확인하고 있어요.' : error}</p>
       <div className="capture-status-mascot"><img src={analysisMascot} alt="" /></div>
       <div className="capture-status-strip" role="status">{uploading ? '영상 업로드 중' : uploaded ? '영상 업로드 완료' : '영상 업로드 실패'}</div>
-      {uploaded && <p className="capture-status-detail">이삿짐 목록과 명세서 생성은 아직 연결되지 않았어요.</p>}
+      {uploaded && <p className="capture-status-detail">분석 결과가 준비되면 이삿짐 목록을 확인할 수 있어요.</p>}
       {!uploading && !uploaded && <div className="capture-status-actions"><Button variant="secondary" onClick={() => { setError(''); setScreen('prep'); }}>영상 다시 촬영하기</Button></div>}
     </div>}
   </main>;

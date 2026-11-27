@@ -3,17 +3,15 @@ import { BrandHeader } from '../components/common/BrandHeader';
 import { Button } from '../components/common/Button';
 import { navigate, routes } from '../app/routes';
 import { getMove, searchAddresses, updateMove } from '../api/moves';
-import type { AddressCandidate, MoveSnapshot, PlaceInput } from '../types/move';
+import { ApiError } from '../api/client';
+import type { AddressCandidate, MoveSnapshot } from '../types/move';
+import { buildingNote, elevatorLabel, emptyMoveInfoDraft, fromMoveSnapshot, toPlaceInput, type MoveInfoDraft, type PlaceDraft } from '../features/moveInfoAdapter';
 import calendarClockIcon from '../assets/move-calendar-clock.svg';
 import searchIcon from '../assets/move-search.svg';
 import searchClearIcon from '../assets/move-search-clear.svg';
 import backChevronIcon from '../assets/move-back-chevron.png';
 
 type Side = 'origin' | 'destination';
-type PlaceDraft = { address: string; candidate: AddressCandidate | null; detail: string; floor: number | null };
-type Draft = { origin: PlaceDraft; destination: PlaceDraft; date: string; time: string };
-const emptyPlace = (): PlaceDraft => ({ address: '', candidate: null, detail: '', floor: null });
-const emptyDraft = (): Draft => ({ origin: emptyPlace(), destination: emptyPlace(), date: '', time: '' });
 const times = ['07:00', '09:00', '10:00', '13:00', '14:00'];
 const savedMove = () => {
   for (const key of ['jimssak-member-move', 'jimssak-guest-move']) {
@@ -24,31 +22,14 @@ const savedMove = () => {
   }
   return null;
 };
-const toPlace = (place: PlaceDraft): PlaceInput => ({
-  road_address: place.address.trim(),
-  detail_address: place.detail.trim() || null,
-  floor: place.floor,
-  ...(place.candidate ? {
-    building_name: place.candidate.building_name, adm_cd: place.candidate.adm_cd,
-    mountain: place.candidate.mountain, lot_main: place.candidate.lot_main, lot_sub: place.candidate.lot_sub,
-  } : {}),
-});
-const fromSnapshot = (record: MoveSnapshot): Draft => ({
-  origin: { address: record.data.origin.value?.road_address ?? '', candidate: null,
-    detail: record.data.origin.value?.detail_address ?? '', floor: record.data.origin.value?.floor ?? null },
-  destination: { address: record.data.destination.value?.road_address ?? '', candidate: null,
-    detail: record.data.destination.value?.detail_address ?? '', floor: record.data.destination.value?.floor ?? null },
-  date: record.data.schedule.value?.move_date ?? '',
-  time: record.data.schedule.value?.start_time.slice(0, 5) ?? '',
-});
 
 export function MoveInfoPage() {
   const move = savedMove();
   const draftKey = move ? `jimssak-draft-${move.move_id}` : '';
   const [hadDraft] = useState(() => Boolean(draftKey && sessionStorage.getItem(draftKey)));
-  const [draft, setDraft] = useState<Draft>(() => {
-    try { return JSON.parse(sessionStorage.getItem(draftKey) || 'null') || emptyDraft(); }
-    catch { return emptyDraft(); }
+  const [draft, setDraft] = useState<MoveInfoDraft>(() => {
+    try { return JSON.parse(sessionStorage.getItem(draftKey) || 'null') || emptyMoveInfoDraft(); }
+    catch { return emptyMoveInfoDraft(); }
   });
   const [customFloor, setCustomFloor] = useState<Record<Side, boolean>>({
     origin: draft.origin.floor !== null && ![-1, 1, 2, 3].includes(draft.origin.floor),
@@ -61,6 +42,7 @@ export function MoveInfoPage() {
   const [searchError, setSearchError] = useState('');
   const [confirm, setConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savedSnapshot, setSavedSnapshot] = useState<MoveSnapshot | null>(null);
   const [error, setError] = useState('');
   const [month, setMonth] = useState(() => {
     const now = new Date(); return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -70,12 +52,13 @@ export function MoveInfoPage() {
   const [tipOpen, setTipOpen] = useState(false);
   const [tipAnchor, setTipAnchor] = useState({ right: 24, bottom: 0 });
 
+  useEffect(() => { window.scrollTo(0, 0); }, [confirm]);
   useEffect(() => { if (draftKey) sessionStorage.setItem(draftKey, JSON.stringify(draft)); }, [draft, draftKey]);
   useEffect(() => {
     if (!move) return;
     void getMove(move.move_id, move.guest_token).then(record => {
-      if (!hadDraft) setDraft(fromSnapshot(record));
-    }).catch(() => setError('저장된 이사 정보를 불러오지 못했어요.'));
+      if (!hadDraft) setDraft(fromMoveSnapshot(record));
+    }).catch(cause => setError(cause instanceof ApiError && cause.status === 401 ? '로그인이 만료됐어요. 다시 로그인해주세요.' : '저장된 이사 정보를 불러오지 못했어요.'));
   }, [draftKey, hadDraft, move?.move_id, move?.guest_token]);
   useEffect(() => {
     if (!keyword.trim() || keyword.trim().length < 2 || sheet === 'schedule' || sheet === null) {
@@ -93,9 +76,11 @@ export function MoveInfoPage() {
 
   const updatePlace = (side: Side, change: Partial<PlaceDraft>) =>
     setDraft(current => ({ ...current, [side]: { ...current[side], ...change } }));
-  const complete = draft.origin.address.trim() && draft.destination.address.trim()
-    && draft.origin.floor !== null && draft.destination.floor !== null && draft.date && draft.time;
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
+  const latest = new Date(Date.parse(`${today}T00:00:00Z`) + 365 * 86400000).toISOString().slice(0, 10);
+  const validFloor = (floor: number | null) => floor !== null && floor !== 0 && floor >= -5 && floor <= 80;
+  const complete = draft.origin.address.trim() && draft.destination.address.trim()
+    && validFloor(draft.origin.floor) && validFloor(draft.destination.floor) && draft.date >= today && draft.date <= latest && draft.time;
   const monthDays = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
   const firstDay = new Date(month.getFullYear(), month.getMonth(), 1).getDay();
 
@@ -105,12 +90,13 @@ export function MoveInfoPage() {
     setSaving(true); setError('');
     try {
       await updateMove(move.move_id, move.guest_token, {
-        origin: toPlace(draft.origin), destination: toPlace(draft.destination),
+        origin: toPlaceInput(draft.origin), destination: toPlaceInput(draft.destination),
         schedule: { move_date: draft.date, start_time: draft.time },
       });
+      setSavedSnapshot(await getMove(move.move_id, move.guest_token));
       sessionStorage.removeItem(draftKey);
-      navigate(routes.analysis);
-    } catch { setError('이사 정보를 저장하지 못했어요. 입력 내용을 확인하고 다시 시도해주세요.'); }
+      setConfirm(true);
+    } catch (cause) { setError(cause instanceof ApiError && cause.status === 401 ? '로그인이 만료됐어요. 다시 로그인해주세요.' : cause instanceof ApiError && cause.status === 422 ? cause.message : '이사 정보를 저장하지 못했어요. 입력 내용을 확인하고 다시 시도해주세요.'); }
     finally { setSaving(false); }
   }
 
@@ -154,23 +140,25 @@ export function MoveInfoPage() {
         </button>
       </section>
       {error && <p className="form-error" role="alert">{error}</p>}
-      <div className="move-actions"><Button disabled={!complete} onClick={() => setConfirm(true)}>저장하기</Button></div>
+      {error.includes('만료') && <Button variant="secondary" onClick={() => navigate(routes.login)}>로그인하기</Button>}
+      <div className="move-actions"><Button disabled={!complete || saving} onClick={() => void save()}>{saving ? '저장 중...' : '저장하기'}</Button></div>
     </> : <>
       <span className="capture-eyebrow">이사 정보 최종 확인</span>
       <h1>이사 정보를<br />마지막으로 확인할게요</h1>
       <p className="move-intro">입력한 주소를 통해 정보를 확인했어요.</p>
       <div className="confirm-cards">{(['origin', 'destination'] as const).map(side => <div className="confirm-card" key={side}>
         <small>{side === 'origin' ? '출발지 주소' : '도착지 주소'}</small>
-        <strong>{draft[side].address}</strong>
-        <p>상세주소&nbsp; {draft[side].detail || '직접 입력'}</p>
-        <p>이사 층&nbsp; {draft[side].floor === -1 ? '지하' : `${draft[side].floor}층`}&emsp; 승강기&nbsp; 확인 필요</p>
-        <p className="confirm-note">건물 정보는 저장 후 확인할 수 있어요.</p>
+        <strong>{savedSnapshot?.data[side].value?.road_address ?? draft[side].address}</strong>
+        <p>상세주소&nbsp; {savedSnapshot?.data[side].value?.detail_address || '직접 입력'}</p>
+        <p>이사 층&nbsp; {savedSnapshot?.data[side].value?.floor === -1 ? '지하' : `${savedSnapshot?.data[side].value?.floor ?? draft[side].floor}층`}&emsp; 승강기&nbsp; {elevatorLabel(savedSnapshot?.data[side].value ?? null)}</p>
+        <p className="confirm-note">{buildingNote(savedSnapshot?.data[side].value ?? null)}</p>
       </div>)}
       <div className="confirm-card confirm-card--schedule"><small>이사 날짜와 시간</small><strong>{draft.date.replaceAll('-', '. ')} · {Number(draft.time.slice(0, 2)) < 12 ? '오전' : '오후'} {Number(draft.time.slice(0, 2)) % 12 || 12}시</strong></div></div>
       {error && <p className="form-error" role="alert">{error}</p>}
+      {error.includes('만료') && <Button variant="secondary" onClick={() => navigate(routes.login)}>로그인하기</Button>}
       <div className="move-actions confirm-actions">
         <button type="button" aria-label="수정하기" onClick={() => setConfirm(false)}><img src={backChevronIcon} alt="" /></button>
-        <Button disabled={saving} onClick={() => void save()}>{saving ? '저장 중...' : '저장하기'}</Button>
+        <Button onClick={() => navigate(routes.analysis)}>저장하기</Button>
       </div>
     </>}
     {sheet && <div className="sheet-backdrop" onClick={() => setSheet(null)}>
@@ -187,7 +175,7 @@ export function MoveInfoPage() {
             {Array.from({ length: firstDay }, (_, index) => <span key={`gap-${index}`} />)}
             {Array.from({ length: monthDays }, (_, index) => {
               const date = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}-${String(index + 1).padStart(2, '0')}`;
-              return <button type="button" key={date} disabled={date < today} className={pickedDate === date ? 'selected' : ''}
+              return <button type="button" key={date} disabled={date < today || date > latest} className={pickedDate === date ? 'selected' : ''}
                 onClick={() => setPickedDate(date)}>{index + 1}</button>;
             })}
           </div>
