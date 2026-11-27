@@ -44,25 +44,6 @@ function InventoryPhoto({ path, label, guestToken }: { path: string | null; labe
   return <div className="review-inventory-photo">{src && <img src={src} alt={`${label} 분석 사진`} />}</div>;
 }
 
-function AssistantReply({ content, animate }: { content: string; animate: boolean }) {
-  const showTyping = animate && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const [visible, setVisible] = useState(showTyping ? 0 : content.length);
-  useEffect(() => {
-    if (!showTyping) { setVisible(content.length); return; }
-    const chunk = Math.max(1, Math.ceil(content.length / 100));
-    const timer = window.setInterval(() => setVisible(count => {
-      const next = Math.min(content.length, count + chunk);
-      if (next === content.length) window.clearInterval(timer);
-      return next;
-    }), 25);
-    return () => window.clearInterval(timer);
-  }, [showTyping, content]);
-  return <div className={animate ? 'review-assistant-reply review-assistant-reply--new' : 'review-assistant-reply'}>
-    <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
-    <p className="review-chat-intro">{content.slice(0, visible)}</p>
-  </div>;
-}
-
 function ReviewGate({ loading, error, hasMove, completed, onRetry }: { loading: boolean; error: string; hasMove: boolean; completed: boolean; onRetry: () => void }) {
   return <div className="review-gate">
     <p>{loading ? '분석 결과를 불러오고 있어요.' : error || (!hasMove ? '저장된 이사 정보가 없어요.' : !completed ? '영상 분석이 완료되면 이삿짐 목록을 확인할 수 있어요.' : '')}</p>
@@ -117,6 +98,7 @@ function EstimateConversation({ total, selected, pdfEnabled, onSelect, onPdf }: 
 export function ChatPage() {
   const { move, analysis, inventory, draft, loading, error, items, added, total, updateDraft, confirmList, prepareChat, setChatInventory, refreshInventory, retry } = useReview();
   const [message, setMessage] = useState('');
+  const [pendingText, setPendingText] = useState('');
   const [chatError, setChatError] = useState('');
   const [sending, setSending] = useState(false);
   const [pdfNotice, setPdfNotice] = useState<string | null>(null);
@@ -140,7 +122,8 @@ export function ChatPage() {
     const frame = requestAnimationFrame(() => {
       const scroll = scrollRef.current;
       if (!scroll) return;
-      const target = (animatedReplyKey && [...scroll.querySelectorAll<HTMLElement>('[data-reply-key]')].find(node => node.dataset.replyKey === animatedReplyKey))
+      const target = scroll.querySelector<HTMLElement>('[data-chat-pending]')
+        ?? (animatedReplyKey && [...scroll.querySelectorAll<HTMLElement>('[data-reply-key]')].find(node => node.dataset.replyKey === animatedReplyKey))
         ?? scroll.querySelector<HTMLElement>(`[data-chat-step="${step}"]`);
       if (!target) return;
       const top = target.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop - 8;
@@ -148,7 +131,7 @@ export function ChatPage() {
       hasScrolledRef.current = true;
     });
     return () => cancelAnimationFrame(frame);
-  }, [ready, step, draft?.chatMessages.length, draft?.notes.length]);
+  }, [ready, step, pendingText, draft?.chatMessages.length, draft?.notes.length]);
 
   async function next() {
     updateDraft(current => ({
@@ -165,6 +148,7 @@ export function ChatPage() {
   async function sendChat(text: string) {
     if (!text || !move || !draft || !ready || sending || draft.pendingProposal || step === 0 || step === 4) return;
     setSending(true);
+    setPendingText(text);
     setChatError('');
     try {
       await prepareChat();
@@ -180,11 +164,12 @@ export function ChatPage() {
         step: reply.advance && !reply.proposal_id ? Math.min(current.step + 1, 5) : current.step,
       }));
       setMessage('');
+      setPendingText('');
       if (step === 5 && reply.advance && !reply.proposal_id) await confirmList();
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 409) void refreshInventory();
       setChatError(cause instanceof ApiError ? cause.status === 409 ? '목록 상태가 바뀌었어요. 같은 내용을 다시 보내주세요.' : cause.status === 401 ? '로그인이 만료됐어요. 다시 로그인해주세요.' : cause.message : '답변을 보내지 못했어요. 다시 시도해주세요.');
-    } finally { setSending(false); }
+    } finally { setPendingText(''); setSending(false); }
   }
 
   async function applyProposal() {
@@ -221,19 +206,31 @@ export function ChatPage() {
   function chatExchange(questionStep: number) {
     if (!draft) return null;
     const messages = draft.chatMessages.filter(entry => entry.step === questionStep);
+    const lastAssistantIndex = messages.reduce((last, entry, index) => entry.role === 'assistant' ? index : last, -1);
     return <>
       {messages.map((entry, index) => entry.role === 'user'
         ? <div className="review-user-bubble" key={`${questionStep}-${index}`}>{entry.content}</div>
-        : <div key={`${questionStep}-${index}`} data-reply-key={`${questionStep}-${index}`}><AssistantReply content={entry.content} animate={animatedReplyKey === `${questionStep}-${index}`} /></div>)}
-      {draft.pendingProposal?.step === questionStep && <div className="review-chat-proposal">
-        <strong>변경 내용을 확인해주세요</strong>
-        <ul>{draft.pendingProposal.summary.map((item, index) => <li key={index}>{item}</li>)}</ul>
-        <Button disabled={sending} onClick={() => void applyProposal()}>{sending ? '반영 중...' : '이대로 반영하기'}</Button>
-        <button className="review-text-button" type="button" disabled={sending} onClick={cancelProposal}>취소하기</button>
-      </div>}
-      {draft.step === questionStep && !draft.pendingProposal && draft.choices.length > 0 && <div className="review-chat-choices">
-        {draft.choices.map(choice => <button type="button" key={choice} disabled={sending} onClick={() => void sendChat(choice)}>{choice}</button>)}
-      </div>}
+        : <div className={`review-assistant-reply${animatedReplyKey === `${questionStep}-${index}` ? ' review-assistant-reply--new' : ''}`}
+            key={`${questionStep}-${index}`} data-reply-key={`${questionStep}-${index}`}>
+          <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
+          <p className="review-chat-intro">{entry.content}</p>
+          {index === lastAssistantIndex && draft.pendingProposal?.step === questionStep && <div className="review-chat-proposal">
+            <strong>변경 내용을 확인해주세요</strong>
+            <ul>{draft.pendingProposal.summary.map((item, summaryIndex) => <li key={summaryIndex}>{item}</li>)}</ul>
+            <Button disabled={sending} onClick={() => void applyProposal()}>{sending ? '반영 중...' : '이대로 반영하기'}</Button>
+            <button className="review-text-button" type="button" disabled={sending} onClick={cancelProposal}>취소하기</button>
+          </div>}
+          {index === lastAssistantIndex && draft.step === questionStep && !draft.pendingProposal && draft.choices.length > 0 && <div className="review-chat-choices">
+            {draft.choices.map(choice => <button type="button" key={choice} disabled={sending} onClick={() => void sendChat(choice)}>{choice}</button>)}
+          </div>}
+        </div>)}
+      {draft.step === questionStep && pendingText && <>
+        <div className="review-user-bubble" data-chat-pending>{pendingText}</div>
+        <div className="review-assistant-reply review-assistant-reply--new" role="status">
+          <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
+          <p className="review-chat-intro">답변을 준비하고 있어요.</p>
+        </div>
+      </>}
     </>;
   }
 
