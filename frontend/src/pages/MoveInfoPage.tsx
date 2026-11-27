@@ -150,7 +150,7 @@ export function MoveInfoPage() {
         <small>{side === 'origin' ? '출발지 주소' : '도착지 주소'}</small>
         <strong>{savedSnapshot?.data[side].value?.road_address ?? draft[side].address}</strong>
         <p>상세주소&nbsp; {savedSnapshot?.data[side].value?.detail_address || '직접 입력'}</p>
-        <p>이사 층&nbsp; {savedSnapshot?.data[side].value?.floor === -1 ? '지하' : `${savedSnapshot?.data[side].value?.floor ?? draft[side].floor}층`}&emsp; 승강기&nbsp; {elevatorLabel(savedSnapshot?.data[side].value ?? null)}</p>
+        <p className="confirm-floor">이사 층&nbsp; {savedSnapshot?.data[side].value?.floor === -1 ? '지하' : `${savedSnapshot?.data[side].value?.floor ?? draft[side].floor}층`}&emsp; 승강기&nbsp; {elevatorLabel(savedSnapshot?.data[side].value ?? null)}</p>
         <p className="confirm-note">{buildingNote(savedSnapshot?.data[side].value ?? null)}</p>
       </div>)}
       <div className="confirm-card confirm-card--schedule"><small>이사 날짜와 시간</small><strong>{draft.date.replaceAll('-', '. ')} · {Number(draft.time.slice(0, 2)) < 12 ? '오전' : '오후'} {Number(draft.time.slice(0, 2)) % 12 || 12}시</strong></div></div>
@@ -164,6 +164,7 @@ export function MoveInfoPage() {
     {sheet && <div className="sheet-backdrop" onClick={() => setSheet(null)}>
       <div className={`move-sheet ${sheet === 'schedule' ? 'move-sheet--schedule' : 'move-sheet--address'}`} role="dialog" aria-modal="true" aria-label={sheet === 'schedule' ? '이사 날짜와 시간' : '주소 검색'} onClick={e => e.stopPropagation()}>
         <span className="sheet-handle" />
+        <div className="move-sheet-scroll">
         {sheet === 'schedule' ? <>
           <h2>이사 날짜와 시간</h2>
           <div className="calendar-head">
@@ -186,7 +187,6 @@ export function MoveInfoPage() {
           }}>tip</button></div>
           <div className="time-options">{times.map(time => <button type="button" key={time} className={pickedTime === time ? 'selected' : ''}
             onClick={() => setPickedTime(time)}>{Number(time.slice(0, 2)) < 12 ? '오전' : '오후'} {Number(time.slice(0, 2)) % 12 || 12}:00</button>)}</div>
-          <div className="move-sheet-actions"><Button disabled={!pickedDate || !pickedTime} onClick={() => { setDraft(current => ({ ...current, date: pickedDate, time: pickedTime })); setSheet(null); }}>선택 완료</Button></div>
         </> : <>
           <h2>{sheet === 'origin' ? '출발지' : '도착지'} 주소 검색</h2>
           <div className="address-search"><input autoFocus placeholder="도로명, 건물명 검색" value={keyword} onChange={e => setKeyword(e.target.value)} />
@@ -199,10 +199,13 @@ export function MoveInfoPage() {
             onClick={() => { updatePlace(sheet, { address: item.road_address, candidate: item }); setSheet(null); }}>
             <strong>{item.road_address}</strong><small>{item.jibun_address}</small></button>)}</div>
           {results.length > 0 && <p className="address-selection-hint">주소를 선택하면 입력 화면으로 돌아가요</p>}
-          <div className="move-sheet-actions"><Button disabled={!keyword.trim()} onClick={() => {
-            updatePlace(sheet, { address: keyword.trim(), candidate: null }); setSheet(null);
-          }}>입력한 주소 사용하기</Button></div>
         </>}
+        </div>
+        <div className="move-sheet-actions">{sheet === 'schedule'
+          ? <Button disabled={!pickedDate || !pickedTime} onClick={() => { setDraft(current => ({ ...current, date: pickedDate, time: pickedTime })); setSheet(null); }}>선택 완료</Button>
+          : <Button disabled={!keyword.trim()} onClick={() => {
+              updatePlace(sheet, { address: keyword.trim(), candidate: null }); setSheet(null);
+            }}>입력한 주소 사용하기</Button>}</div>
       </div>
       {sheet === 'schedule' && tipOpen && <div id="time-tip" className="time-tip-content" role="tooltip" style={tipAnchor} onClick={event => event.stopPropagation()}>
         오전이사: 하루 첫 일정이라 시작 시간이 비교적 안정적이지만 수요가 많아 오후 이사보다 비용이 높게 책정되는 편입니다.<br />오후이사: 오전 이사보다 보통 수만 원~20만 원 가량 저렴한 경우가 많지만, 앞 팀 작업이 늦어지면 시작 시간이 밀릴 수 있고, 마무리가 늦어질 수 있습니다.

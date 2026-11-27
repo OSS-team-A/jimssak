@@ -28,9 +28,10 @@ const questions = [
 ];
 const demoNotice = '서버에서 제공한 예시 목록이에요. 실제 촬영한 물품과 다를 수 있어요.';
 
-function InventoryPhoto({ path, label, guestToken }: { path: string; label: string; guestToken: string }) {
+function InventoryPhoto({ path, label, guestToken }: { path: string | null; label: string; guestToken: string }) {
   const [src, setSrc] = useState('');
   useEffect(() => {
+    if (!path) return;
     let active = true;
     let objectUrl = '';
     void getAnalysisPhoto(path, guestToken).then(blob => {
@@ -40,7 +41,26 @@ function InventoryPhoto({ path, label, guestToken }: { path: string; label: stri
     }).catch(() => { if (active) setSrc(''); });
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [path, guestToken]);
-  return src ? <div className="review-inventory-photo"><img src={src} alt={`${label} 분석 사진`} /></div> : null;
+  return <div className="review-inventory-photo">{src && <img src={src} alt={`${label} 분석 사진`} />}</div>;
+}
+
+function AssistantReply({ content, animate }: { content: string; animate: boolean }) {
+  const showTyping = animate && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const [visible, setVisible] = useState(showTyping ? 0 : content.length);
+  useEffect(() => {
+    if (!showTyping) { setVisible(content.length); return; }
+    const chunk = Math.max(1, Math.ceil(content.length / 100));
+    const timer = window.setInterval(() => setVisible(count => {
+      const next = Math.min(content.length, count + chunk);
+      if (next === content.length) window.clearInterval(timer);
+      return next;
+    }), 25);
+    return () => window.clearInterval(timer);
+  }, [showTyping, content]);
+  return <div className={animate ? 'review-assistant-reply review-assistant-reply--new' : 'review-assistant-reply'}>
+    <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
+    <p className="review-chat-intro">{content.slice(0, visible)}</p>
+  </div>;
 }
 
 function ReviewGate({ loading, error, hasMove, completed, onRetry }: { loading: boolean; error: string; hasMove: boolean; completed: boolean; onRetry: () => void }) {
@@ -100,7 +120,9 @@ export function ChatPage() {
   const [chatError, setChatError] = useState('');
   const [sending, setSending] = useState(false);
   const [pdfNotice, setPdfNotice] = useState<string | null>(null);
+  const [animatedReplyKey, setAnimatedReplyKey] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const hasScrolledRef = useRef(false);
   const step = Math.min(draft?.step ?? 0, 5);
   const ready = analysis?.status === 'completed' && !!draft;
   const canDownload = ready && !analysis?.demo && inventory?.status === 'confirmed' && total > 0 && step === 5 && !!draft.selectedMoveType;
@@ -117,7 +139,13 @@ export function ChatPage() {
     if (!ready) return;
     const frame = requestAnimationFrame(() => {
       const scroll = scrollRef.current;
-      if (scroll) scroll.scrollTop = scroll.scrollHeight;
+      if (!scroll) return;
+      const target = (animatedReplyKey && [...scroll.querySelectorAll<HTMLElement>('[data-reply-key]')].find(node => node.dataset.replyKey === animatedReplyKey))
+        ?? scroll.querySelector<HTMLElement>(`[data-chat-step="${step}"]`);
+      if (!target) return;
+      const top = target.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop - 8;
+      scroll.scrollTo({ top, behavior: hasScrolledRef.current ? 'smooth' : 'instant' });
+      hasScrolledRef.current = true;
     });
     return () => cancelAnimationFrame(frame);
   }, [ready, step, draft?.chatMessages.length, draft?.notes.length]);
@@ -142,6 +170,7 @@ export function ChatPage() {
       await prepareChat();
       const history = draft.chatMessages.map(({ role, content }) => ({ role, content }));
       const reply = await sendMoveChat(move.move_id, move.guest_token, text, history);
+      setAnimatedReplyKey(`${draft.step}-${draft.chatMessages.filter(entry => entry.step === draft.step).length + 1}`);
       updateDraft(current => ({
         ...current,
         chatMessages: [...current.chatMessages, { step: current.step, role: 'user', content: text }, { step: current.step, role: 'assistant', content: reply.message }],
@@ -164,6 +193,7 @@ export function ChatPage() {
     setChatError('');
     try {
       const applied = await applyMoveChat(move.move_id, move.guest_token, draft.pendingProposal.id);
+      setAnimatedReplyKey(`${draft.step}-${draft.chatMessages.filter(entry => entry.step === draft.step).length}`);
       setChatInventory(applied.inventory);
       updateDraft(current => ({
         ...current,
@@ -194,7 +224,7 @@ export function ChatPage() {
     return <>
       {messages.map((entry, index) => entry.role === 'user'
         ? <div className="review-user-bubble" key={`${questionStep}-${index}`}>{entry.content}</div>
-        : <p className="review-chat-intro" key={`${questionStep}-${index}`}>{entry.content}</p>)}
+        : <div key={`${questionStep}-${index}`} data-reply-key={`${questionStep}-${index}`}><AssistantReply content={entry.content} animate={animatedReplyKey === `${questionStep}-${index}`} /></div>)}
       {draft.pendingProposal?.step === questionStep && <div className="review-chat-proposal">
         <strong>변경 내용을 확인해주세요</strong>
         <ul>{draft.pendingProposal.summary.map((item, index) => <li key={index}>{item}</li>)}</ul>
@@ -217,7 +247,7 @@ export function ChatPage() {
     {ready ? <div className="review-chat-scroll" ref={scrollRef}>
       {error && <p className="review-local-note" role="alert">{error}</p>}
       {analysis?.demo && <p className="review-local-note" role="status">{demoNotice} 예시 결과로는 명세서를 만들 수 없어요.</p>}
-      <section className="review-chat-turn">
+      <section className="review-chat-turn" data-chat-step="0">
         <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
         <p className="review-chat-intro">{analysis?.demo ? '서버의 예시 이삿짐을 정리했어요.' : '영상에서 찾은 이삿짐을 정리했어요.'}<br />목록 탭을 눌러 맞는지 확인해주세요.</p>
         <button className="review-summary" type="button" onClick={() => navigateReview(routes.inventory)}>
@@ -234,7 +264,7 @@ export function ChatPage() {
         const questionStep = index + 1;
         const completed = step > questionStep;
         const answer = draft.answers.find(entry => entry.step === questionStep)?.text ?? question.skip;
-        return <section className="review-chat-turn" key={questionStep}>
+        return <section className="review-chat-turn" data-chat-step={questionStep} key={questionStep}>
           <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
           <h1>{question.title}</h1>
           <p className="review-chat-intro">{question.description}</p>
@@ -244,13 +274,13 @@ export function ChatPage() {
           {!completed && !draft.pendingProposal && <Button disabled={sending} onClick={() => void next()}>{question.skip}</Button>}
         </section>;
       })}
-      {step === 4 && <section className="review-chat-turn">
+      {step === 4 && <section className="review-chat-turn" data-chat-step="4">
         <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
         <h1>이 내용으로 견적을 비교할까요?</h1>
         <p className="review-chat-intro">확인한 이삿짐과 이사 조건을 바탕으로 이사 유형별 예상 비용을 비교해요. 실제 견적은 업체와 상담할 때 확인해주세요.</p>
         <Button onClick={() => { void confirmList().then(saved => { if (saved) updateDraft(current => ({ ...current, step: 5 })); }); }}>예상 비용 비교하기</Button>
       </section>}
-      {step === 5 && <section className="review-chat-turn review-estimate-turn">
+      {step === 5 && <section className="review-chat-turn review-estimate-turn" data-chat-step="5">
         <EstimateConversation total={total} selected={draft.selectedMoveType} pdfEnabled={canDownload} onSelect={type => updateDraft(current => ({ ...current, selectedMoveType: type }))} onPdf={onPdf} />
         {chatExchange(5)}
       </section>}
@@ -302,7 +332,7 @@ export function InventoryPage() {
       <div className="review-inventory-table"><div className="review-inventory-table-head"><span>번호</span><span>품목</span><span>수량</span><span>예상 크기 (cm)</span></div>
         {visibleItems.map((item, index) => <div className="review-inventory-item" key={item.item_id}>
           <div className="review-inventory-row"><small>{String(index + 1).padStart(2, '0')}</small><strong>{item.label_ko}</strong><div className="review-quantity"><button type="button" onClick={() => decrease(item.item_id, item.label_ko, item.quantity, false)} aria-label={`${item.label_ko} 수량 줄이기`}><img src={inventoryMinusIcon} alt="" /></button><b>{pendingDelete?.id === item.item_id ? 0 : item.quantity}</b><button type="button" onClick={() => void changeQuantity(item.item_id, item.quantity + 1)} aria-label={`${item.label_ko} 수량 늘리기`}><img src={inventoryPlusIcon} alt="" /></button></div><span>{dimensions(item)}</span><button className="review-expand" type="button" onClick={() => setExpanded(expanded === item.item_id ? null : item.item_id)} aria-label={`${item.label_ko} 상세 ${expanded === item.item_id ? '닫기' : '보기'}`}><img src={expanded === item.item_id ? inventoryChevronUp : inventoryChevronDown} alt="" /></button></div>
-          {expanded === item.item_id && <div className="review-inventory-detail">{item.snapshots[0]?.image_url && <InventoryPhoto path={item.snapshots[0].image_url} label={item.label_ko} guestToken={move?.guest_token ?? ''} />}<dl><dt>크기</dt><dd>{dimensions(item)} cm</dd><dt>예상 무게</dt><dd>확인 필요</dd><dt>분리 여부</dt><dd>{item.disassembly_required == null ? '확인 필요' : item.disassembly_required ? '분리 필요' : '분리 불필요'}</dd><dt>검토</dt><dd>{item.needs_review ? item.review_reasons.join(' · ') || '확인 필요' : '확인 완료'}</dd></dl></div>}
+          {expanded === item.item_id && <div className="review-inventory-detail"><InventoryPhoto path={item.snapshots[0]?.image_url ?? null} label={item.label_ko} guestToken={move?.guest_token ?? ''} /><dl><dt>크기</dt><dd>{dimensions(item)} cm</dd><dt>예상 무게</dt><dd>확인 필요</dd><dt>분리 여부</dt><dd>{item.disassembly_required == null ? '확인 필요' : item.disassembly_required ? '분리 필요' : '분리 불필요'}</dd><dt>검토</dt><dd>{item.needs_review ? item.review_reasons.join(' · ') || '확인 필요' : '확인 완료'}</dd></dl></div>}
         </div>)}
       </div>
       <div className="review-inventory-total"><strong>합계</strong><strong>{total}개</strong></div>
