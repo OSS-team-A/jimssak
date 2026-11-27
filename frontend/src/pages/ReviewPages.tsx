@@ -5,7 +5,7 @@ import { InventoryDeleteDialog } from '../components/common/InventoryDeleteDialo
 import { getAnalysisPhoto } from '../api/moves';
 import { applyMoveChat, sendMoveChat } from '../api/chat';
 import { ApiError } from '../api/client';
-import { navigate, routes } from '../app/routes';
+import { navigate, openHistoryFromChat, routes } from '../app/routes';
 import { dimensions, navigateReview, useReview, type ReviewDraft } from '../features/review';
 import { downloadReviewPdf } from '../features/reviewPdf';
 import chatAvatar from '../assets/chat-avatar.svg';
@@ -110,7 +110,7 @@ function EstimateConversation({ total, selected, pdfEnabled, onSelect, onPdf }: 
     </div>
     <div className="review-result-help"><strong>같은 짐을 다시 입력하지 않아도 돼요</strong><p>확인한 명세서를 내려받아 여러 업체에 전달하고 실제 금액을 문의하세요.</p></div>
     <Button disabled={!pdfEnabled} onClick={onPdf}>이삿짐 명세서 PDF 받기</Button>
-    <button className="review-text-button" type="button" onClick={() => navigate(routes.history)}>나의 이사 기록에서 이사 완료하기↗︎</button>
+    <button className="review-text-button" type="button" onClick={openHistoryFromChat}>나의 이사 기록에서 이사 완료하기↗︎</button>
   </>;
 }
 

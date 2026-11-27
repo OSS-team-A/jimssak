@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { navigate, routes } from '../app/routes';
+import { closeHistory, navigate, routes } from '../app/routes';
 import { Button } from '../components/common/Button';
 import { BrandHeader } from '../components/common/BrandHeader';
 import { hasSession } from '../api/auth';
@@ -76,7 +76,7 @@ export function HistoryPage() {
 
   const visible = records.filter(record => filter === 'all' || (filter === 'done' ? record.stage === 'done' : record.stage !== 'done'));
   return <main className={`app-page history-page${!loading && !hasSession() ? ' history-page--guest' : ''}`}>
-    <header className="sub-header"><strong>나의 이사 기록</strong><button type="button" aria-label="닫기" onClick={() => navigate(routes.home)}><img src={closeIcon} alt="" /></button></header>
+    <header className="sub-header"><strong>나의 이사 기록</strong><button type="button" aria-label="닫기" onClick={closeHistory}><img src={closeIcon} alt="" /></button></header>
     <div className="history-content"><span className="eyebrow">이사 기록</span>
       <h1>차곡차곡 쌓인 나의 이사</h1>
       <p>이사 준비부터 이사 후 물품 확인까지,<br />진행 중인 이사를 이어가고 지난 결과를 확인해요.</p>
