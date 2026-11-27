@@ -13,6 +13,7 @@ import cameraIcon from '../assets/capture-camera.svg';
 import shoesIcon from '../assets/capture-shoes.png';
 import permissionCameraIcon from '../assets/capture-permission-camera.svg';
 import doubleArrowIcon from '../assets/capture-double-arrow.svg';
+import { startInitialVideoUpload } from '../features/initialVideoUpload';
 import levelEllipse from '../assets/capture-level-ellipse.svg';
 import levelLine from '../assets/capture-level-line.svg';
 
@@ -115,11 +116,8 @@ export function CapturePage() {
       else await uploadMoveVideo(move.move_id, move.guest_token, file);
       sessionStorage.setItem(move.guest_token ? 'jimssak-guest-move' : 'jimssak-member-move', JSON.stringify(move));
       setUploaded(true);
-      if (continueAfterUpload && !afterMove) navigate(routes.moveInfo);
-      else {
-        showReview(file);
-        if (continueAfterUpload) setError('이사 후 영상은 전송됐어요. 영상 비교 분석 API는 아직 연결되지 않았어요.');
-      }
+      showReview(file);
+      if (continueAfterUpload && afterMove) setError('이사 후 영상은 전송됐어요. 영상 비교 분석 API는 아직 연결되지 않았어요.');
     } catch (cause) {
       if (cause instanceof ApiError) {
         setError(cause.status === 413 ? '영상 용량이 너무 커요. 짧게 다시 촬영해주세요.'
@@ -130,6 +128,34 @@ export function CapturePage() {
         if (cause.status === 413 || cause.status === 415) setReviewFile(null);
       } else setError(cause instanceof Error ? cause.message : '영상 업로드에 실패했어요. 다시 촬영해주세요.');
     } finally {
+      setUploading(false);
+    }
+  }
+
+  async function continueFromReview() {
+    if (!reviewFile || uploading) return;
+    if (uploaded) {
+      if (afterMove) setError('이사 후 영상은 전송됐어요. 영상 비교 분석 API는 아직 연결되지 않았어요.');
+      else navigate(routes.moveInfo);
+      return;
+    }
+    if (afterMove) { void upload(reviewFile, true); return; }
+    setUploading(true);
+    setError('');
+    try {
+      let move = moveRef.current;
+      if (!move) {
+        const created = await createMove();
+        move = { move_id: created.move_id, guest_token: created.guest_token ?? '' };
+        moveRef.current = move;
+        sessionStorage.setItem(move.guest_token ? 'jimssak-guest-move' : 'jimssak-member-move', JSON.stringify(move));
+      }
+      startInitialVideoUpload(move, reviewFile);
+      navigate(routes.moveInfo);
+    } catch (cause) {
+      setError(cause instanceof ApiError && cause.status === 401
+        ? '로그인이 만료됐어요. 다시 로그인해주세요.'
+        : '이사 정보를 시작하지 못했어요. 잠시 후 다시 시도해주세요.');
       setUploading(false);
     }
   }
@@ -218,7 +244,7 @@ export function CapturePage() {
         <div className="capture-review-note">촬영한 영상을 확인하고 영상을 다시 업로드할 수 있어요.</div>
         {error && <p role="alert" className="capture-review-error">{error}</p>}
       </div>
-      <div className="capture-review-actions"><Button onClick={() => { if (!uploaded && reviewFile) void upload(reviewFile, true); else if (afterMove) setError('이사 후 영상은 전송됐어요. 영상 비교 분석 API는 아직 연결되지 않았어요.'); else navigate(routes.moveInfo); }} disabled={!reviewFile}>이 영상으로 분석 시작하기</Button><Button variant="secondary" onClick={() => { setError(''); setReviewFile(null); setReviewUrl(null); if (reviewUrlRef.current) URL.revokeObjectURL(reviewUrlRef.current); reviewUrlRef.current = null; setScreen('prep'); }}>다시 촬영하기</Button></div>
+      <div className="capture-review-actions"><Button onClick={() => void continueFromReview()} disabled={!reviewFile || uploading}>이 영상으로 분석 시작하기</Button><Button variant="secondary" onClick={() => { setError(''); setReviewFile(null); setReviewUrl(null); if (reviewUrlRef.current) URL.revokeObjectURL(reviewUrlRef.current); reviewUrlRef.current = null; setScreen('prep'); }}>다시 촬영하기</Button></div>
     </div>}
     {screen === 'status' && !uploading && !uploaded ? <div className="capture-status capture-upload-failed">
       <BrandHeader />

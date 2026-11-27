@@ -231,6 +231,49 @@ def test_chat_applies_inventory_and_move_changes_only_after_confirmation(demo_cl
     assert move["review"] == {"delivery_date": delivery.isoformat(), "notes": "트럭 진입 제한"}
 
 
+def test_chat_asks_for_missing_size_then_adds_item_without_confirmation(demo_client, monkeypatch):
+    clock = Clock(demo_client)
+    url, headers = new_move(demo_client)
+    upload(demo_client, url, headers)
+    clock.advance(6)
+    inventory_url = f"{url}/inventory"
+    before = demo_client.get(inventory_url, headers=headers).json()
+    responses = iter([
+        ChatInterpretation.model_validate({
+            "message": "스피커를 추가할까요?",
+            "changes": {"items": [{"action": "add", "item": {"label_ko": "스피커"}}]},
+        }),
+        ChatInterpretation.model_validate({
+            "message": "스피커를 추가할까요?",
+            "changes": {"items": [{"action": "add", "item": {
+                "label_ko": "스피커", "notes": "크기: 220x140mm (측정 방향 미확인)",
+            }}]},
+        }),
+    ])
+    monkeypatch.setattr(demo_client.app.state.move_chat, "interpret", lambda *_: next(responses))
+    first = demo_client.post(f"{url}/chat", headers=headers, json={"message": "스피커 추가해줘"})
+    assert first.status_code == 200
+    assert first.json()["proposal_id"] is None
+    assert "크기" in first.json()["message"]
+    assert first.json()["inventory"] is None
+    assert demo_client.get(inventory_url, headers=headers).json() == before
+
+    second = demo_client.post(f"{url}/chat", headers=headers, json={
+        "message": "220x140mm야",
+        "history": [
+            {"role": "user", "content": "스피커 추가해줘"},
+            {"role": "assistant", "content": first.json()["message"]},
+        ],
+    })
+    assert second.status_code == 200
+    assert second.json()["proposal_id"] is None
+    assert "이삿짐 목록에 추가했어요" in second.json()["message"]
+    assert second.json()["inventory"]["total_quantity"] == before["total_quantity"] + 1
+    assert second.json()["inventory"]["items"][-1]["label_ko"] == "스피커"
+    assert second.json()["inventory"]["items"][-1]["notes"] == "크기: 220x140mm (측정 방향 미확인)"
+    assert demo_client.get(inventory_url, headers=headers).json() == second.json()["inventory"]
+
+
 def test_chat_rejects_confirmation_after_inventory_changed(demo_client, monkeypatch):
     clock = Clock(demo_client)
     url, headers = new_move(demo_client)

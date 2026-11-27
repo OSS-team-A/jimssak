@@ -10,6 +10,7 @@ import calendarClockIcon from '../assets/move-calendar-clock.svg';
 import searchIcon from '../assets/move-search.svg';
 import searchClearIcon from '../assets/move-search-clear.svg';
 import backChevronIcon from '../assets/move-back-chevron.png';
+import { canRetryInitialVideoUpload, retryInitialVideoUpload, waitForInitialVideoUpload } from '../features/initialVideoUpload';
 
 type Side = 'origin' | 'destination';
 const times = ['07:00', '09:00', '10:00', '13:00', '14:00'];
@@ -42,6 +43,7 @@ export function MoveInfoPage() {
   const [searchError, setSearchError] = useState('');
   const [confirm, setConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [finishing, setFinishing] = useState(false);
   const [savedSnapshot, setSavedSnapshot] = useState<MoveSnapshot | null>(null);
   const [error, setError] = useState('');
   const [month, setMonth] = useState(() => {
@@ -100,6 +102,25 @@ export function MoveInfoPage() {
     finally { setSaving(false); }
   }
 
+  async function finish() {
+    if (!move || finishing) return;
+    setFinishing(true);
+    setError('');
+    try {
+      await waitForInitialVideoUpload();
+      const record = await getMove(move.move_id, move.guest_token);
+      if (record.data.room_video.status !== 'uploaded') {
+        throw new Error('영상이 업로드되지 않았어요. 촬영 화면에서 다시 업로드해주세요.');
+      }
+      navigate(routes.analysis);
+    } catch (cause) {
+      setError(cause instanceof ApiError && cause.status === 401
+        ? '로그인이 만료됐어요. 다시 로그인해주세요.'
+        : canRetryInitialVideoUpload() ? '영상을 업로드하지 못했어요. 다시 시도해주세요.'
+        : cause instanceof Error ? cause.message : '영상을 업로드하지 못했어요. 다시 시도해주세요.');
+    } finally { setFinishing(false); }
+  }
+
   if (!move) return <main className="app-page move-info-page"><BrandHeader />
     <h1>이사 정보를 찾을 수 없어요</h1><Button onClick={() => navigate(routes.capture)}>촬영 준비로 돌아가기</Button></main>;
 
@@ -150,20 +171,25 @@ export function MoveInfoPage() {
         <small>{side === 'origin' ? '출발지 주소' : '도착지 주소'}</small>
         <strong>{savedSnapshot?.data[side].value?.road_address ?? draft[side].address}</strong>
         <p>상세주소&nbsp; {savedSnapshot?.data[side].value?.detail_address || '직접 입력'}</p>
-        <p>이사 층&nbsp; {savedSnapshot?.data[side].value?.floor === -1 ? '지하' : `${savedSnapshot?.data[side].value?.floor ?? draft[side].floor}층`}&emsp; 승강기&nbsp; {elevatorLabel(savedSnapshot?.data[side].value ?? null)}</p>
+        <p className="confirm-floor">이사 층&nbsp; {savedSnapshot?.data[side].value?.floor === -1 ? '지하' : `${savedSnapshot?.data[side].value?.floor ?? draft[side].floor}층`}&emsp; 승강기&nbsp; {elevatorLabel(savedSnapshot?.data[side].value ?? null)}</p>
         <p className="confirm-note">{buildingNote(savedSnapshot?.data[side].value ?? null)}</p>
       </div>)}
       <div className="confirm-card confirm-card--schedule"><small>이사 날짜와 시간</small><strong>{draft.date.replaceAll('-', '. ')} · {Number(draft.time.slice(0, 2)) < 12 ? '오전' : '오후'} {Number(draft.time.slice(0, 2)) % 12 || 12}시</strong></div></div>
       {error && <p className="form-error" role="alert">{error}</p>}
       {error.includes('만료') && <Button variant="secondary" onClick={() => navigate(routes.login)}>로그인하기</Button>}
+      {error && canRetryInitialVideoUpload() && <Button variant="secondary" onClick={() => {
+        setError('');
+        void retryInitialVideoUpload().catch(() => setError('영상을 다시 업로드하지 못했어요. 연결 상태를 확인해주세요.'));
+      }}>영상 다시 업로드하기</Button>}
       <div className="move-actions confirm-actions">
         <button type="button" aria-label="수정하기" onClick={() => setConfirm(false)}><img src={backChevronIcon} alt="" /></button>
-        <Button onClick={() => navigate(routes.analysis)}>저장하기</Button>
+        <Button disabled={finishing} onClick={() => void finish()}>{finishing ? '저장 중...' : '저장하기'}</Button>
       </div>
     </>}
     {sheet && <div className="sheet-backdrop" onClick={() => setSheet(null)}>
       <div className={`move-sheet ${sheet === 'schedule' ? 'move-sheet--schedule' : 'move-sheet--address'}`} role="dialog" aria-modal="true" aria-label={sheet === 'schedule' ? '이사 날짜와 시간' : '주소 검색'} onClick={e => e.stopPropagation()}>
         <span className="sheet-handle" />
+        <div className="move-sheet-scroll">
         {sheet === 'schedule' ? <>
           <h2>이사 날짜와 시간</h2>
           <div className="calendar-head">
@@ -186,7 +212,6 @@ export function MoveInfoPage() {
           }}>tip</button></div>
           <div className="time-options">{times.map(time => <button type="button" key={time} className={pickedTime === time ? 'selected' : ''}
             onClick={() => setPickedTime(time)}>{Number(time.slice(0, 2)) < 12 ? '오전' : '오후'} {Number(time.slice(0, 2)) % 12 || 12}:00</button>)}</div>
-          <div className="move-sheet-actions"><Button disabled={!pickedDate || !pickedTime} onClick={() => { setDraft(current => ({ ...current, date: pickedDate, time: pickedTime })); setSheet(null); }}>선택 완료</Button></div>
         </> : <>
           <h2>{sheet === 'origin' ? '출발지' : '도착지'} 주소 검색</h2>
           <div className="address-search"><input autoFocus placeholder="도로명, 건물명 검색" value={keyword} onChange={e => setKeyword(e.target.value)} />
@@ -199,10 +224,13 @@ export function MoveInfoPage() {
             onClick={() => { updatePlace(sheet, { address: item.road_address, candidate: item }); setSheet(null); }}>
             <strong>{item.road_address}</strong><small>{item.jibun_address}</small></button>)}</div>
           {results.length > 0 && <p className="address-selection-hint">주소를 선택하면 입력 화면으로 돌아가요</p>}
-          <div className="move-sheet-actions"><Button disabled={!keyword.trim()} onClick={() => {
-            updatePlace(sheet, { address: keyword.trim(), candidate: null }); setSheet(null);
-          }}>입력한 주소 사용하기</Button></div>
         </>}
+        </div>
+        <div className="move-sheet-actions">{sheet === 'schedule'
+          ? <Button disabled={!pickedDate || !pickedTime} onClick={() => { setDraft(current => ({ ...current, date: pickedDate, time: pickedTime })); setSheet(null); }}>선택 완료</Button>
+          : <Button disabled={!keyword.trim()} onClick={() => {
+              updatePlace(sheet, { address: keyword.trim(), candidate: null }); setSheet(null);
+            }}>입력한 주소 사용하기</Button>}</div>
       </div>
       {sheet === 'schedule' && tipOpen && <div id="time-tip" className="time-tip-content" role="tooltip" style={tipAnchor} onClick={event => event.stopPropagation()}>
         오전이사: 하루 첫 일정이라 시작 시간이 비교적 안정적이지만 수요가 많아 오후 이사보다 비용이 높게 책정되는 편입니다.<br />오후이사: 오전 이사보다 보통 수만 원~20만 원 가량 저렴한 경우가 많지만, 앞 팀 작업이 늦어지면 시작 시간이 밀릴 수 있고, 마무리가 늦어질 수 있습니다.

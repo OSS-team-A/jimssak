@@ -84,6 +84,9 @@ class ChatInterpretation(BaseModel):
 
 class ChatReply(BaseModel):
     message: str = Field(description="채팅에 표시할 문구")
+    inventory: Inventory | None = Field(
+        default=None, description="확인 없이 추가한 물품이 반영된 최신 목록",
+    )
     proposal_id: UUID | None = Field(
         default=None, description="확인할 변경안의 ID. null이면 적용 요청 없이 답변을 표시",
     )

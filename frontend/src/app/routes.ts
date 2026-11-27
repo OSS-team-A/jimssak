@@ -20,3 +20,13 @@ export function closeGuide() {
   if (window.history.state?.guideReturnTo) window.history.back();
   else navigate(routes.home);
 }
+
+export function openHistoryFromChat() {
+  window.history.pushState({ historyReturnTo: routes.chat }, '', routes.history);
+  window.dispatchEvent(new PopStateEvent('popstate'));
+}
+
+export function closeHistory() {
+  if (window.history.state?.historyReturnTo === routes.chat) window.history.back();
+  else navigate(routes.home);
+}

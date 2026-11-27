@@ -3,9 +3,12 @@ import { BrandHeader } from '../components/common/BrandHeader';
 import { Button } from '../components/common/Button';
 import { InventoryDeleteDialog } from '../components/common/InventoryDeleteDialog';
 import { getAnalysisPhoto } from '../api/moves';
-import { navigate, routes } from '../app/routes';
+import { applyMoveChat, sendMoveChat, type ChatReply } from '../api/chat';
+import { ApiError } from '../api/client';
+import { navigate, openHistoryFromChat, routes } from '../app/routes';
 import { dimensions, navigateReview, useReview, type ReviewDraft } from '../features/review';
 import { downloadReviewPdf } from '../features/reviewPdf';
+import type { Inventory } from '../types/move';
 import chatAvatar from '../assets/chat-avatar.svg';
 import listIcon from '../assets/chat-list.svg';
 import sendIcon from '../assets/chat-send.svg';
@@ -15,7 +18,6 @@ import chevronIcon from '../assets/chat-chevron.svg';
 import rowChevronIcon from '../assets/chat-row-chevron.svg';
 import inventoryCloseIcon from '../assets/inventory-close.svg';
 import inventoryChevronDown from '../assets/inventory-chevron-down.svg';
-import inventoryChevronUp from '../assets/inventory-chevron-up.svg';
 import inventoryMinusIcon from '../assets/inventory-minus.svg';
 import inventoryPlusIcon from '../assets/inventory-plus.svg';
 
@@ -26,9 +28,14 @@ const questions = [
 ];
 const demoNotice = '서버에서 제공한 예시 목록이에요. 실제 촬영한 물품과 다를 수 있어요.';
 
-function InventoryPhoto({ path, label, guestToken }: { path: string; label: string; guestToken: string }) {
+const hasSizeInMessage = (message: string) => /\d+(?:\.\d+)?\s*(?:mm|cm|인치|inch)|\d+(?:\.\d+)?\s*[x×*]\s*\d+|(?:가로|세로|깊이|높이)\s*\d+/i.test(message);
+const isAddOnlyProposal = (reply: ChatReply) => Boolean(reply.proposal_id && reply.summary.length)
+  && reply.summary.every(line => /^.+\s\d+개 추가(?:\s*·.*)?$/.test(line));
+
+function InventoryPhoto({ path, label, guestToken }: { path: string | null; label: string; guestToken: string }) {
   const [src, setSrc] = useState('');
   useEffect(() => {
+    if (!path) return;
     let active = true;
     let objectUrl = '';
     void getAnalysisPhoto(path, guestToken).then(blob => {
@@ -38,7 +45,7 @@ function InventoryPhoto({ path, label, guestToken }: { path: string; label: stri
     }).catch(() => { if (active) setSrc(''); });
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [path, guestToken]);
-  return src ? <div className="review-inventory-photo"><img src={src} alt={`${label} 분석 사진`} /></div> : null;
+  return <div className="review-inventory-photo">{src && <img src={src} alt={`${label} 분석 사진`} />}</div>;
 }
 
 function ReviewGate({ loading, error, hasMove, completed, onRetry }: { loading: boolean; error: string; hasMove: boolean; completed: boolean; onRetry: () => void }) {
@@ -46,6 +53,17 @@ function ReviewGate({ loading, error, hasMove, completed, onRetry }: { loading: 
     <p>{loading ? '분석 결과를 불러오고 있어요.' : error || (!hasMove ? '저장된 이사 정보가 없어요.' : !completed ? '영상 분석이 완료되면 이삿짐 목록을 확인할 수 있어요.' : '')}</p>
     {!loading && <Button variant="secondary" onClick={error && !error.includes('만료') ? onRetry : () => navigate(error.includes('만료') ? routes.login : hasMove ? routes.analysis : routes.capture)}>{error && !error.includes('만료') ? '다시 시도하기' : error.includes('만료') ? '로그인하기' : hasMove ? '분석 화면으로 돌아가기' : '촬영 준비로 돌아가기'}</Button>}
   </div>;
+}
+
+function InventorySummaryCard({ inventory, onOpen }: { inventory: Inventory | null; onOpen: () => void }) {
+  const items = inventory?.items.filter(item => item.quantity > 0) ?? [];
+  const total = inventory?.total_quantity ?? 0;
+  return <button className="review-summary" type="button" onClick={onOpen}>
+    <span className="review-summary-title">이삿짐 목록<img src={chevronIcon} alt="" /></span>
+    {items.slice(0, 5).map(item => <span className="review-summary-row" key={item.item_id}><span>{item.label_ko}</span><strong>{item.quantity}개</strong><img src={rowChevronIcon} alt="" /></span>)}
+    {total === 0 && <span className="review-summary-empty">분석에서 찾은 물품이 없어요.</span>}
+    <span className="review-summary-count">총 {total}개 · 누르면 자세히 볼 수 있어요</span>
+  </button>;
 }
 
 export function ChatFooter({ canDownload, onPdf, result = false, onInventory }: { canDownload: boolean; onPdf: () => void; result?: boolean; onInventory?: () => void }) {
@@ -88,15 +106,21 @@ function EstimateConversation({ total, selected, pdfEnabled, onSelect, onPdf }: 
     </div>
     <div className="review-result-help"><strong>같은 짐을 다시 입력하지 않아도 돼요</strong><p>확인한 명세서를 내려받아 여러 업체에 전달하고 실제 금액을 문의하세요.</p></div>
     <Button disabled={!pdfEnabled} onClick={onPdf}>이삿짐 명세서 PDF 받기</Button>
-    <button className="review-text-button" type="button" onClick={() => navigate(routes.history)}>나의 이사 기록에서 이사 완료하기↗︎</button>
+    <button className="review-text-button" type="button" onClick={openHistoryFromChat}>나의 이사 기록에서 이사 완료하기↗︎</button>
   </>;
 }
 
 export function ChatPage() {
-  const { move, analysis, inventory, draft, loading, error, items, added, total, updateDraft, confirmList, retry } = useReview();
+  const { move, analysis, inventory, draft, loading, error, items, added, total, updateDraft, confirmList, prepareChat, setChatInventory, refreshInventory, retry } = useReview();
   const [message, setMessage] = useState('');
+  const [pendingText, setPendingText] = useState('');
+  const [chatError, setChatError] = useState('');
+  const [sending, setSending] = useState(false);
   const [pdfNotice, setPdfNotice] = useState<string | null>(null);
+  const [animatedReplyKey, setAnimatedReplyKey] = useState<string | null>(null);
+  const [delayedStep, setDelayedStep] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const hasScrolledRef = useRef(false);
   const step = Math.min(draft?.step ?? 0, 5);
   const ready = analysis?.status === 'completed' && !!draft;
   const canDownload = ready && !analysis?.demo && inventory?.status === 'confirmed' && total > 0 && step === 5 && !!draft.selectedMoveType;
@@ -113,27 +137,149 @@ export function ChatPage() {
     if (!ready) return;
     const frame = requestAnimationFrame(() => {
       const scroll = scrollRef.current;
-      if (scroll) scroll.scrollTop = scroll.scrollHeight;
+      if (!scroll) return;
+      const target = scroll.querySelector<HTMLElement>('[data-chat-pending]')
+        ?? (animatedReplyKey && [...scroll.querySelectorAll<HTMLElement>('[data-reply-key]')].find(node => node.dataset.replyKey === animatedReplyKey))
+        ?? scroll.querySelector<HTMLElement>(`[data-chat-step="${step}"]`);
+      if (!target) return;
+      const top = target.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop - 8;
+      scroll.scrollTo({ top, behavior: hasScrolledRef.current ? 'smooth' : 'instant' });
+      hasScrolledRef.current = true;
     });
     return () => cancelAnimationFrame(frame);
-  }, [ready, step, draft?.notes.length]);
+  }, [ready, step, pendingText, draft?.chatMessages.length, draft?.notes.length]);
 
   async function next() {
-    if (step === 0 && !(await confirmList())) return;
     updateDraft(current => ({
       ...current,
       answers: current.step >= 1 && current.step <= 3
         ? [...current.answers, { step: current.step, text: questions[current.step - 1].skip }]
         : current.answers,
+      choices: [],
+      pendingProposal: null,
       step: Math.min(current.step + 1, 4),
     }));
   }
+
+  async function sendChat(text: string) {
+    if (!text || !move || !draft || !ready || sending || draft.pendingProposal) return;
+    setSending(true);
+    setPendingText(text);
+    setChatError('');
+    try {
+      await prepareChat();
+      const history = draft.chatMessages.map(({ role, content }) => ({ role, content }));
+      const reply = await sendMoveChat(move.move_id, move.guest_token, text, history);
+      let savedInventory = reply.inventory ?? null;
+      let assistantMessage = reply.message;
+      let proposalId = reply.proposal_id;
+      let choices = reply.choices;
+      let advance = reply.advance;
+      if (savedInventory) {
+        assistantMessage = '이삿짐 목록에 추가했어요.';
+        advance = step <= 3;
+      } else if (isAddOnlyProposal(reply)) {
+        proposalId = null;
+        choices = [];
+        if (!hasSizeInMessage(text)) {
+          assistantMessage = '추가할 물품의 크기를 알려주세요. 알고 있는 치수를 cm나 mm로 적어주세요.';
+          advance = false;
+        } else {
+          const applied = await applyMoveChat(move.move_id, move.guest_token, reply.proposal_id!);
+          savedInventory = applied.inventory;
+          assistantMessage = '이삿짐 목록에 추가했어요.';
+          advance = step <= 3;
+          choices = applied.choices;
+        }
+      }
+      if (savedInventory) setChatInventory(savedInventory);
+      setAnimatedReplyKey(`${draft.step}-${draft.chatMessages.filter(entry => entry.step === draft.step).length + 1}`);
+      if (advance && !proposalId && step <= 3 && (step > 0 || savedInventory)) setDelayedStep(step + 1);
+      updateDraft(current => ({
+        ...current,
+        chatMessages: [...current.chatMessages, { step: current.step, role: 'user', content: text }, { step: current.step, role: 'assistant', content: assistantMessage, ...(savedInventory ? { inventory: savedInventory } : {}) }],
+        pendingProposal: proposalId ? { id: proposalId, summary: reply.summary, step: current.step } : null,
+        choices,
+        answers: advance && current.step >= 1 && current.step <= 3 ? [...current.answers, { step: current.step, text }] : current.answers,
+        step: advance && !proposalId && current.step <= 3 && (current.step > 0 || savedInventory)
+          ? Math.min(current.step + 1, 4) : current.step,
+      }));
+      setMessage('');
+      setPendingText('');
+      if (step === 5 && ((advance && !proposalId) || savedInventory)) await confirmList();
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 409) void refreshInventory();
+      setChatError(cause instanceof ApiError ? cause.status === 409 ? '목록 상태가 바뀌었어요. 같은 내용을 다시 보내주세요.' : cause.status === 401 ? '로그인이 만료됐어요. 다시 로그인해주세요.' : cause.message : '답변을 보내지 못했어요. 다시 시도해주세요.');
+    } finally { setPendingText(''); setSending(false); }
+  }
+
+  async function applyProposal() {
+    if (!move || !draft?.pendingProposal || sending) return;
+    setSending(true);
+    setChatError('');
+    try {
+      const applied = await applyMoveChat(move.move_id, move.guest_token, draft.pendingProposal.id);
+      setAnimatedReplyKey(`${draft.step}-${draft.chatMessages.filter(entry => entry.step === draft.step).length}`);
+      if (applied.advance && step >= 1 && step <= 3) setDelayedStep(step + 1);
+      setChatInventory(applied.inventory);
+      updateDraft(current => ({
+        ...current,
+        chatMessages: [...current.chatMessages, { step: current.step, role: 'assistant', content: applied.message }],
+        pendingProposal: null,
+        choices: applied.choices,
+        answers: applied.advance && current.step <= 3 ? [...current.answers, { step: current.step, text: current.chatMessages.filter(entry => entry.step === current.step && entry.role === 'user').at(-1)?.content ?? '' }] : current.answers,
+        step: applied.advance && current.step !== 0 && current.step !== 4 ? Math.min(current.step + 1, 5) : current.step,
+      }));
+      if (step === 5 && applied.advance) await confirmList();
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 409) {
+        updateDraft(current => ({ ...current, pendingProposal: null }));
+        void refreshInventory();
+      }
+      setChatError(cause instanceof ApiError ? cause.status === 409 ? '목록이 바뀌어 이 제안을 적용할 수 없어요. 내용을 다시 보내주세요.' : cause.status === 401 ? '로그인이 만료됐어요. 다시 로그인해주세요.' : cause.message : '변경 내용을 반영하지 못했어요. 다시 시도해주세요.');
+    } finally { setSending(false); }
+  }
+
+  function cancelProposal() {
+    updateDraft(current => ({ ...current, pendingProposal: null, choices: [] }));
+    if (step === 5) void confirmList();
+  }
+
+  function chatExchange(questionStep: number) {
+    if (!draft) return null;
+    const messages = draft.chatMessages.filter(entry => entry.step === questionStep);
+    const lastAssistantIndex = messages.reduce((last, entry, index) => entry.role === 'assistant' ? index : last, -1);
+    return <>
+      {messages.map((entry, index) => entry.role === 'user'
+        ? <div className="review-user-bubble" key={`${questionStep}-${index}`}>{entry.content}</div>
+        : <div className={`review-assistant-reply${animatedReplyKey === `${questionStep}-${index}` ? ' review-assistant-reply--new' : ''}`}
+            key={`${questionStep}-${index}`} data-reply-key={`${questionStep}-${index}`}>
+          <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
+          <p className="review-chat-intro">{entry.content}</p>
+          {entry.inventory && <InventorySummaryCard inventory={entry.inventory} onOpen={() => navigateReview(routes.inventory)} />}
+          {index === lastAssistantIndex && draft.pendingProposal?.step === questionStep && <div className="review-chat-proposal">
+            <strong>변경 내용을 확인해주세요</strong>
+            <ul>{draft.pendingProposal.summary.map((item, summaryIndex) => <li key={summaryIndex}>{item}</li>)}</ul>
+            <Button disabled={sending} onClick={() => void applyProposal()}>{sending ? '반영 중...' : '이대로 반영하기'}</Button>
+            <button className="review-text-button" type="button" disabled={sending} onClick={cancelProposal}>취소하기</button>
+          </div>}
+          {index === lastAssistantIndex && draft.step === questionStep && !draft.pendingProposal && draft.choices.length > 0 && <div className="review-chat-choices">
+            {draft.choices.map(choice => <button type="button" key={choice} disabled={sending} onClick={() => void sendChat(choice)}>{choice}</button>)}
+          </div>}
+        </div>)}
+      {draft.step === questionStep && pendingText && <>
+        <div className="review-user-bubble" data-chat-pending>{pendingText}</div>
+        <div className="review-assistant-reply review-assistant-reply--new" role="status">
+          <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
+          <p className="review-chat-intro">답변을 준비하고 있어요.</p>
+        </div>
+      </>}
+    </>;
+  }
+
   function send(event: FormEvent) {
     event.preventDefault();
-    const text = message.trim();
-    if (!text || !ready || step === 0 || step === 4) return;
-    updateDraft(current => ({ ...current, notes: [...current.notes, { step, text }], answers: [...current.answers, { step, text }], step: step === 5 ? 5 : Math.min(current.step + 1, 4) }));
-    setMessage('');
+    void sendChat(message.trim());
   }
 
   return <main className="app-page review-chat-page">
@@ -141,50 +287,47 @@ export function ChatPage() {
     {ready ? <div className="review-chat-scroll" ref={scrollRef}>
       {error && <p className="review-local-note" role="alert">{error}</p>}
       {analysis?.demo && <p className="review-local-note" role="status">{demoNotice} 예시 결과로는 명세서를 만들 수 없어요.</p>}
-      <section className="review-chat-turn">
+      <section className="review-chat-turn" data-chat-step="0">
         <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
         <p className="review-chat-intro">{analysis?.demo ? '서버의 예시 이삿짐을 정리했어요.' : '영상에서 찾은 이삿짐을 정리했어요.'}<br />목록 탭을 눌러 맞는지 확인해주세요.</p>
-        <button className="review-summary" type="button" onClick={() => navigateReview(routes.inventory)}>
-          <span className="review-summary-title">이삿짐 목록<img src={chevronIcon} alt="" /></span>
-          {items.filter(item => item.quantity > 0).slice(0, 5).map(item => <span className="review-summary-row" key={item.item_id}><span>{item.label_ko}</span><strong>{item.quantity}개</strong><img src={rowChevronIcon} alt="" /></span>)}
-          {added.filter(item => item.quantity > 0).slice(0, Math.max(0, 5 - items.length)).map(item => <span className="review-summary-row" key={item.id}><span>{item.label}</span><strong>{item.quantity}개</strong><img src={rowChevronIcon} alt="" /></span>)}
-          {total === 0 && <span className="review-summary-empty">분석에서 찾은 물품이 없어요.</span>}
-          <span className="review-summary-count">총 {total}개 · 누르면 자세히 볼 수 있어요</span>
-        </button>
-        {step === 0 && <Button onClick={() => void next()}>확인했어요</Button>}
+        <InventorySummaryCard inventory={inventory} onOpen={() => navigateReview(routes.inventory)} />
+        {chatExchange(0)}
+        {step === 0 && <Button disabled={sending || !!draft.pendingProposal} onClick={() => void next()}>확인했어요</Button>}
       </section>
-      {step > 0 && <div className="review-user-bubble">목록을 확인했어요</div>}
+      {step > 0 && !draft.chatMessages.some(entry => entry.step === 0 && entry.inventory) && <div className="review-user-bubble">목록을 확인했어요</div>}
       {questions.slice(0, Math.min(step, 3)).map((question, index) => {
         const questionStep = index + 1;
         const completed = step > questionStep;
         const answer = draft.answers.find(entry => entry.step === questionStep)?.text ?? question.skip;
-        return <section className="review-chat-turn" key={questionStep}>
+        return <section className={`review-chat-turn${delayedStep === questionStep ? ' review-chat-turn--delayed' : ''}`} data-chat-step={questionStep} key={questionStep}>
           <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
           <h1>{question.title}</h1>
           <p className="review-chat-intro">{question.description}</p>
           <div className="review-example"><strong>예를 들어 이렇게 알려주세요</strong><p>{question.example}</p></div>
-          {completed ? <div className="review-user-bubble">{answer}</div> : <>
-            <Button onClick={() => void next()}>{question.skip}</Button>
-            <p className="review-local-note">입력한 내용은 이 브라우저에 임시 보관돼요. 목록 수정은 이삿짐 목록에서 해주세요.</p>
-          </>}
+          {chatExchange(questionStep)}
+          {completed && !draft.chatMessages.some(entry => entry.step === questionStep && entry.role === 'user') && <div className="review-user-bubble">{answer}</div>}
+          {!completed && !draft.pendingProposal && <Button disabled={sending} onClick={() => void next()}>{question.skip}</Button>}
         </section>;
       })}
-      {step === 4 && <section className="review-chat-turn">
+      {step === 4 && <section className={`review-chat-turn${delayedStep === 4 ? ' review-chat-turn--delayed' : ''}`} data-chat-step="4">
         <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
         <h1>이 내용으로 견적을 비교할까요?</h1>
         <p className="review-chat-intro">확인한 이삿짐과 이사 조건을 바탕으로 이사 유형별 예상 비용을 비교해요. 실제 견적은 업체와 상담할 때 확인해주세요.</p>
-        <Button onClick={() => updateDraft(current => ({ ...current, step: 5 }))}>예상 비용 비교하기</Button>
+        <Button disabled={sending || !!draft.pendingProposal} onClick={() => { void confirmList().then(saved => { if (saved) updateDraft(current => ({ ...current, step: 5 })); }); }}>예상 비용 비교하기</Button>
+        {chatExchange(4)}
       </section>}
-      {step === 5 && <section className="review-chat-turn review-estimate-turn">
+      {step === 5 && <section className="review-chat-turn review-estimate-turn" data-chat-step="5">
         <EstimateConversation total={total} selected={draft.selectedMoveType} pdfEnabled={canDownload} onSelect={type => updateDraft(current => ({ ...current, selectedMoveType: type }))} onPdf={onPdf} />
+        {chatExchange(5)}
       </section>}
       {step === 5 && draft.notes.filter(note => note.step === 5).map((note, index) => <div className="review-user-bubble" key={index}>{note.text}</div>)}
     </div> : <ReviewGate loading={loading} error={error} hasMove={!!move} completed={analysis?.status === 'completed'} onRetry={retry} />}
     <div className="review-chat-bottom">
       <ChatFooter canDownload={canDownload} onPdf={onPdf} result={step === 5} />
+      {chatError && <p className="review-local-note" role="alert">{chatError} {chatError.includes('만료') && <button type="button" onClick={() => navigate(routes.login)}>로그인하기</button>}</p>}
       <form className="review-chat-input" onSubmit={send}>
-        <input value={message} onChange={event => setMessage(event.target.value)} placeholder="수정할 내용을 알려주세요" aria-label="검토 내용" disabled={!ready || step === 0 || step === 4} />
-        <button type="submit" aria-label="내용 보내기" disabled={!message.trim() || !ready || step === 0 || step === 4}><img src={sendIcon} alt="" /></button>
+        <input value={message} maxLength={1000} onChange={event => setMessage(event.target.value)} placeholder="수정할 내용을 알려주세요" aria-label="검토 내용" disabled={!ready || sending || !!draft?.pendingProposal} />
+        <button type="submit" aria-label="내용 보내기" disabled={!message.trim() || !ready || sending || !!draft?.pendingProposal}><img src={sendIcon} alt="" /></button>
       </form>
       <p>문서는 목록과 이사 조건을 확인한 뒤 만들 수 있어요</p>
     </div>
@@ -195,6 +338,7 @@ export function ChatPage() {
 export function InventoryPage() {
   const { move, analysis, draft, loading, error, items, added, total, changeQuantity, removeItem, retry } = useReview();
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [openedItems, setOpenedItems] = useState<Set<string>>(() => new Set());
   const [pendingDelete, setPendingDelete] = useState<{ id: string; label: string; added: boolean } | null>(null);
   const ready = analysis?.status === 'completed' && !!draft;
   const visibleItems = items.filter(item => item.quantity > 0);
@@ -224,8 +368,13 @@ export function InventoryPage() {
       <div className="review-inventory-stats"><span>품목 수 <strong>{visibleItems.length + added.filter(item => item.quantity > 0).length}종</strong></span><span>총 수량 <strong>{total}개</strong></span></div>
       <div className="review-inventory-table"><div className="review-inventory-table-head"><span>번호</span><span>품목</span><span>수량</span><span>예상 크기 (cm)</span></div>
         {visibleItems.map((item, index) => <div className="review-inventory-item" key={item.item_id}>
-          <div className="review-inventory-row"><small>{String(index + 1).padStart(2, '0')}</small><strong>{item.label_ko}</strong><div className="review-quantity"><button type="button" onClick={() => decrease(item.item_id, item.label_ko, item.quantity, false)} aria-label={`${item.label_ko} 수량 줄이기`}><img src={inventoryMinusIcon} alt="" /></button><b>{pendingDelete?.id === item.item_id ? 0 : item.quantity}</b><button type="button" onClick={() => void changeQuantity(item.item_id, item.quantity + 1)} aria-label={`${item.label_ko} 수량 늘리기`}><img src={inventoryPlusIcon} alt="" /></button></div><span>{dimensions(item)}</span><button className="review-expand" type="button" onClick={() => setExpanded(expanded === item.item_id ? null : item.item_id)} aria-label={`${item.label_ko} 상세 ${expanded === item.item_id ? '닫기' : '보기'}`}><img src={expanded === item.item_id ? inventoryChevronUp : inventoryChevronDown} alt="" /></button></div>
-          {expanded === item.item_id && <div className="review-inventory-detail">{item.snapshots[0]?.image_url && <InventoryPhoto path={item.snapshots[0].image_url} label={item.label_ko} guestToken={move?.guest_token ?? ''} />}<dl><dt>크기</dt><dd>{dimensions(item)} cm</dd><dt>예상 무게</dt><dd>확인 필요</dd><dt>분리 여부</dt><dd>{item.disassembly_required == null ? '확인 필요' : item.disassembly_required ? '분리 필요' : '분리 불필요'}</dd><dt>검토</dt><dd>{item.needs_review ? item.review_reasons.join(' · ') || '확인 필요' : '확인 완료'}</dd></dl></div>}
+          <div className="review-inventory-row"><small>{String(index + 1).padStart(2, '0')}</small><strong>{item.label_ko}</strong><div className="review-quantity"><button type="button" onClick={() => decrease(item.item_id, item.label_ko, item.quantity, false)} aria-label={`${item.label_ko} 수량 줄이기`}><img src={inventoryMinusIcon} alt="" /></button><b>{pendingDelete?.id === item.item_id ? 0 : item.quantity}</b><button type="button" onClick={() => void changeQuantity(item.item_id, item.quantity + 1)} aria-label={`${item.label_ko} 수량 늘리기`}><img src={inventoryPlusIcon} alt="" /></button></div><span>{dimensions(item)}</span><button className={`review-expand${expanded === item.item_id ? ' is-open' : ''}`} type="button" onClick={() => {
+            setOpenedItems(current => current.has(item.item_id) ? current : new Set(current).add(item.item_id));
+            setExpanded(current => current === item.item_id ? null : item.item_id);
+          }} aria-label={`${item.label_ko} 상세 ${expanded === item.item_id ? '닫기' : '보기'}`} aria-expanded={expanded === item.item_id} aria-controls={`inventory-detail-${item.item_id}`}><img src={inventoryChevronDown} alt="" /></button></div>
+          <div id={`inventory-detail-${item.item_id}`} className={`review-inventory-collapsible${expanded === item.item_id ? ' is-open' : ''}`} aria-hidden={expanded !== item.item_id}>
+            <div className="review-inventory-collapsible-inner"><div className="review-inventory-detail"><InventoryPhoto path={openedItems.has(item.item_id) ? item.snapshots[0]?.image_url ?? null : null} label={item.label_ko} guestToken={move?.guest_token ?? ''} /><dl><dt>크기</dt><dd>{dimensions(item)} cm</dd><dt>예상 무게</dt><dd>확인 필요</dd><dt>분리 여부</dt><dd>{item.disassembly_required == null ? '확인 필요' : item.disassembly_required ? '분리 필요' : '분리 불필요'}</dd><dt>검토</dt><dd>{item.needs_review ? item.review_reasons.join(' · ') || '확인 필요' : '확인 완료'}</dd></dl></div></div>
+          </div>
         </div>)}
       </div>
       <div className="review-inventory-total"><strong>합계</strong><strong>{total}개</strong></div>

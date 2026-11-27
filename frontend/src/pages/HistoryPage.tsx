@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { navigate, routes } from '../app/routes';
+import { closeHistory, navigate, routes } from '../app/routes';
 import { Button } from '../components/common/Button';
 import { BrandHeader } from '../components/common/BrandHeader';
 import { hasSession } from '../api/auth';
@@ -75,8 +75,8 @@ export function HistoryPage() {
   }
 
   const visible = records.filter(record => filter === 'all' || (filter === 'done' ? record.stage === 'done' : record.stage !== 'done'));
-  return <main className="app-page history-page">
-    <header className="sub-header"><strong>나의 이사 기록</strong><button type="button" aria-label="닫기" onClick={() => navigate(routes.home)}><img src={closeIcon} alt="" /></button></header>
+  return <main className={`app-page history-page${!loading && !hasSession() ? ' history-page--guest' : ''}`}>
+    <header className="sub-header"><strong>나의 이사 기록</strong><button type="button" aria-label="닫기" onClick={closeHistory}><img src={closeIcon} alt="" /></button></header>
     <div className="history-content"><span className="eyebrow">이사 기록</span>
       <h1>차곡차곡 쌓인 나의 이사</h1>
       <p>이사 준비부터 이사 후 물품 확인까지,<br />진행 중인 이사를 이어가고 지난 결과를 확인해요.</p>
@@ -86,7 +86,7 @@ export function HistoryPage() {
       </div>
       {error && <><p className="history-error" role="alert">{error}</p><Button variant="secondary" onClick={() => error.includes('만료') ? navigate(routes.login) : setRetryKey(key => key + 1)}>{error.includes('만료') ? '로그인하기' : '다시 시도하기'}</Button></>}
       {loading ? <p className="history-empty">이사 기록을 불러오고 있어요.</p>
-        : !hasSession() ? <div className="history-empty"><p>로그인하면 나의 이사 기록을 볼 수 있어요.</p><Button onClick={() => navigate(routes.login)}>로그인하기</Button></div>
+        : !hasSession() ? <div className="history-empty history-guest"><p>로그인하면 나의 이사 기록을 볼 수 있어요.</p><Button onClick={() => navigate(routes.login)}>로그인하기</Button></div>
         : visible.length ? <div className="history-card-list">{visible.map(record => <HistoryCard key={record.move_id} record={record} onOpen={() => void openRecord(record)} />)}</div>
         : error ? null
         : <p className="history-empty">{filter === 'all' ? '이사 기록이 없어요.' : `${filter === 'done' ? '완료된' : '진행 중인'} 이사 기록이 없어요.`}</p>}

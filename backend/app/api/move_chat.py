@@ -1,4 +1,5 @@
 import json
+import re
 from copy import deepcopy
 from dataclasses import asdict, dataclass
 from hashlib import sha256
@@ -142,6 +143,39 @@ def _item_summary(before: dict, after: dict, fields: set[str]) -> list[str]:
     return details
 
 
+def _additions_only(changes: ChatChanges) -> bool:
+    return (
+        bool(changes.items)
+        and all(isinstance(item, ChatAddItem) for item in changes.items)
+        and not any((changes.origin, changes.destination, changes.move_date,
+                     changes.start_time, changes.review))
+    )
+
+
+def _has_size(value: str) -> bool:
+    return bool(re.search(
+        r"\d+(?:\.\d+)?\s*(?:mm|cm|인치|inch)|"
+        r"\d+(?:\.\d+)?\s*[x×*]\s*\d+|"
+        r"(?:가로|세로|깊이|높이)\s*\d+",
+        value, re.IGNORECASE,
+    ))
+
+
+def _missing_addition_sizes(changes: ChatChanges, message: str) -> list[str]:
+    missing = []
+    for change in changes.items:
+        if not isinstance(change, ChatAddItem):
+            continue
+        item = change.item
+        known = any(value is not None for value in item.dimensions_cm.model_dump().values())
+        known |= _has_size(item.notes or "")
+        if len(changes.items) == 1:
+            known |= _has_size(message)
+        if not known:
+            missing.append(item.label_ko)
+    return missing
+
+
 def _move_update(
     changes: ChatChanges, state: ReviewState, moves: MoveStore, move_id: str,
 ) -> tuple[MoveUpdate | None, list[str]]:
@@ -208,6 +242,8 @@ def _move_update(
         "분석을 완료한 이사의 목록이 `draft`일 때 사용한다. 품목 추가·제외·수정과 "
         "출발지·도착지·일정·특이사항을 한 메시지에서 요청할 수 있다. "
         "회원은 `Authorization: Bearer`, 비회원은 `X-Guest-Token`을 보낸다.\n\n"
+        "크기가 확인된 물품 추가만 요청한 경우 즉시 저장하고 `inventory`에 최신 목록을 반환한다. "
+        "크기가 빠진 추가 요청은 필요한 크기를 질문한다. 다른 변경은 "
         "`proposal_id`가 있으면 `summary`로 변경 내용을 표시하고, 사용자 확인 후 "
         "`POST /api/v1/moves/{move_id}/chat/apply`를 호출한다. "
         "`proposal_id`가 null이면 `message`와 `choices`를 채팅에 표시한다. "
@@ -276,6 +312,20 @@ def propose(
     if changes is None:
         return ChatReply(message=interpretation.message, choices=interpretation.choices,
                          advance=interpretation.advance)
+    if _additions_only(changes):
+        missing = _missing_addition_sizes(changes, body.message)
+        if missing:
+            names = ", ".join(missing)
+            return ChatReply(
+                message=f"{names}의 크기를 알려주세요. 알고 있는 치수를 cm나 mm로 적어주세요."
+            )
+        with edit_inventory(analyses.db, job.analysis_id) as row:
+            if row is None or row["confirmed"] or inventory_from_row(row) != state.inventory:
+                raise HTTPException(409, STALE)
+            for change in changes.items:
+                append_item(row["items"], change.item)
+            saved_inventory = inventory_from_row(row)
+        return ChatReply(message="이삿짐 목록에 추가했어요.", inventory=saved_inventory)
     try:
         items = [item.model_dump() for item in state.inventory.items]
         summary = _apply_items(items, changes)
