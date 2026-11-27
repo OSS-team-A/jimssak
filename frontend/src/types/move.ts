@@ -19,8 +19,8 @@ export type MoveSnapshot = {
   move_id: string; owner: 'member' | 'guest'; stage: 'collecting';
   data: {
     room_video: { status: 'empty' | 'uploaded'; video: { media_id: string; filename: string } | null };
-    analysis: { status: 'not_started' | 'queued' | 'running' | 'completed' | 'failed'; progress?: number | null; item_count?: number | null; error?: { code?: string; message?: string } | null };
-    inventory: { status: 'not_started' | 'empty' };
+    analysis: { status: 'not_started' | 'queued' | 'running' | 'completed' | 'failed'; progress?: number | null; item_count?: number | null; demo?: boolean; error?: { code?: string; message?: string } | null };
+    inventory: { status: 'not_started' | 'empty' | 'draft' | 'confirmed'; item_count?: number; total_quantity?: number };
     origin: { status: 'empty' | 'partial' | 'filled'; value: (PlaceInput & { building: { status: string }; elevator: string }) | null };
     destination: { status: 'empty' | 'partial' | 'filled'; value: (PlaceInput & { building: { status: string }; elevator: string }) | null };
     route: { status: 'not_ready' | 'found' | 'not_found' | 'failed'; distance_m: number | null };
@@ -51,5 +51,14 @@ export type AnalysisItem = {
 export type AnalysisResult = {
   analysis_id: string | null;
   status: 'not_started' | 'queued' | 'running' | 'completed' | 'failed';
+  demo?: boolean;
   items: AnalysisItem[];
 };
+
+export type InventoryItem = AnalysisItem & {
+  source: 'demo' | 'ai' | 'user';
+  notes: string | null;
+};
+export type Inventory = { status: 'empty' | 'draft' | 'confirmed'; item_count: number; total_quantity: number; items: InventoryItem[] };
+export type InventoryItemCreate = { label_ko: string; quantity?: number; dimensions_cm?: AnalysisItem['dimensions_cm']; notes?: string | null; disassembly_required?: boolean | null };
+export type InventoryItemPatch = Partial<InventoryItemCreate>;
