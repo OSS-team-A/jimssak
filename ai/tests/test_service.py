@@ -69,22 +69,26 @@ def test_failed_result_matches_backend_schema():
 
 def test_analyze_calibrates_and_snaps_beds(tmp_path):
     raw = video_result(
-        track("t1", "desk", {"width": 185.0, "depth": 91.0, "height": 87.5}),
+        track("t1", "tv", {"width": 185.0, "depth": 91.0, "height": 87.5}),
         track("t2", "bed", {"width": 330.0, "depth": 230.0, "height": 60.0}),
+        track("t3", "desk", {"width": 185.0, "depth": 91.0, "height": 87.5}),
     )
     body = analyze(tmp_path / "v.mp4", recognition(), lambda clip: raw,
                    analysis_id="an_1", video_id="m1")
     factor = factor_for(load_calibration("depth-anything-v2"), "rgb", "width",
                         "registered_multiview")
-    desk, bed = body["items"]
-    assert desk["dimensions_cm"]["width"] == pytest.approx(185.0 * factor, abs=0.1)
+    tv, bed, desk = body["items"]
+    assert tv["dimensions_cm"]["width"] == pytest.approx(185.0 * factor, abs=0.1)
+    # Desks are then pulled toward the Korean catalog instead of the size prior.
+    assert desk["size_adjustment"] == "catalog_prior"
+    assert 72 <= desk["dimensions_cm"]["height"] <= 75
     assert bed["standard_size"]["code"] in {"queen", "king", "double", "large_king"}
     assert bed["dimensions_cm"]["width"] == 208.0
     assert "size_not_calibrated" not in body["warnings"]
 
 
 def test_analyze_without_calibration_warns(tmp_path):
-    raw = video_result(track("t1", "desk", {"width": 120, "depth": 60, "height": 70}),
+    raw = video_result(track("t1", "tv", {"width": 120, "depth": 60, "height": 70}),
                        family="unknown-model")
     body = analyze(tmp_path / "v.mp4", recognition(), lambda clip: raw,
                    analysis_id="an_1", video_id="m1")

@@ -111,7 +111,9 @@ def posterior(measured: dict[str, float], distribution: dict, errors: dict) -> d
     return {axis: float(value) for axis, value in zip(axes, np.exp(x))}
 
 
-def apply(response: MeasurementResponse, prior: dict) -> MeasurementResponse:
+def apply(response: MeasurementResponse, prior: dict,
+          skip: frozenset[str] = frozenset()) -> MeasurementResponse:
+    """Pull toward the label's size distribution; labels in ``skip`` are left as they are."""
     videos = []
     for clip in response.videos:
         kind = calibration.KINDS[clip.pose_source]
@@ -121,7 +123,8 @@ def apply(response: MeasurementResponse, prior: dict) -> MeasurementResponse:
             continue
         objects = []
         for track in clip.objects:
-            distribution = prior["sizes"].get(canonical_label(track.label))
+            label = canonical_label(track.label)
+            distribution = None if label in skip else prior["sizes"].get(label)
             measured = {a: d.cm for a in AXES if (d := track.dimensions.get(a)) is not None}
             if distribution is None or not measured:
                 objects.append(track)

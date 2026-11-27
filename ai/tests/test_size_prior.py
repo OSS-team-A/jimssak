@@ -87,3 +87,8 @@ def test_shipped_prior_covers_common_furniture():
     assert {"chair", "table", "cabinet", "sofa"} <= set(prior["sizes"])
     assert set(prior["errors"]) == {"arkit", "rgb"}
     assert load_size_prior("unknown-model") is None
+
+
+def test_apply_skips_labels_handled_by_a_catalog():
+    original = response("chair", {"width": 80, "depth": 80, "height": 120})
+    assert size_prior.apply(original, PRIOR, skip=frozenset({"chair"})) == original
