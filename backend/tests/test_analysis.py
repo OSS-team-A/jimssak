@@ -1,10 +1,13 @@
 import copy
+from datetime import datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.config import Settings
 from backend.app.main import create_app
+from backend.app.schemas.move_chat import ChatInterpretation
+from backend.app.schemas.moves import KST
 
 MOVES = "/api/v1/moves"
 WORKER = "/api/v1/internal/analyses"
@@ -179,6 +182,76 @@ def test_demo_inventory_edits_and_confirmation(demo_client):
     clock.advance(6)
     fresh = demo_client.get(inventory, headers=headers).json()
     assert fresh["status"] == "draft" and fresh["items"][1]["quantity"] == 1
+
+
+def test_chat_applies_inventory_and_move_changes_only_after_confirmation(demo_client, monkeypatch):
+    clock = Clock(demo_client)
+    url, headers = new_move(demo_client)
+    _, other = new_move(demo_client)
+    upload(demo_client, url, headers)
+    clock.advance(6)
+    inventory_url = f"{url}/inventory"
+    chair = demo_client.get(inventory_url, headers=headers).json()["items"][1]
+    pickup = datetime.now(KST).date() + timedelta(days=2)
+    delivery = pickup + timedelta(days=2)
+    proposal = ChatInterpretation.model_validate({
+        "message": "의자 수량과 이사 일정을 바꿀까요?",
+        "changes": {
+            "items": [
+                {"action": "update", "item_id": chair["item_id"], "changes": {"quantity": 3}},
+                {"action": "add", "item": {"label_ko": "모니터 27인치"}},
+            ],
+            "move_date": pickup.isoformat(), "start_time": "09:00",
+            "review": {"delivery_date": delivery.isoformat(), "notes": "트럭 진입 제한"},
+        },
+        "follow_up": "의자는 분리해서 옮길 수 있나요?",
+        "choices": ["분리할 수 있어요", "잘 모르겠어요"],
+    })
+    monkeypatch.setattr(demo_client.app.state.move_chat, "interpret", lambda *_: proposal)
+    response = demo_client.post(f"{url}/chat", headers=headers, json={"message": "목록 수정"})
+    assert response.status_code == 200
+    preview = response.json()
+    assert any("1개 → 3개" in line for line in preview["summary"])
+    assert demo_client.get(inventory_url, headers=headers).json()["items"][1]["quantity"] == 1
+    assert demo_client.get(url, headers=headers).json()["data"]["review"] is None
+
+    body = {"proposal_id": preview["proposal_id"]}
+    assert demo_client.post(f"{url}/chat/apply", headers=other, json=body).status_code == 404
+    first = demo_client.post(f"{url}/chat/apply", headers=headers, json=body)
+    assert first.status_code == 200
+    applied = first.json()
+    assert applied["inventory"]["items"][1]["quantity"] == 3
+    assert applied["inventory"]["items"][2]["label_ko"] == "모니터 27인치"
+    assert applied["choices"] == ["분리할 수 있어요", "잘 모르겠어요"]
+    assert applied["advance"] is False
+    replay = demo_client.post(f"{url}/chat/apply", headers=headers, json=body)
+    assert replay.json() == applied
+    move = demo_client.get(url, headers=headers).json()["data"]
+    assert move["schedule"]["value"]["move_date"] == pickup.isoformat()
+    assert move["review"] == {"delivery_date": delivery.isoformat(), "notes": "트럭 진입 제한"}
+
+
+def test_chat_rejects_confirmation_after_inventory_changed(demo_client, monkeypatch):
+    clock = Clock(demo_client)
+    url, headers = new_move(demo_client)
+    upload(demo_client, url, headers)
+    clock.advance(6)
+    chair = demo_client.get(f"{url}/inventory", headers=headers).json()["items"][1]
+    proposal = ChatInterpretation.model_validate({
+        "message": "의자 3개로 바꿀까요?",
+        "changes": {"items": [
+            {"action": "update", "item_id": chair["item_id"], "changes": {"quantity": 3}},
+        ]},
+    })
+    monkeypatch.setattr(demo_client.app.state.move_chat, "interpret", lambda *_: proposal)
+    reply = demo_client.post(f"{url}/chat", headers=headers, json={"message": "의자 3개로"})
+    assert reply.status_code == 200
+    item_url = f"{url}/inventory/items/{chair['item_id']}"
+    edit = demo_client.patch(item_url, headers=headers, json={"quantity": 2})
+    assert edit.status_code == 200
+    body = {"proposal_id": reply.json()["proposal_id"]}
+    assert demo_client.post(f"{url}/chat/apply", headers=headers, json=body).status_code == 409
+    assert demo_client.get(f"{url}/inventory", headers=headers).json()["items"][1]["quantity"] == 2
 
 
 def test_demo_photos_are_private(demo_client):

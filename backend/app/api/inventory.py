@@ -36,14 +36,26 @@ def find_item(items: list[dict], item_id: str) -> dict:
     raise HTTPException(404, "물품을 찾을 수 없습니다.")
 
 
+def append_item(items: list[dict], body: ItemCreate) -> InventoryItem:
+    if len(items) >= MAX_INVENTORY_ITEMS:
+        raise HTTPException(409, f"물품은 최대 {MAX_INVENTORY_ITEMS}개까지 등록할 수 있습니다.")
+    item = InventoryItem(item_id=uuid4().hex, source="user", **body.model_dump())
+    items.append(item.model_dump())
+    return item
+
+
+def patch_item(item: dict, body: ItemPatch) -> InventoryItem:
+    changes = body.model_dump(exclude_unset=True)
+    if "dimensions_cm" in changes:
+        item["dimensions_cm"].update(changes.pop("dimensions_cm"))
+    item.update(changes)
+    return InventoryItem.model_validate(item)
+
+
 @router.post("/items", status_code=201, summary="물품 추가")
 def add_item(move: AccessibleMove, analyses: AnalysisDep, body: ItemCreate) -> InventoryItem:
-    item = InventoryItem(item_id=uuid4().hex, source="user", **body.model_dump())
     with editing(move, analyses) as row:
-        if len(row["items"]) >= MAX_INVENTORY_ITEMS:
-            raise HTTPException(409, f"물품은 최대 {MAX_INVENTORY_ITEMS}개까지 등록할 수 있습니다.")
-        row["items"].append(item.model_dump())
-    return item
+        return append_item(row["items"], body)
 
 
 @router.patch("/items/{item_id}", summary="수량·치수·특이사항·분해 여부 수정")
@@ -51,12 +63,7 @@ def update_item(
     move: AccessibleMove, analyses: AnalysisDep, item_id: str, body: ItemPatch,
 ) -> InventoryItem:
     with editing(move, analyses) as row:
-        item = find_item(row["items"], item_id)
-        changes = body.model_dump(exclude_unset=True)
-        if "dimensions_cm" in changes:
-            item["dimensions_cm"].update(changes.pop("dimensions_cm"))
-        item.update(changes)
-        return InventoryItem.model_validate(item)
+        return patch_item(find_item(row["items"], item_id), body)
 
 
 @router.delete("/items/{item_id}", status_code=204, summary="물품 삭제")
@@ -65,13 +72,19 @@ def delete_item(move: AccessibleMove, analyses: AnalysisDep, item_id: str):
         row["items"].remove(find_item(row["items"], item_id))
 
 
-@router.post("/confirm", status_code=204, summary="현재 이삿짐 목록 확정")
+@router.post(
+    "/confirm", status_code=204, summary="현재 이삿짐 목록 확정",
+    description="목록을 `confirmed` 상태로 전환한다. 성공 시 응답 본문은 없다.",
+)
 def confirm_inventory(move: AccessibleMove, analyses: AnalysisDep):
     with editing(move, analyses, allow_confirmed=True) as row:
         row["confirmed"] = True
 
 
-@router.delete("/confirm", status_code=204, summary="이삿짐 목록 확정 취소")
+@router.delete(
+    "/confirm", status_code=204, summary="이삿짐 목록 확정 취소",
+    description="목록을 `draft` 상태로 전환해 다시 편집할 수 있게 한다. 성공 시 응답 본문은 없다.",
+)
 def unconfirm_inventory(move: AccessibleMove, analyses: AnalysisDep):
     with editing(move, analyses, allow_confirmed=True) as row:
         row["confirmed"] = False

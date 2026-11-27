@@ -14,7 +14,9 @@ TEST_DATABASE_URL = os.environ.get(
 
 # Settings also read backend/.env, where developers keep real API keys. Environment
 # variables win over that file, so blanking them here keeps every test off the network.
-EXTERNAL_KEYS = ("ADDRESS_SEARCH_API_KEY", "DATA_GO_KR_SERVICE_KEY", "KAKAO_REST_API_KEY")
+EXTERNAL_KEYS = (
+    "ADDRESS_SEARCH_API_KEY", "DATA_GO_KR_SERVICE_KEY", "KAKAO_REST_API_KEY", "LLM_API_KEY",
+)
 
 
 @pytest.fixture(autouse=True)

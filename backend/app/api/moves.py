@@ -1,6 +1,8 @@
 import json
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Annotated
@@ -10,10 +12,13 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Upl
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.routing import APIRoute
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials
+from psycopg import Connection
 
 from ..schemas.analysis import AnalysisOut, AnalysisSection
 from ..schemas.auth import User
 from ..schemas.moves import (
+    KST,
+    MAX_DAYS_AHEAD,
     BuildingInfo,
     DayInfoOut,
     MediaInfo,
@@ -26,6 +31,7 @@ from ..schemas.moves import (
     Place,
     PlaceInput,
     PlaceSection,
+    ReviewDetails,
     RoomVideo,
     RouteSection,
     Schedule,
@@ -239,7 +245,8 @@ def create_move(member: Member, moves: MoveStoreDep) -> MoveCreated:
         "| `inventory` | SC-07 이삿짐 목록 | empty / draft / confirmed |\n"
         "| `origin`, `destination` | SC-06 주소·층, 최종 확인 | empty / partial / filled |\n"
         "| `route` | 견적 거리 | not_ready / found / not_found / failed |\n"
-        "| `schedule` | SC-06 일정 | empty / filled (`day`에 날짜 할증 조건) |\n\n"
+        "| `schedule` | SC-06 일정 | empty / filled (`day`에 날짜 할증 조건) |\n"
+        "| `review` | SC-07 짐 받는 날짜·이사 특이사항 | 저장된 정보 또는 null |\n\n"
         "`missing`은 아직 입력하지 않은 항목을 물어볼 순서대로, `next_step`은 그 첫 항목을 "
         "준다. 둘 다 비면(`[]`, null) SC-06까지 입력이 끝난 것이다."
     ),
@@ -313,8 +320,9 @@ def claim_move(
     summary="이사 기본정보 저장",
     description=(
         "SC-06의 출발지·도착지(도로명주소, 상세주소, 층, 승강기)와 이사 일정(날짜, 시작 시간)을 "
-        "저장한다. 보낸 항목(`origin`, `destination`, `schedule`)만 바뀌고, 보내지 않은 "
-        "항목은 그대로 둔다. 항목을 `null`로 보내면 지운다.\n\n"
+        "저장한다. SC-07에서 검토한 짐 받는 날짜와 이사 특이사항은 `review`로 저장한다. "
+        "보낸 항목(`origin`, `destination`, `schedule`, `review`)을 교체하며, "
+        "항목을 `null`로 보내면 지운다.\n\n"
         "주소 검색(`GET /addresses`)에서 고른 후보의 `building_name`, `adm_cd`, `mountain`, "
         "`lot_main`, `lot_sub`를 함께 보내면 건축물대장을 조회해 건물 정보(`building`)와 승강기를 "
         "채운다. 같은 지번을 다시 보내면 외부 조회 없이 저장된 결과를 쓰고, 조회가 실패했던 "
@@ -336,8 +344,41 @@ def update_move(
     update: MoveUpdate, move: AccessibleMove, moves: MoveStoreDep, register: RegisterDep,
     router: RouterDep, calendar: CalendarDep, analyses: AnalysisDep,
 ) -> MoveSnapshot:
+    prepare_move_update(update, move, moves, register, router, calendar)(None)
+    return _snapshot(move, moves, analyses)
+
+
+def validate_move_review(
+    update: MoveUpdate, current_schedule: ScheduleRecord | None,
+    current_review: ReviewDetails | None,
+) -> None:
     sent = update.model_fields_set
-    current, _ = moves.get_details(move.id)
+    if not sent & {"review", "schedule"}:
+        return
+    review = update.review if "review" in sent else current_review
+    delivery = review.delivery_date if review else None
+    pickup = (
+        update.schedule.move_date if update.schedule else None
+    ) if "schedule" in sent else (
+        date.fromisoformat(current_schedule.move_date) if current_schedule else None
+    )
+    if delivery and pickup and delivery < pickup:
+        raise HTTPException(422, "짐 받는 날짜는 짐 빼는 날짜와 같거나 이후여야 합니다.")
+    previous = current_review.delivery_date if current_review else None
+    if delivery and delivery != previous:
+        days = (delivery - datetime.now(KST).date()).days
+        if not 0 <= days <= MAX_DAYS_AHEAD:
+            raise HTTPException(422, "짐 받는 날짜는 오늘부터 365일 이내로 입력해주세요.")
+
+
+def prepare_move_update(
+    update: MoveUpdate, move: Move, moves: MoveStore, register: BuildingRegister,
+    router: Router, calendar: Calendar,
+) -> Callable[[Connection | None], None]:
+    sent = update.model_fields_set
+    current, current_schedule = moves.get_details(move.id)
+    if sent & {"review", "schedule"}:
+        validate_move_review(update, current_schedule, moves.get_review(move.id))
     known = moves.get_lookups(move.id)
     places: dict[str, PlaceRecord | None] = {}
     lookups: dict[str, LookupRecord | None] = {}
@@ -375,12 +416,22 @@ def update_move(
         schedule = ScheduleRecord(
             update.schedule.move_date.isoformat(), update.schedule.start_time.isoformat()
         )
-    moves.update_details(
-        move.id, places, schedule, schedule_sent="schedule" in sent, lookups=lookups,
-        route=route_future.result() if route_future else None, route_sent=route_sent,
-        date_info=date_future.result() if date_future else None, date_info_sent=date_sent,
-    )
-    return _snapshot(move, moves, analyses)
+
+    def save(conn: Connection | None) -> None:
+        with moves.db.connect() if conn is None else nullcontext(conn) as active:
+            if sent & {"review", "schedule"}:
+                active.execute("SELECT 1 FROM moves WHERE id = %s FOR NO KEY UPDATE", (move.id,))
+                _, latest_schedule = moves.get_details(move.id, conn=active)
+                latest_review = moves.get_review(move.id, conn=active)
+                validate_move_review(update, latest_schedule, latest_review)
+            moves.update_details(
+                move.id, places, schedule, schedule_sent="schedule" in sent, lookups=lookups,
+                route=route_future.result() if route_future else None, route_sent=route_sent,
+                date_info=date_future.result() if date_future else None, date_info_sent=date_sent,
+                review=update.review, review_sent="review" in sent, conn=active,
+            )
+
+    return save
 
 
 def _date_plan(
@@ -545,6 +596,7 @@ def _snapshot(move: Move, moves: MoveStore, analyses: AnalysisStore) -> MoveSnap
     date_info = moves.get_date_info(move.id)
     job = analyses.current(move.id)
     data = MoveData(
+        review=moves.get_review(move.id),
         room_video=RoomVideo(
             status="uploaded" if video else "empty",
             video=_media_info(video) if video else None,

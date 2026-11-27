@@ -2,9 +2,13 @@ import hashlib
 import secrets
 import time
 import uuid
+from contextlib import nullcontext
 from dataclasses import dataclass
 
+from psycopg import Connection
+
 from ..db import Database
+from ..schemas.moves import ReviewDetails
 
 
 def _digest(token: str) -> bytes:
@@ -200,8 +204,10 @@ class MoveStore:
             )
         return Media(**dict(old)) if old else None
 
-    def get_details(self, move_id: str) -> tuple[dict[str, PlaceRecord], ScheduleRecord | None]:
-        with self.db.connect() as db:
+    def get_details(
+        self, move_id: str, *, conn: Connection | None = None,
+    ) -> tuple[dict[str, PlaceRecord], ScheduleRecord | None]:
+        with self.db.connect() if conn is None else nullcontext(conn) as db:
             places = {
                 row["role"]: PlaceRecord(
                     row["road_address"], row["detail_address"], row["floor"],
@@ -215,6 +221,14 @@ class MoveStore:
                 "SELECT move_date, start_time FROM move_schedules WHERE move_id = %s", (move_id,)
             ).fetchone()
         return places, ScheduleRecord(row["move_date"], row["start_time"]) if row else None
+
+    def get_review(self, move_id: str, *, conn: Connection | None = None) -> ReviewDetails | None:
+        with self.db.connect() if conn is None else nullcontext(conn) as db:
+            row = db.execute(
+                "SELECT delivery_date, notes FROM move_review_details WHERE move_id = %s",
+                (move_id,),
+            ).fetchone()
+        return ReviewDetails.model_validate(row) if row else None
 
     def get_lookups(self, move_id: str) -> dict[str, LookupRecord]:
         with self.db.connect() as db:
@@ -275,13 +289,18 @@ class MoveStore:
         route_sent: bool = False,
         date_info: DateInfoRecord | None = None,
         date_info_sent: bool = False,
+        review: ReviewDetails | None = None,
+        review_sent: bool = False,
+        *,
+        conn: Connection | None = None,
     ) -> None:
         """Replace only the sections that were sent, all in one transaction.
 
         A place, schedule, lookup, route or date info given as None is cleared.
         """
         now = int(time.time())
-        with self.db.connect() as db:
+        with self.db.connect() if conn is None else nullcontext(conn) as db:
+            db.execute("SELECT 1 FROM moves WHERE id = %s FOR NO KEY UPDATE", (move_id,))
             if date_info_sent:
                 db.execute("DELETE FROM move_date_info WHERE move_id = %s", (move_id,))
                 if date_info is not None:
@@ -345,6 +364,17 @@ class MoveStore:
                         "move_date = excluded.move_date, start_time = excluded.start_time, "
                         "updated_at = excluded.updated_at",
                         (move_id, schedule.move_date, schedule.start_time, now),
+                    )
+            if review_sent:
+                if review is None:
+                    db.execute("DELETE FROM move_review_details WHERE move_id = %s", (move_id,))
+                else:
+                    delivery = review.delivery_date.isoformat() if review.delivery_date else None
+                    db.execute(
+                        "INSERT INTO move_review_details(move_id, delivery_date, notes) "
+                        "VALUES (%s, %s, %s) ON CONFLICT(move_id) DO UPDATE SET "
+                        "delivery_date = excluded.delivery_date, notes = excluded.notes",
+                        (move_id, delivery, review.notes),
                     )
 
     def get_video(self, move_id: str) -> Media | None:

@@ -122,6 +122,11 @@ CREATE TABLE IF NOT EXISTS move_schedules (
     start_time TEXT NOT NULL,
     updated_at BIGINT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS move_review_details (
+    move_id TEXT PRIMARY KEY REFERENCES moves(id) ON DELETE CASCADE,
+    delivery_date TEXT,
+    notes TEXT
+);
 
 CREATE TABLE IF NOT EXISTS move_analyses (
     analysis_id TEXT PRIMARY KEY,
@@ -144,6 +149,13 @@ CREATE TABLE IF NOT EXISTS move_inventories (
     analysis_id TEXT PRIMARY KEY REFERENCES move_analyses(analysis_id) ON DELETE CASCADE,
     items JSONB NOT NULL,
     confirmed BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE TABLE IF NOT EXISTS move_chat_proposals (
+    move_id TEXT PRIMARY KEY REFERENCES moves(id) ON DELETE CASCADE,
+    proposal_id TEXT NOT NULL,
+    snapshot TEXT NOT NULL,
+    changes JSONB NOT NULL,
+    applied BOOLEAN NOT NULL DEFAULT FALSE
 );
 -- Include successful analyses saved before editable inventories existed.
 INSERT INTO move_inventories (analysis_id, items)

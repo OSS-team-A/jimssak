@@ -210,6 +210,17 @@ class ScheduleInput(BaseModel):
         return start_time.replace(tzinfo=None)
 
 
+class ReviewDetails(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    delivery_date: date | None = Field(
+        default=None, description="짐을 받는 날짜(YYYY-MM-DD). 짐 빼는 날짜와 같거나 이후",
+    )
+    notes: Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)] | None = Field(
+        default=None, description="트럭 진입 제한 등 이사 전체 특이사항. 최대 500자",
+    )
+
+
 class MoveUpdate(BaseModel):
     """이사 기본정보 저장 본문. 바뀐 항목만 보내고, null로 보낸 항목은 지운다. 하나 이상 필요."""
 
@@ -218,11 +229,14 @@ class MoveUpdate(BaseModel):
     origin: PlaceInput | None = Field(default=None, description="출발지. null이면 지움")
     destination: PlaceInput | None = Field(default=None, description="도착지. null이면 지움")
     schedule: ScheduleInput | None = Field(default=None, description="이사 일정. null이면 지움")
+    review: ReviewDetails | None = Field(
+        default=None, description="SC-07 검토 정보. 보낸 객체로 교체하고 null이면 지움",
+    )
 
     @model_validator(mode="after")
     def something_to_change(self):
         if not self.model_fields_set:
-            raise ValueError("origin, destination, schedule 중 하나 이상을 보내주세요.")
+            raise ValueError("origin, destination, schedule, review 중 하나 이상을 보내주세요.")
         return self
 
 
@@ -368,6 +382,7 @@ class RouteSection(BaseModel):
 
 
 class MoveData(BaseModel):
+    review: ReviewDetails | None = Field(default=None, description="SC-07에서 저장한 이사 조건")
     """이사 한 건의 항목별 상태. 각 항목은 status와 값으로 이루어진다."""
 
     room_video: RoomVideo = Field(description="방 영상(SC-05)")

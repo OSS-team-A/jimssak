@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     # (marked demo) so the front end can build its screens. Off by default.
     analysis_demo: bool = False
     analysis_demo_seconds: PositiveFloat = 6.0
+    llm_base_url: str = ""
+    llm_api_key: SecretStr | None = None
+    llm_model: str = ""
+    llm_timeout_seconds: PositiveFloat = 30.0
 
     @field_validator("media_dir")
     @classmethod
@@ -67,7 +71,7 @@ class Settings(BaseSettings):
 
     @field_validator(
         "address_search_api_key", "data_go_kr_service_key", "kakao_rest_api_key",
-        "analysis_worker_key", mode="before"
+        "analysis_worker_key", "llm_api_key", mode="before"
     )
     @classmethod
     def blank_key_is_missing(cls, key: object) -> object:

@@ -7,6 +7,7 @@ from .api.addresses import router as addresses_router
 from .api.analysis_worker import router as analysis_worker_router
 from .api.auth import router as auth_router
 from .api.inventory import router as inventory_router
+from .api.move_chat import router as move_chat_router
 from .api.moves import router as moves_router
 from .api.routes import router
 from .config import Settings
@@ -17,6 +18,7 @@ from .services.auth import AuthStore
 from .services.building_register import HubBuildingRegister
 from .services.calendar import KasiCalendar
 from .services.media import MediaStorage
+from .services.move_chat import MoveChat
 from .services.moves import MoveStore
 from .services.route import KakaoRouter
 
@@ -43,6 +45,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             db, settings.analysis_timeout_seconds, settings.analysis_demo_seconds
         )
         app.state.analysis_demo = settings.analysis_demo
+        app.state.move_chat = MoveChat(settings)
         worker_key = settings.analysis_worker_key
         app.state.analysis_worker_key = worker_key.get_secret_value() if worker_key else None
         key = settings.address_search_api_key
@@ -90,6 +93,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth_router)
     app.include_router(moves_router)
     app.include_router(inventory_router)
+    app.include_router(move_chat_router)
     app.include_router(addresses_router)
     app.include_router(analysis_worker_router)
     return app
