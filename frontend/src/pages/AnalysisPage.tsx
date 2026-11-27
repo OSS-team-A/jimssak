@@ -43,10 +43,10 @@ export function AnalysisPage() {
   const screen: AnalysisScreen = status === 'completed' ? 'complete' : status === 'failed' ? 'failed' : 'waiting';
 
   useEffect(() => {
-    if (status !== 'completed' || snapshot?.data.analysis.demo || afterMove) return;
+    if (status !== 'completed' || afterMove) return;
     const timer = window.setTimeout(() => navigate(routes.chat), 2500);
     return () => window.clearTimeout(timer);
-  }, [status, snapshot?.data.analysis.demo, afterMove]);
+  }, [status, afterMove]);
 
   if (!moveId) return <main className="app-page analysis-page"><BrandHeader />
     <div className="analysis-content"><h1>이사 정보를 찾을 수 없어요</h1><Button onClick={() => navigate(routes.capture)}>촬영 준비로 돌아가기</Button></div>
@@ -62,10 +62,6 @@ export function AnalysisPage() {
 
   if (snapshot?.data.room_video.status === 'empty') return <main className="app-page analysis-page"><BrandHeader />
     <div className="analysis-content"><h1>촬영한 영상이 없어요</h1><p className="analysis-intro">방 영상을 촬영하거나 업로드하면 분석을 시작할 수 있어요.</p><Button variant="secondary" onClick={() => navigate(routes.capture)}>촬영 준비로 돌아가기</Button></div>
-  </main>;
-
-  if (status === 'completed' && snapshot?.data.analysis.demo) return <main className="app-page analysis-page"><BrandHeader />
-    <div className="analysis-content"><h1>실제 이삿짐 목록을 만들지 못했어요</h1><p className="analysis-intro">영상은 업로드됐지만 현재 실제 영상 분석을 이용할 수 없어요. 임시 분석 결과는 이삿짐 목록에 표시하지 않아요.</p><Button variant="secondary" onClick={() => navigate(routes.moveInfo)}>이사 정보로 돌아가기</Button></div>
   </main>;
 
   if (error && !snapshot) return <main className="app-page analysis-page"><BrandHeader />

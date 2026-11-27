@@ -11,6 +11,15 @@ export const getAnalysis = (moveId: string, guestToken?: string) =>
   apiRequest<AnalysisResult>(`/api/v1/moves/${encodeURIComponent(moveId)}/analysis`, {
     headers: guestToken ? { 'X-Guest-Token': guestToken } : undefined,
   });
+export const getAnalysisPhoto = (path: string, guestToken?: string) => {
+  if (!path.startsWith('/api/v1/moves/') || !path.includes('/analysis/photos/')) {
+    throw new Error('지원하지 않는 분석 사진 주소예요.');
+  }
+  return apiRequest<Blob>(path, {
+    headers: guestToken ? { 'X-Guest-Token': guestToken } : undefined,
+    responseType: 'blob',
+  });
+};
 export const listMoves = (limit = 100, offset = 0) =>
   apiRequest<MoveList>(`/api/v1/moves?limit=${limit}&offset=${offset}`);
 export async function listAllMoves() {

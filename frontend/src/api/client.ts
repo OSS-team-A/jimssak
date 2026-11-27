@@ -9,7 +9,7 @@ export class ApiError extends Error {
   }
 }
 
-type ApiInit = RequestInit & { skipAuthRefresh?: boolean };
+type ApiInit = RequestInit & { skipAuthRefresh?: boolean; responseType?: 'blob' };
 let refreshing: Promise<Session> | null = null;
 
 export async function apiRequest<T>(path: string, init?: ApiInit): Promise<T> {
@@ -39,5 +39,6 @@ export async function apiRequest<T>(path: string, init?: ApiInit): Promise<T> {
     throw new ApiError(response.status, detail);
   }
   if (response.status === 204) return undefined as T;
+  if (init?.responseType === 'blob') return response.blob() as Promise<T>;
   return response.json() as Promise<T>;
 }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { BrandHeader } from '../components/common/BrandHeader';
 import { Button } from '../components/common/Button';
 import { InventoryDeleteDialog } from '../components/common/InventoryDeleteDialog';
+import { getAnalysisPhoto } from '../api/moves';
 import { navigate, routes } from '../app/routes';
 import { dimensions, navigateReview, useReview, type ReviewDraft } from '../features/review';
 import { downloadReviewPdf } from '../features/reviewPdf';
@@ -23,6 +24,22 @@ const questions = [
   { title: '목록에서 제외할 물품이 있나요?', description: '이사하지 않는 물품은 목록에서 수량을 0개로 바꿔주세요.', example: '“세탁기는 이사하지 않아요.”', skip: '제외할 물품 없어요' },
   { title: '이사할 때 알아두면 좋을 점이 있나요?', description: '무거운 물품이나 트럭 진입 제한, 짐을 빼는 날과 받는 날이 다른 경우를 알려주세요.', example: '“침대가 돌침대예요. 짐을 빼고 이틀 뒤에 받아야 해요.”', skip: '특이사항 없어요' },
 ];
+const demoNotice = '서버에서 제공한 예시 목록이에요. 실제 촬영한 물품과 다를 수 있어요.';
+
+function InventoryPhoto({ path, label, guestToken }: { path: string; label: string; guestToken: string }) {
+  const [src, setSrc] = useState('');
+  useEffect(() => {
+    let active = true;
+    let objectUrl = '';
+    void getAnalysisPhoto(path, guestToken).then(blob => {
+      if (!active) return;
+      objectUrl = URL.createObjectURL(blob);
+      setSrc(objectUrl);
+    }).catch(() => { if (active) setSrc(''); });
+    return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [path, guestToken]);
+  return src ? <div className="review-inventory-photo"><img src={src} alt={`${label} 분석 사진`} /></div> : null;
+}
 
 function ReviewGate({ loading, error, hasMove, completed, onRetry }: { loading: boolean; error: string; hasMove: boolean; completed: boolean; onRetry: () => void }) {
   return <div className="review-gate">
@@ -81,8 +98,8 @@ export function ChatPage() {
   const [pdfNotice, setPdfNotice] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const step = Math.min(draft?.step ?? 0, 5);
-  const ready = analysis?.status === 'completed' && !analysis.demo && !!draft;
-  const canDownload = ready && inventory?.status === 'confirmed' && total > 0 && step === 5 && !!draft.selectedMoveType;
+  const ready = analysis?.status === 'completed' && !!draft;
+  const canDownload = ready && !analysis?.demo && inventory?.status === 'confirmed' && total > 0 && step === 5 && !!draft.selectedMoveType;
 
   async function onPdf() {
     if (!move || !draft || !canDownload) return;
@@ -123,9 +140,10 @@ export function ChatPage() {
     <BrandHeader />
     {ready ? <div className="review-chat-scroll" ref={scrollRef}>
       {error && <p className="review-local-note" role="alert">{error}</p>}
+      {analysis?.demo && <p className="review-local-note" role="status">{demoNotice} 예시 결과로는 명세서를 만들 수 없어요.</p>}
       <section className="review-chat-turn">
         <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
-        <p className="review-chat-intro">영상에서 찾은 이삿짐을 정리했어요.<br />목록 탭을 눌러 맞는지 확인해주세요.</p>
+        <p className="review-chat-intro">{analysis?.demo ? '서버의 예시 이삿짐을 정리했어요.' : '영상에서 찾은 이삿짐을 정리했어요.'}<br />목록 탭을 눌러 맞는지 확인해주세요.</p>
         <button className="review-summary" type="button" onClick={() => navigateReview(routes.inventory)}>
           <span className="review-summary-title">이삿짐 목록<img src={chevronIcon} alt="" /></span>
           {items.filter(item => item.quantity > 0).slice(0, 5).map(item => <span className="review-summary-row" key={item.item_id}><span>{item.label_ko}</span><strong>{item.quantity}개</strong><img src={rowChevronIcon} alt="" /></span>)}
@@ -178,7 +196,7 @@ export function InventoryPage() {
   const { move, analysis, draft, loading, error, items, added, total, changeQuantity, removeItem, retry } = useReview();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ id: string; label: string; added: boolean } | null>(null);
-  const ready = analysis?.status === 'completed' && !analysis.demo && !!draft;
+  const ready = analysis?.status === 'completed' && !!draft;
   const visibleItems = items.filter(item => item.quantity > 0);
 
   function decrease(id: string, label: string, quantity: number, isAdded: boolean) {
@@ -201,12 +219,13 @@ export function InventoryPage() {
     {ready ? <div className="review-inventory-body">
       {error && <p className="review-local-note" role="alert">{error}</p>}
       <div className="review-inventory-heading"><h1>이삿짐 목록</h1><span>검토중</span></div>
-      <p>영상 분석을 바탕으로 작성한 목록이에요.<br />확인한 내용은 명세서에 반영돼요.</p>
+      <p>{analysis?.demo ? '서버에서 제공한 예시 목록이에요.' : '영상 분석을 바탕으로 작성한 목록이에요.'}<br />{analysis?.demo ? '실제 영상 속 물품과 다를 수 있어요.' : '확인한 내용은 명세서에 반영돼요.'}</p>
+      {analysis?.demo && <p className="review-local-note" role="status">예시 결과로는 명세서를 만들 수 없어요.</p>}
       <div className="review-inventory-stats"><span>품목 수 <strong>{visibleItems.length + added.filter(item => item.quantity > 0).length}종</strong></span><span>총 수량 <strong>{total}개</strong></span></div>
       <div className="review-inventory-table"><div className="review-inventory-table-head"><span>번호</span><span>품목</span><span>수량</span><span>예상 크기 (cm)</span></div>
         {visibleItems.map((item, index) => <div className="review-inventory-item" key={item.item_id}>
           <div className="review-inventory-row"><small>{String(index + 1).padStart(2, '0')}</small><strong>{item.label_ko}</strong><div className="review-quantity"><button type="button" onClick={() => decrease(item.item_id, item.label_ko, item.quantity, false)} aria-label={`${item.label_ko} 수량 줄이기`}><img src={inventoryMinusIcon} alt="" /></button><b>{pendingDelete?.id === item.item_id ? 0 : item.quantity}</b><button type="button" onClick={() => void changeQuantity(item.item_id, item.quantity + 1)} aria-label={`${item.label_ko} 수량 늘리기`}><img src={inventoryPlusIcon} alt="" /></button></div><span>{dimensions(item)}</span><button className="review-expand" type="button" onClick={() => setExpanded(expanded === item.item_id ? null : item.item_id)} aria-label={`${item.label_ko} 상세 ${expanded === item.item_id ? '닫기' : '보기'}`}><img src={expanded === item.item_id ? inventoryChevronUp : inventoryChevronDown} alt="" /></button></div>
-          {expanded === item.item_id && <div className="review-inventory-detail">{item.snapshots[0]?.image_url && <div className="review-inventory-photo"><img src={item.snapshots[0].image_url} alt={`${item.label_ko} 분석 사진`} /></div>}<dl><dt>크기</dt><dd>{dimensions(item)} cm</dd><dt>예상 무게</dt><dd>확인 필요</dd><dt>분리 여부</dt><dd>{item.disassembly_required == null ? '확인 필요' : item.disassembly_required ? '분리 필요' : '분리 불필요'}</dd><dt>검토</dt><dd>{item.needs_review ? item.review_reasons.join(' · ') || '확인 필요' : '확인 완료'}</dd></dl></div>}
+          {expanded === item.item_id && <div className="review-inventory-detail">{item.snapshots[0]?.image_url && <InventoryPhoto path={item.snapshots[0].image_url} label={item.label_ko} guestToken={move?.guest_token ?? ''} />}<dl><dt>크기</dt><dd>{dimensions(item)} cm</dd><dt>예상 무게</dt><dd>확인 필요</dd><dt>분리 여부</dt><dd>{item.disassembly_required == null ? '확인 필요' : item.disassembly_required ? '분리 필요' : '분리 불필요'}</dd><dt>검토</dt><dd>{item.needs_review ? item.review_reasons.join(' · ') || '확인 필요' : '확인 완료'}</dd></dl></div>}
         </div>)}
       </div>
       <div className="review-inventory-total"><strong>합계</strong><strong>{total}개</strong></div>
@@ -219,8 +238,8 @@ export function InventoryPage() {
 export function ResultPage() {
   const { move, analysis, inventory, draft, loading, error, total, items, added, updateDraft, retry } = useReview();
   const [pdfNotice, setPdfNotice] = useState<string | null>(null);
-  const ready = analysis?.status === 'completed' && !analysis.demo && !!draft;
-  const canDownload = ready && inventory?.status === 'confirmed' && total > 0 && !!draft.selectedMoveType;
+  const ready = analysis?.status === 'completed' && !!draft;
+  const canDownload = ready && !analysis?.demo && inventory?.status === 'confirmed' && total > 0 && !!draft.selectedMoveType;
   async function onPdf() {
     if (!move || !draft || !canDownload) return;
     try {
@@ -230,6 +249,7 @@ export function ResultPage() {
   }
   return <main className="app-page review-result-page"><BrandHeader />
     {ready ? <div className="review-result-body">
+      {analysis?.demo && <p className="review-local-note" role="status">{demoNotice} 예시 결과로는 명세서를 만들 수 없어요.</p>}
       <EstimateConversation total={total} selected={draft.selectedMoveType} pdfEnabled={canDownload} onSelect={type => updateDraft(current => ({ ...current, selectedMoveType: type }))} onPdf={onPdf} />
     </div> : <ReviewGate loading={loading} error={error} hasMove={!!move} completed={analysis?.status === 'completed'} onRetry={retry} />}
     <div className="review-chat-bottom review-result-bottom">
