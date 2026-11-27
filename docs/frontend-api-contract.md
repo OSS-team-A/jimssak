@@ -10,7 +10,7 @@
 | SC-03/04/04B/04D 촬영 | SC-04B: 촬영 후 `POST /moves/{id}/media` | `POST /moves` → `POST /moves/{id}/media`; 파일 선택·촬영 후 검토 화면을 거친다. 이사 후 촬영은 `POST /moves/{id}/after-media` |
 | SC-06 이사 정보 입력/확인 | `PATCH /moves/{id}`, 확인은 `GET /moves/{id}` | 주소 후보의 `road_address`, `building_name`, `adm_cd`, `mountain`, `lot_main`, `lot_sub`와 사용자 상세주소·층을 PATCH. 성공 후 GET의 `elevator`, `building.status`, 일정 값을 표시 |
 | SC-06 주소 검색 | `GET /addresses?keyword=` | 실제 검색 후보를 표시하고 선택한 주소 필드를 PATCH에 전달 |
-| SC-06 분석 대기/완료/실패 | `GET /moves/{id}`를 2~3초마다 조회; 완료 후 `GET /moves/{id}/analysis` | 3초 폴링, 완료 시 분석 결과·목록으로 이동. `demo=true`는 실제 물품으로 표시하지 않음 |
+| SC-06 분석 대기/완료/실패 | `GET /moves/{id}`를 2~3초마다 조회; 완료 후 `GET /moves/{id}/analysis` | 3초 폴링, 완료 시 분석 결과·목록으로 이동. `demo=true`는 예시 목록임을 표시하고 실제 명세서 생성은 제한 |
 | SC-07 채팅/목록 | `GET /moves/{id}/analysis`의 `items` 하나가 물품 한 줄 | 최초 분석 출력은 analysis. 사용자가 수정한 현재 목록은 별도 `GET /moves/{id}/inventory`로 읽고 항목 PATCH/DELETE 및 목록 확정을 사용 |
 | SC-13 기록 | `GET /moves` | 전체 페이지를 조회해 실제 기록만 표시. 현재 서버의 `stage`는 `preparing`만 지원 |
 | SC-14~16 이사 후 | 전후 비교 결과를 표시하는 화면 | 이사 후 영상 업로드까지만 API 확인. 비교 결과·검토 저장은 표시하지 않음 |
@@ -31,7 +31,7 @@
 - Chrome에서 실제 guest 이사 생성, 주소 검색 후보 선택, 층·일정 입력, PATCH, GET 응답 기반 최종 확인을 클릭 흐름으로 확인했다. 브라우저 재방문 시 실제 저장된 이사 정보를 다시 불러왔다.
 - 무효한 access/refresh token으로 기록 요청 → 401 → refresh 401 → 세션 제거 → 로그인 안내를 Chrome에서 확인했다. 로그인으로 이동한 뒤 뒤로가기·새로고침에서도 기록 예시가 노출되지 않았다.
 - 로그인·토큰 갱신 성공, 실제 분석 완료·물품 변경, 영상 파일 업로드 성공, PDF 생성 성공은 테스트 계정·유효 영상·완료된 분석 데이터가 없어 운영 서버에서 검증하지 못했다.
-- 사용자 제공 운영 서버 응답 캡처에서 영상 업로드 후 `analysis.status=completed`, `analysis.demo=true`, `inventory.status=draft`, `item_count=2`를 확인했다. 백엔드 `ANALYSIS_DEMO` 모드는 영상 내용과 무관한 고정된 책상·의자 결과를 생성하므로 실제 분석 완료로 취급하지 않는다. 실제 영상 분석과 그 이후 목록·채팅 흐름은 서버에서 데모 모드를 끄고 분석 작업자를 연결해야 검증할 수 있다.
+- 사용자 제공 운영 서버 응답 캡처에서 영상 업로드 후 `analysis.status=completed`, `analysis.demo=true`, `inventory.status=draft`, `item_count=2`를 확인했다. 백엔드 `ANALYSIS_DEMO` 모드는 영상 내용과 무관한 고정된 책상·의자 결과를 생성한다. 이 응답으로 목록·채팅 화면을 확인할 수 있게 연결하고, 예시 결과임을 명시하며 PDF 생성은 제한한다. 실제 영상 인식 정확도는 분석 작업자가 연결된 뒤 검증해야 한다.
 
 ## 백엔드 지원이 확인되지 않은 흐름과 필요한 계약
 

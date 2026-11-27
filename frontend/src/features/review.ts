@@ -56,11 +56,8 @@ export function useReview() {
       if (!active) return;
       setAnalysis(result);
       setInventory(currentInventory);
-      if (result.demo) setError('데모 분석 결과는 실제 이삿짐 목록으로 표시하지 않아요.');
-      else {
-        if (result.status === 'completed' && result.analysis_id) setDraft(loadDraft(move.move_id, result.analysis_id));
-        setError('');
-      }
+      if (result.status === 'completed' && result.analysis_id) setDraft(loadDraft(move.move_id, result.analysis_id));
+      setError('');
     }).catch(cause => { if (active) setError(cause instanceof ApiError && cause.status === 401 ? '로그인이 만료됐어요. 다시 로그인해주세요.' : '분석 결과를 불러오지 못했어요. 잠시 후 다시 시도해주세요.'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
