@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { getAnalysis } from '../api/moves';
+import { confirmInventory, deleteInventoryItem, getAnalysis, getInventory, patchInventoryItem, unconfirmInventory } from '../api/moves';
 import { navigate, type AppRoute } from '../app/routes';
-import type { AnalysisItem, AnalysisResult } from '../types/move';
+import { ApiError } from '../api/client';
+import type { AnalysisItem, AnalysisResult, Inventory } from '../types/move';
 
 type MoveSession = { move_id: string; guest_token: string };
 export type ReviewDraft = {
@@ -23,12 +24,8 @@ function activeMove(): MoveSession | null {
 
 const emptyDraft = (analysisId: string): ReviewDraft => ({ analysisId, step: 0, quantities: {}, added: [], notes: [], answers: [], selectedMoveType: null });
 const storageKey = (moveId: string) => `jimssak-review-${moveId}`;
-export const isReviewPreview = () => import.meta.env.DEV && new URLSearchParams(window.location.search).get('preview') === '1';
-
 export function navigateReview(path: AppRoute) {
-  if (!isReviewPreview()) return navigate(path);
-  window.history.pushState({}, '', `${path}?preview=1`);
-  window.dispatchEvent(new PopStateEvent('popstate'));
+  navigate(path);
 }
 
 function loadDraft(moveId: string, analysisId: string): ReviewDraft {
@@ -37,38 +34,69 @@ function loadDraft(moveId: string, analysisId: string): ReviewDraft {
     const draft = saved ? JSON.parse(saved) as ReviewDraft : null;
     if (draft?.analysisId === analysisId) return { ...draft, answers: draft.answers ?? draft.notes.map(note => ({ step: note.step, text: note.text })), selectedMoveType: draft.selectedMoveType ?? null };
   } catch { /* Damaged browser data is discarded. */ }
-  return { ...emptyDraft(analysisId), selectedMoveType: isReviewPreview() ? 'full' : null };
+  return emptyDraft(analysisId);
 }
 
 export function useReview() {
-  const [preview] = useState(isReviewPreview);
-  const [move] = useState<MoveSession | null>(() => preview ? { move_id: '__preview__', guest_token: '' } : activeMove());
+  const [move] = useState<MoveSession | null>(activeMove);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [inventory, setInventory] = useState<Inventory | null>(null);
   const [draft, setDraft] = useState<ReviewDraft | null>(null);
-  const [loading, setLoading] = useState(!!move && !preview);
+  const [loading, setLoading] = useState(!!move);
   const [error, setError] = useState('');
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
     if (!move) return;
     let active = true;
-    if (import.meta.env.DEV && preview) {
-      if (new URLSearchParams(window.location.search).get('reset') === '1') sessionStorage.removeItem(storageKey(move.move_id));
-      void import('./reviewPreview').then(({ reviewPreview }) => {
-        if (!active) return;
-        setAnalysis(reviewPreview);
-        setDraft(loadDraft(move.move_id, reviewPreview.analysis_id!));
-      });
-      return () => { active = false; };
-    }
-    getAnalysis(move.move_id, move.guest_token).then(result => {
+    setAnalysis(null);
+    setInventory(null);
+    setDraft(null);
+    Promise.all([getAnalysis(move.move_id, move.guest_token), getInventory(move.move_id, move.guest_token)]).then(([result, currentInventory]) => {
       if (!active) return;
       setAnalysis(result);
-      if (result.status === 'completed' && result.analysis_id) setDraft(loadDraft(move.move_id, result.analysis_id));
-      setError('');
-    }).catch(() => { if (active) setError('분석 결과를 불러오지 못했어요. 잠시 후 다시 시도해주세요.'); })
+      setInventory(currentInventory);
+      if (result.demo) setError('데모 분석 결과는 실제 이삿짐 목록으로 표시하지 않아요.');
+      else {
+        if (result.status === 'completed' && result.analysis_id) setDraft(loadDraft(move.move_id, result.analysis_id));
+        setError('');
+      }
+    }).catch(cause => { if (active) setError(cause instanceof ApiError && cause.status === 401 ? '로그인이 만료됐어요. 다시 로그인해주세요.' : '분석 결과를 불러오지 못했어요. 잠시 후 다시 시도해주세요.'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [move, preview]);
+  }, [move, retryKey]);
+
+  async function changeQuantity(itemId: string, quantity: number) {
+    if (!move) return;
+    try {
+      if (inventory?.status === 'confirmed') await unconfirmInventory(move.move_id, move.guest_token);
+      await patchInventoryItem(move.move_id, move.guest_token, itemId, { quantity });
+      if (inventory?.status === 'confirmed') await confirmInventory(move.move_id, move.guest_token);
+      setInventory(await getInventory(move.move_id, move.guest_token));
+      setError('');
+    } catch { setError('수량을 저장하지 못했어요. 다시 시도해주세요.'); }
+  }
+
+  async function removeItem(itemId: string) {
+    if (!move) return;
+    try {
+      if (inventory?.status === 'confirmed') await unconfirmInventory(move.move_id, move.guest_token);
+      await deleteInventoryItem(move.move_id, move.guest_token, itemId);
+      if (inventory?.status === 'confirmed') await confirmInventory(move.move_id, move.guest_token);
+      setInventory(await getInventory(move.move_id, move.guest_token));
+      setError('');
+    } catch { setError('물품을 삭제하지 못했어요. 다시 시도해주세요.'); }
+  }
+
+  async function confirmList() {
+    if (!move) return false;
+    try {
+      await confirmInventory(move.move_id, move.guest_token);
+      setInventory(await getInventory(move.move_id, move.guest_token));
+      setError('');
+      return true;
+    } catch { setError('목록을 확정하지 못했어요. 다시 시도해주세요.'); return false; }
+  }
 
   function updateDraft(change: (current: ReviewDraft) => ReviewDraft) {
     if (!move || !draft) return;
@@ -77,10 +105,10 @@ export function useReview() {
     setDraft(next);
   }
 
-  const items = analysis?.items.map(item => ({ ...item, quantity: draft?.quantities[item.item_id] ?? item.quantity })) || [];
-  const added = draft?.added || [];
-  const total = items.reduce((sum, item) => sum + item.quantity, 0) + added.reduce((sum, item) => sum + item.quantity, 0);
-  return { move, analysis, draft, loading, error, items, added, total, preview, updateDraft };
+  const items = inventory?.items ?? [];
+  const added: ReviewDraft['added'] = [];
+  const total = inventory?.total_quantity ?? 0;
+  return { move, analysis, inventory, draft, loading, error, items, added, total, updateDraft, changeQuantity, removeItem, confirmList, retry: () => { setLoading(true); setRetryKey(key => key + 1); } };
 }
 
 export function dimensions(item: AnalysisItem): string {
