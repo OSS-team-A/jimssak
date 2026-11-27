@@ -17,7 +17,6 @@ import chevronIcon from '../assets/chat-chevron.svg';
 import rowChevronIcon from '../assets/chat-row-chevron.svg';
 import inventoryCloseIcon from '../assets/inventory-close.svg';
 import inventoryChevronDown from '../assets/inventory-chevron-down.svg';
-import inventoryChevronUp from '../assets/inventory-chevron-up.svg';
 import inventoryMinusIcon from '../assets/inventory-minus.svg';
 import inventoryPlusIcon from '../assets/inventory-plus.svg';
 
@@ -103,6 +102,7 @@ export function ChatPage() {
   const [sending, setSending] = useState(false);
   const [pdfNotice, setPdfNotice] = useState<string | null>(null);
   const [animatedReplyKey, setAnimatedReplyKey] = useState<string | null>(null);
+  const [delayedStep, setDelayedStep] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const hasScrolledRef = useRef(false);
   const step = Math.min(draft?.step ?? 0, 5);
@@ -155,6 +155,7 @@ export function ChatPage() {
       const history = draft.chatMessages.map(({ role, content }) => ({ role, content }));
       const reply = await sendMoveChat(move.move_id, move.guest_token, text, history);
       setAnimatedReplyKey(`${draft.step}-${draft.chatMessages.filter(entry => entry.step === draft.step).length + 1}`);
+      if (reply.advance && !reply.proposal_id && step >= 1 && step <= 3) setDelayedStep(step + 1);
       updateDraft(current => ({
         ...current,
         chatMessages: [...current.chatMessages, { step: current.step, role: 'user', content: text }, { step: current.step, role: 'assistant', content: reply.message }],
@@ -179,6 +180,7 @@ export function ChatPage() {
     try {
       const applied = await applyMoveChat(move.move_id, move.guest_token, draft.pendingProposal.id);
       setAnimatedReplyKey(`${draft.step}-${draft.chatMessages.filter(entry => entry.step === draft.step).length}`);
+      if (applied.advance && step >= 1 && step <= 3) setDelayedStep(step + 1);
       setChatInventory(applied.inventory);
       updateDraft(current => ({
         ...current,
@@ -261,7 +263,7 @@ export function ChatPage() {
         const questionStep = index + 1;
         const completed = step > questionStep;
         const answer = draft.answers.find(entry => entry.step === questionStep)?.text ?? question.skip;
-        return <section className="review-chat-turn" data-chat-step={questionStep} key={questionStep}>
+        return <section className={`review-chat-turn${delayedStep === questionStep ? ' review-chat-turn--delayed' : ''}`} data-chat-step={questionStep} key={questionStep}>
           <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
           <h1>{question.title}</h1>
           <p className="review-chat-intro">{question.description}</p>
@@ -271,7 +273,7 @@ export function ChatPage() {
           {!completed && !draft.pendingProposal && <Button disabled={sending} onClick={() => void next()}>{question.skip}</Button>}
         </section>;
       })}
-      {step === 4 && <section className="review-chat-turn" data-chat-step="4">
+      {step === 4 && <section className={`review-chat-turn${delayedStep === 4 ? ' review-chat-turn--delayed' : ''}`} data-chat-step="4">
         <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
         <h1>이 내용으로 견적을 비교할까요?</h1>
         <p className="review-chat-intro">확인한 이삿짐과 이사 조건을 바탕으로 이사 유형별 예상 비용을 비교해요. 실제 견적은 업체와 상담할 때 확인해주세요.</p>
@@ -299,6 +301,7 @@ export function ChatPage() {
 export function InventoryPage() {
   const { move, analysis, draft, loading, error, items, added, total, changeQuantity, removeItem, retry } = useReview();
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [openedItems, setOpenedItems] = useState<Set<string>>(() => new Set());
   const [pendingDelete, setPendingDelete] = useState<{ id: string; label: string; added: boolean } | null>(null);
   const ready = analysis?.status === 'completed' && !!draft;
   const visibleItems = items.filter(item => item.quantity > 0);
@@ -328,8 +331,13 @@ export function InventoryPage() {
       <div className="review-inventory-stats"><span>품목 수 <strong>{visibleItems.length + added.filter(item => item.quantity > 0).length}종</strong></span><span>총 수량 <strong>{total}개</strong></span></div>
       <div className="review-inventory-table"><div className="review-inventory-table-head"><span>번호</span><span>품목</span><span>수량</span><span>예상 크기 (cm)</span></div>
         {visibleItems.map((item, index) => <div className="review-inventory-item" key={item.item_id}>
-          <div className="review-inventory-row"><small>{String(index + 1).padStart(2, '0')}</small><strong>{item.label_ko}</strong><div className="review-quantity"><button type="button" onClick={() => decrease(item.item_id, item.label_ko, item.quantity, false)} aria-label={`${item.label_ko} 수량 줄이기`}><img src={inventoryMinusIcon} alt="" /></button><b>{pendingDelete?.id === item.item_id ? 0 : item.quantity}</b><button type="button" onClick={() => void changeQuantity(item.item_id, item.quantity + 1)} aria-label={`${item.label_ko} 수량 늘리기`}><img src={inventoryPlusIcon} alt="" /></button></div><span>{dimensions(item)}</span><button className="review-expand" type="button" onClick={() => setExpanded(expanded === item.item_id ? null : item.item_id)} aria-label={`${item.label_ko} 상세 ${expanded === item.item_id ? '닫기' : '보기'}`}><img src={expanded === item.item_id ? inventoryChevronUp : inventoryChevronDown} alt="" /></button></div>
-          {expanded === item.item_id && <div className="review-inventory-detail"><InventoryPhoto path={item.snapshots[0]?.image_url ?? null} label={item.label_ko} guestToken={move?.guest_token ?? ''} /><dl><dt>크기</dt><dd>{dimensions(item)} cm</dd><dt>예상 무게</dt><dd>확인 필요</dd><dt>분리 여부</dt><dd>{item.disassembly_required == null ? '확인 필요' : item.disassembly_required ? '분리 필요' : '분리 불필요'}</dd><dt>검토</dt><dd>{item.needs_review ? item.review_reasons.join(' · ') || '확인 필요' : '확인 완료'}</dd></dl></div>}
+          <div className="review-inventory-row"><small>{String(index + 1).padStart(2, '0')}</small><strong>{item.label_ko}</strong><div className="review-quantity"><button type="button" onClick={() => decrease(item.item_id, item.label_ko, item.quantity, false)} aria-label={`${item.label_ko} 수량 줄이기`}><img src={inventoryMinusIcon} alt="" /></button><b>{pendingDelete?.id === item.item_id ? 0 : item.quantity}</b><button type="button" onClick={() => void changeQuantity(item.item_id, item.quantity + 1)} aria-label={`${item.label_ko} 수량 늘리기`}><img src={inventoryPlusIcon} alt="" /></button></div><span>{dimensions(item)}</span><button className={`review-expand${expanded === item.item_id ? ' is-open' : ''}`} type="button" onClick={() => {
+            setOpenedItems(current => current.has(item.item_id) ? current : new Set(current).add(item.item_id));
+            setExpanded(current => current === item.item_id ? null : item.item_id);
+          }} aria-label={`${item.label_ko} 상세 ${expanded === item.item_id ? '닫기' : '보기'}`} aria-expanded={expanded === item.item_id} aria-controls={`inventory-detail-${item.item_id}`}><img src={inventoryChevronDown} alt="" /></button></div>
+          <div id={`inventory-detail-${item.item_id}`} className={`review-inventory-collapsible${expanded === item.item_id ? ' is-open' : ''}`} aria-hidden={expanded !== item.item_id}>
+            <div className="review-inventory-collapsible-inner"><div className="review-inventory-detail"><InventoryPhoto path={openedItems.has(item.item_id) ? item.snapshots[0]?.image_url ?? null : null} label={item.label_ko} guestToken={move?.guest_token ?? ''} /><dl><dt>크기</dt><dd>{dimensions(item)} cm</dd><dt>예상 무게</dt><dd>확인 필요</dd><dt>분리 여부</dt><dd>{item.disassembly_required == null ? '확인 필요' : item.disassembly_required ? '분리 필요' : '분리 불필요'}</dd><dt>검토</dt><dd>{item.needs_review ? item.review_reasons.join(' · ') || '확인 필요' : '확인 완료'}</dd></dl></div></div>
+          </div>
         </div>)}
       </div>
       <div className="review-inventory-total"><strong>합계</strong><strong>{total}개</strong></div>

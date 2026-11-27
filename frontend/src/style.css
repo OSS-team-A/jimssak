@@ -316,6 +316,7 @@ input.move-field { margin-top: 8px; color: #191f28; }
 @keyframes review-chat-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) { .review-chat-turn, .review-assistant-reply--new, .review-user-bubble { animation: none !important; } }
 .app-page .review-chat-turn { margin: 0 0 18px; padding: 0; border: 0; border-radius: 0; animation: review-chat-rise .42s ease-out both; }
+.app-page .review-chat-turn--delayed { animation-delay: .58s; }
 .review-chat-turn > h1 { margin-top: 16px; color: #333d4b; font-size: 20px; line-height: 28px; letter-spacing: normal; }
 .review-user-bubble { width: fit-content; max-width: 80%; margin: 0 0 18px auto; padding: 16px; border-radius: 20px; background: #e8f8f4; color: #333d4b; font-size: 15px; line-height: 23px; animation: review-chat-rise .42s ease-out both; }
 .review-summary { display: flex; flex-direction: column; gap: 0; width: 100%; margin-top: 18px; padding: 20px; border: 0; border-radius: 20px; background: #f7f8fa; color: #333d4b; text-align: left; }
@@ -393,7 +394,11 @@ input.move-field { margin-top: 8px; color: #191f28; }
 .review-quantity button img { display: block; }
 .review-quantity b { display: grid; place-items: center; flex: none; width: 35px; height: 26px; border-radius: 8px; background: white; box-shadow: 0 1px 2px #001b371a; color: #333d4b; font-size: 13px; font-weight: 600; }
 .review-expand { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; background: none; }
-.review-expand img { display: block; }
+.review-expand img { display: block; transition: transform .34s cubic-bezier(.22, 1, .36, 1); }
+.review-expand.is-open img { transform: rotate(180deg); }
+.review-inventory-collapsible { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .38s cubic-bezier(.22, 1, .36, 1), opacity .26s ease; }
+.review-inventory-collapsible.is-open { grid-template-rows: 1fr; opacity: 1; }
+.review-inventory-collapsible-inner { min-height: 0; overflow: hidden; }
 .review-inventory-detail { padding: 18px 16px; background: #f2faf7; }
 .review-inventory-photo { position: relative; width: min(310px, 100%); aspect-ratio: 310 / 176; margin-bottom: 12px; overflow: hidden; border-radius: 16px; background: #000; }
 .review-inventory-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
@@ -405,6 +410,7 @@ input.move-field { margin-top: 8px; color: #191f28; }
 .review-inventory-help { padding: 24px 0; color: #333d4b; font-size: 13px; }
 .review-inventory-help p { margin-top: 12px; color: #6b7684; font-size: 12px; line-height: 18px; }
 .review-inventory-help small { display: block; margin-top: 18px; color: #8b95a1; font-size: 11px; }
+@media (prefers-reduced-motion: reduce) { .review-expand img, .review-inventory-collapsible { transition: none; } }
 .review-delete-backdrop { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: 24px; background: #0007; }
 .review-delete-dialog { width: min(311px, 100%); padding: 22px 16px 16px; border-radius: 24px; background: white; }
 .review-delete-dialog h2 { padding: 0 6px; color: #333d4b; font-size: 20px; line-height: 27px; letter-spacing: normal; }
