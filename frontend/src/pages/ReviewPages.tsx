@@ -146,7 +146,7 @@ export function ChatPage() {
   }
 
   async function sendChat(text: string) {
-    if (!text || !move || !draft || !ready || sending || draft.pendingProposal || step === 0) return;
+    if (!text || !move || !draft || !ready || sending || draft.pendingProposal) return;
     setSending(true);
     setPendingText(text);
     setChatError('');
@@ -162,7 +162,7 @@ export function ChatPage() {
         pendingProposal: reply.proposal_id ? { id: reply.proposal_id, summary: reply.summary, step: current.step } : null,
         choices: reply.choices,
         answers: reply.advance && current.step <= 3 ? [...current.answers, { step: current.step, text }] : current.answers,
-        step: reply.advance && !reply.proposal_id && current.step !== 4 ? Math.min(current.step + 1, 5) : current.step,
+        step: reply.advance && !reply.proposal_id && current.step !== 0 && current.step !== 4 ? Math.min(current.step + 1, 5) : current.step,
       }));
       setMessage('');
       setPendingText('');
@@ -188,7 +188,7 @@ export function ChatPage() {
         pendingProposal: null,
         choices: applied.choices,
         answers: applied.advance && current.step <= 3 ? [...current.answers, { step: current.step, text: current.chatMessages.filter(entry => entry.step === current.step && entry.role === 'user').at(-1)?.content ?? '' }] : current.answers,
-        step: applied.advance && current.step !== 4 ? Math.min(current.step + 1, 5) : current.step,
+        step: applied.advance && current.step !== 0 && current.step !== 4 ? Math.min(current.step + 1, 5) : current.step,
       }));
       if (step === 5 && applied.advance) await confirmList();
     } catch (cause) {
@@ -256,7 +256,8 @@ export function ChatPage() {
           {total === 0 && <span className="review-summary-empty">분석에서 찾은 물품이 없어요.</span>}
           <span className="review-summary-count">총 {total}개 · 누르면 자세히 볼 수 있어요</span>
         </button>
-        {step === 0 && <Button onClick={() => void next()}>확인했어요</Button>}
+        {chatExchange(0)}
+        {step === 0 && <Button disabled={sending || !!draft.pendingProposal} onClick={() => void next()}>확인했어요</Button>}
       </section>
       {step > 0 && <div className="review-user-bubble">목록을 확인했어요</div>}
       {questions.slice(0, Math.min(step, 3)).map((question, index) => {
@@ -290,8 +291,8 @@ export function ChatPage() {
       <ChatFooter canDownload={canDownload} onPdf={onPdf} result={step === 5} />
       {chatError && <p className="review-local-note" role="alert">{chatError} {chatError.includes('만료') && <button type="button" onClick={() => navigate(routes.login)}>로그인하기</button>}</p>}
       <form className="review-chat-input" onSubmit={send}>
-        <input value={message} maxLength={1000} onChange={event => setMessage(event.target.value)} placeholder="수정할 내용을 알려주세요" aria-label="검토 내용" disabled={!ready || sending || !!draft?.pendingProposal || step === 0} />
-        <button type="submit" aria-label="내용 보내기" disabled={!message.trim() || !ready || sending || !!draft?.pendingProposal || step === 0}><img src={sendIcon} alt="" /></button>
+        <input value={message} maxLength={1000} onChange={event => setMessage(event.target.value)} placeholder="수정할 내용을 알려주세요" aria-label="검토 내용" disabled={!ready || sending || !!draft?.pendingProposal} />
+        <button type="submit" aria-label="내용 보내기" disabled={!message.trim() || !ready || sending || !!draft?.pendingProposal}><img src={sendIcon} alt="" /></button>
       </form>
       <p>문서는 목록과 이사 조건을 확인한 뒤 만들 수 있어요</p>
     </div>
