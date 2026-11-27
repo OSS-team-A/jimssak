@@ -3,6 +3,7 @@ import { confirmInventory, deleteInventoryItem, getAnalysis, getInventory, patch
 import { navigate, type AppRoute } from '../app/routes';
 import { ApiError } from '../api/client';
 import type { AnalysisItem, AnalysisResult, Inventory } from '../types/move';
+import type { ChatTurn } from '../api/chat';
 
 type MoveSession = { move_id: string; guest_token: string };
 export type ReviewDraft = {
@@ -13,6 +14,9 @@ export type ReviewDraft = {
   notes: { step: number; text: string }[];
   answers: { step: number; text: string }[];
   selectedMoveType: 'standard' | 'semi' | 'full' | null;
+  chatMessages: (ChatTurn & { step: number })[];
+  pendingProposal: { id: string; summary: string[]; step: number } | null;
+  choices: string[];
 };
 
 function activeMove(): MoveSession | null {
@@ -22,7 +26,7 @@ function activeMove(): MoveSession | null {
   } catch { return null; }
 }
 
-const emptyDraft = (analysisId: string): ReviewDraft => ({ analysisId, step: 0, quantities: {}, added: [], notes: [], answers: [], selectedMoveType: null });
+const emptyDraft = (analysisId: string): ReviewDraft => ({ analysisId, step: 0, quantities: {}, added: [], notes: [], answers: [], selectedMoveType: null, chatMessages: [], pendingProposal: null, choices: [] });
 const storageKey = (moveId: string) => `jimssak-review-${moveId}`;
 export function navigateReview(path: AppRoute) {
   navigate(path);
@@ -32,7 +36,7 @@ function loadDraft(moveId: string, analysisId: string): ReviewDraft {
   try {
     const saved = sessionStorage.getItem(storageKey(moveId));
     const draft = saved ? JSON.parse(saved) as ReviewDraft : null;
-    if (draft?.analysisId === analysisId) return { ...draft, answers: draft.answers ?? draft.notes.map(note => ({ step: note.step, text: note.text })), selectedMoveType: draft.selectedMoveType ?? null };
+    if (draft?.analysisId === analysisId) return { ...draft, answers: draft.answers ?? draft.notes.map(note => ({ step: note.step, text: note.text })), selectedMoveType: draft.selectedMoveType ?? null, chatMessages: draft.chatMessages ?? [], pendingProposal: draft.pendingProposal ?? null, choices: draft.choices ?? [] };
   } catch { /* Damaged browser data is discarded. */ }
   return emptyDraft(analysisId);
 }
@@ -95,6 +99,24 @@ export function useReview() {
     } catch { setError('목록을 확정하지 못했어요. 다시 시도해주세요.'); return false; }
   }
 
+  async function prepareChat() {
+    if (!move) throw new Error('이사 정보를 찾을 수 없어요.');
+    if (inventory?.status === 'confirmed') {
+      await unconfirmInventory(move.move_id, move.guest_token);
+      setInventory(await getInventory(move.move_id, move.guest_token));
+    }
+  }
+
+  function setChatInventory(next: Inventory) {
+    setInventory(next);
+    setError('');
+  }
+
+  async function refreshInventory() {
+    if (!move) return;
+    setInventory(await getInventory(move.move_id, move.guest_token));
+  }
+
   function updateDraft(change: (current: ReviewDraft) => ReviewDraft) {
     if (!move || !draft) return;
     const next = change(draft);
@@ -105,7 +127,7 @@ export function useReview() {
   const items = inventory?.items ?? [];
   const added: ReviewDraft['added'] = [];
   const total = inventory?.total_quantity ?? 0;
-  return { move, analysis, inventory, draft, loading, error, items, added, total, updateDraft, changeQuantity, removeItem, confirmList, retry: () => { setLoading(true); setRetryKey(key => key + 1); } };
+  return { move, analysis, inventory, draft, loading, error, items, added, total, updateDraft, changeQuantity, removeItem, confirmList, prepareChat, setChatInventory, refreshInventory, retry: () => { setLoading(true); setRetryKey(key => key + 1); } };
 }
 
 export function dimensions(item: AnalysisItem): string {
