@@ -246,9 +246,7 @@ def test_chat_asks_for_missing_size_then_adds_item_without_confirmation(demo_cli
         ChatInterpretation.model_validate({
             "message": "스피커를 추가할까요?",
             "changes": {"items": [{"action": "add", "item": {
-                "label_ko": "스피커", "dimensions_cm": {
-                    "width": 22, "depth": 14, "height": 30,
-                },
+                "label_ko": "스피커", "notes": "크기: 220x140mm (측정 방향 미확인)",
             }}]},
         }),
     ])
@@ -261,7 +259,7 @@ def test_chat_asks_for_missing_size_then_adds_item_without_confirmation(demo_cli
     assert demo_client.get(inventory_url, headers=headers).json() == before
 
     second = demo_client.post(f"{url}/chat", headers=headers, json={
-        "message": "가로 22, 깊이 14, 높이 30cm야",
+        "message": "220x140mm야",
         "history": [
             {"role": "user", "content": "스피커 추가해줘"},
             {"role": "assistant", "content": first.json()["message"]},
@@ -272,6 +270,7 @@ def test_chat_asks_for_missing_size_then_adds_item_without_confirmation(demo_cli
     assert "이삿짐 목록에 추가했어요" in second.json()["message"]
     assert second.json()["inventory"]["total_quantity"] == before["total_quantity"] + 1
     assert second.json()["inventory"]["items"][-1]["label_ko"] == "스피커"
+    assert second.json()["inventory"]["items"][-1]["notes"] == "크기: 220x140mm (측정 방향 미확인)"
     assert demo_client.get(inventory_url, headers=headers).json() == second.json()["inventory"]
 
 

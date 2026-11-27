@@ -3,7 +3,7 @@ import { BrandHeader } from '../components/common/BrandHeader';
 import { Button } from '../components/common/Button';
 import { InventoryDeleteDialog } from '../components/common/InventoryDeleteDialog';
 import { getAnalysisPhoto } from '../api/moves';
-import { applyMoveChat, sendMoveChat } from '../api/chat';
+import { applyMoveChat, sendMoveChat, type ChatReply } from '../api/chat';
 import { ApiError } from '../api/client';
 import { navigate, openHistoryFromChat, routes } from '../app/routes';
 import { dimensions, navigateReview, useReview, type ReviewDraft } from '../features/review';
@@ -27,6 +27,10 @@ const questions = [
   { title: '이사할 때 알아두면 좋을 점이 있나요?', description: '무거운 물품이나 트럭 진입 제한, 짐을 빼는 날과 받는 날이 다른 경우를 알려주세요.', example: '“침대가 돌침대예요. 짐을 빼고 이틀 뒤에 받아야 해요.”', skip: '특이사항 없어요' },
 ];
 const demoNotice = '서버에서 제공한 예시 목록이에요. 실제 촬영한 물품과 다를 수 있어요.';
+
+const hasSizeInMessage = (message: string) => /\d+(?:\.\d+)?\s*(?:mm|cm|인치|inch)|\d+(?:\.\d+)?\s*[x×*]\s*\d+|(?:가로|세로|깊이|높이)\s*\d+/i.test(message);
+const isAddOnlyProposal = (reply: ChatReply) => Boolean(reply.proposal_id && reply.summary.length)
+  && reply.summary.every(line => /^.+\s\d+개 추가(?:\s*·.*)?$/.test(line));
 
 function InventoryPhoto({ path, label, guestToken }: { path: string | null; label: string; guestToken: string }) {
   const [src, setSrc] = useState('');
@@ -166,20 +170,43 @@ export function ChatPage() {
       await prepareChat();
       const history = draft.chatMessages.map(({ role, content }) => ({ role, content }));
       const reply = await sendMoveChat(move.move_id, move.guest_token, text, history);
-      if (reply.inventory) setChatInventory(reply.inventory);
+      let savedInventory = reply.inventory ?? null;
+      let assistantMessage = reply.message;
+      let proposalId = reply.proposal_id;
+      let choices = reply.choices;
+      let advance = reply.advance;
+      if (savedInventory) {
+        assistantMessage = '이삿짐 목록에 추가했어요.';
+        advance = step <= 3;
+      } else if (isAddOnlyProposal(reply)) {
+        proposalId = null;
+        choices = [];
+        if (!hasSizeInMessage(text)) {
+          assistantMessage = '추가할 물품의 크기를 알려주세요. 알고 있는 치수를 cm나 mm로 적어주세요.';
+          advance = false;
+        } else {
+          const applied = await applyMoveChat(move.move_id, move.guest_token, reply.proposal_id!);
+          savedInventory = applied.inventory;
+          assistantMessage = '이삿짐 목록에 추가했어요.';
+          advance = step <= 3;
+          choices = applied.choices;
+        }
+      }
+      if (savedInventory) setChatInventory(savedInventory);
       setAnimatedReplyKey(`${draft.step}-${draft.chatMessages.filter(entry => entry.step === draft.step).length + 1}`);
-      if (reply.advance && !reply.proposal_id && step >= 1 && step <= 3) setDelayedStep(step + 1);
+      if (advance && !proposalId && step <= 3 && (step > 0 || savedInventory)) setDelayedStep(step + 1);
       updateDraft(current => ({
         ...current,
-        chatMessages: [...current.chatMessages, { step: current.step, role: 'user', content: text }, { step: current.step, role: 'assistant', content: reply.message, ...(reply.inventory ? { inventory: reply.inventory } : {}) }],
-        pendingProposal: reply.proposal_id ? { id: reply.proposal_id, summary: reply.summary, step: current.step } : null,
-        choices: reply.choices,
-        answers: reply.advance && current.step <= 3 ? [...current.answers, { step: current.step, text }] : current.answers,
-        step: reply.advance && !reply.proposal_id && current.step !== 0 && current.step !== 4 ? Math.min(current.step + 1, 5) : current.step,
+        chatMessages: [...current.chatMessages, { step: current.step, role: 'user', content: text }, { step: current.step, role: 'assistant', content: assistantMessage, ...(savedInventory ? { inventory: savedInventory } : {}) }],
+        pendingProposal: proposalId ? { id: proposalId, summary: reply.summary, step: current.step } : null,
+        choices,
+        answers: advance && current.step >= 1 && current.step <= 3 ? [...current.answers, { step: current.step, text }] : current.answers,
+        step: advance && !proposalId && current.step <= 3 && (current.step > 0 || savedInventory)
+          ? Math.min(current.step + 1, 4) : current.step,
       }));
       setMessage('');
       setPendingText('');
-      if (step === 5 && reply.advance && !reply.proposal_id) await confirmList();
+      if (step === 5 && ((advance && !proposalId) || savedInventory)) await confirmList();
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 409) void refreshInventory();
       setChatError(cause instanceof ApiError ? cause.status === 409 ? '목록 상태가 바뀌었어요. 같은 내용을 다시 보내주세요.' : cause.status === 401 ? '로그인이 만료됐어요. 다시 로그인해주세요.' : cause.message : '답변을 보내지 못했어요. 다시 시도해주세요.');
@@ -267,7 +294,7 @@ export function ChatPage() {
         {chatExchange(0)}
         {step === 0 && <Button disabled={sending || !!draft.pendingProposal} onClick={() => void next()}>확인했어요</Button>}
       </section>
-      {step > 0 && <div className="review-user-bubble">목록을 확인했어요</div>}
+      {step > 0 && !draft.chatMessages.some(entry => entry.step === 0 && entry.inventory) && <div className="review-user-bubble">목록을 확인했어요</div>}
       {questions.slice(0, Math.min(step, 3)).map((question, index) => {
         const questionStep = index + 1;
         const completed = step > questionStep;

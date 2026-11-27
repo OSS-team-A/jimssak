@@ -1,4 +1,5 @@
 import json
+import re
 from copy import deepcopy
 from dataclasses import asdict, dataclass
 from hashlib import sha256
@@ -151,9 +152,28 @@ def _additions_only(changes: ChatChanges) -> bool:
     )
 
 
-def _missing_addition_sizes(changes: ChatChanges) -> list[str]:
-    return [item.item.label_ko for item in changes.items if isinstance(item, ChatAddItem)
-            and any(value is None for value in item.item.dimensions_cm.model_dump().values())]
+def _has_size(value: str) -> bool:
+    return bool(re.search(
+        r"\d+(?:\.\d+)?\s*(?:mm|cm|인치|inch)|"
+        r"\d+(?:\.\d+)?\s*[x×*]\s*\d+|"
+        r"(?:가로|세로|깊이|높이)\s*\d+",
+        value, re.IGNORECASE,
+    ))
+
+
+def _missing_addition_sizes(changes: ChatChanges, message: str) -> list[str]:
+    missing = []
+    for change in changes.items:
+        if not isinstance(change, ChatAddItem):
+            continue
+        item = change.item
+        known = any(value is not None for value in item.dimensions_cm.model_dump().values())
+        known |= _has_size(item.notes or "")
+        if len(changes.items) == 1:
+            known |= _has_size(message)
+        if not known:
+            missing.append(item.label_ko)
+    return missing
 
 
 def _move_update(
@@ -293,18 +313,19 @@ def propose(
         return ChatReply(message=interpretation.message, choices=interpretation.choices,
                          advance=interpretation.advance)
     if _additions_only(changes):
-        missing = _missing_addition_sizes(changes)
+        missing = _missing_addition_sizes(changes, body.message)
         if missing:
+            names = ", ".join(missing)
             return ChatReply(
-                message=f"{', '.join(missing)}의 가로 × 깊이 × 높이 크기를 cm로 알려주세요."
+                message=f"{names}의 크기를 알려주세요. 알고 있는 치수를 cm나 mm로 적어주세요."
             )
         with edit_inventory(analyses.db, job.analysis_id) as row:
             if row is None or row["confirmed"] or inventory_from_row(row) != state.inventory:
                 raise HTTPException(409, STALE)
-            added = [append_item(row["items"], change.item) for change in changes.items]
+            for change in changes.items:
+                append_item(row["items"], change.item)
             saved_inventory = inventory_from_row(row)
-        names = ", ".join(f"{item.label_ko} {item.quantity}개" for item in added)
-        return ChatReply(message=f"{names}를 이삿짐 목록에 추가했어요.", inventory=saved_inventory)
+        return ChatReply(message="이삿짐 목록에 추가했어요.", inventory=saved_inventory)
     try:
         items = [item.model_dump() for item in state.inventory.items]
         summary = _apply_items(items, changes)
