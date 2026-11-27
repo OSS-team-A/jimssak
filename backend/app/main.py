@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .api.addresses import router as addresses_router
 from .api.analysis_worker import router as analysis_worker_router
 from .api.auth import router as auth_router
+from .api.estimates import router as estimates_router
 from .api.inventory import router as inventory_router
 from .api.move_chat import router as move_chat_router
 from .api.moves import router as moves_router
@@ -92,6 +93,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(router)
     app.include_router(auth_router)
     app.include_router(moves_router)
+    app.include_router(estimates_router)
     app.include_router(inventory_router)
     app.include_router(move_chat_router)
     app.include_router(addresses_router)

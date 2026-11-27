@@ -10,6 +10,8 @@ import secrets
 import time
 from dataclasses import dataclass, replace
 
+from psycopg import Connection
+
 from ..db import Database
 
 # Statuses kept in the table; "cancelled" marks a job whose video was replaced.
@@ -73,13 +75,16 @@ class AnalysisStore:
 
     def current(self, move_id: str) -> AnalysisJob | None:
         with self.db.connect() as db:
-            row = db.execute(
-                "SELECT * FROM move_analyses WHERE move_id = %s AND status != 'cancelled' "
-                "ORDER BY created_at DESC, seq DESC LIMIT 1", (move_id,),
-            ).fetchone()
-        if row is None:
-            return None
-        return self._settle(self._job(row))
+            job = self.latest(move_id, conn=db)
+        return self._settle(job) if job else None
+
+    def latest(self, move_id: str, *, conn: Connection) -> AnalysisJob | None:
+        """Read the newest job without settling it or opening another transaction."""
+        row = conn.execute(
+            "SELECT * FROM move_analyses WHERE move_id = %s AND status != 'cancelled' "
+            "ORDER BY created_at DESC, seq DESC LIMIT 1", (move_id,),
+        ).fetchone()
+        return self._job(row) if row else None
 
     def get(self, analysis_id: str) -> AnalysisJob | None:
         with self.db.connect() as db:
