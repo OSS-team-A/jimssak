@@ -82,6 +82,17 @@ def test_4k_coordinates_are_scaled_and_border_boxes_marked_incomplete(tmp_path):
     assert first.complete and not edge.complete
 
 
+def test_outline_a_few_pixels_short_of_the_border_is_incomplete(tmp_path):
+    # Upscaled model masks stop a few pixels short of the border they were cut at.
+    near = [[700, 800], [1075, 800], [1075, 1200], [700, 1200]]
+    frames = [(0, [det(1, [near], [700, 800, 1070, 1200]),
+                   det(2, [square(300, 300, 300)], [300, 300, 600, 600])])]
+    run = write_run(tmp_path, frames, items=[item("T00001", [1]), item("T00002", [2])])
+    cut, inside = sorted(ai1_adapter.from_run(run, tmp_path / "v.mp4").video.views,
+                         key=lambda v: v.track_id)
+    assert not cut.complete and inside.complete
+
+
 def test_no_listed_furniture_raises(tmp_path):
     run = write_run(tmp_path, [(0, [det(1, [square(0, 0)], [0, 0, 100, 100])])],
                     items=[item("T00001", [1], status="dropped")])

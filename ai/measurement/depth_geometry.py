@@ -119,9 +119,37 @@ def upright_basis(up):
     return np.stack((right, np.cross(up, right), up), axis=1)
 
 
+# A mask within this share of the long side from the image border counts as cut there.
+CUT_MARGIN_FRACTION = 0.01
+
+
+def cut_sides(mask) -> set[str]:
+    """Image borders (left, right, top, bottom) that a mask reaches."""
+    rows = np.flatnonzero(np.any(mask, axis=1))
+    cols = np.flatnonzero(np.any(mask, axis=0))
+    if not len(rows):
+        return set()
+    height, width = mask.shape
+    margin = max(2.0, CUT_MARGIN_FRACTION * max(height, width))
+    reached = {"top": rows[0] < margin, "bottom": rows[-1] > height - 1 - margin,
+               "left": cols[0] < margin, "right": cols[-1] > width - 1 - margin}
+    return {side for side, hit in reached.items() if hit}
+
+
 def object_dimensions(view, shape_mask, depth, camera, up):
-    if up is None or not view.complete:
+    """Width, depth and height of the masked object in one view (cm).
+
+    A view marked incomplete gives nothing, except when its mask is cut only at the left
+    or right border: the top and bottom are then both in frame, so its height is kept.
+    """
+    if up is None:
         return {}
+    height_only = False
+    if not view.complete:
+        sides = cut_sides(shape_mask) if view.has_mask else set()
+        if not sides or sides & {"top", "bottom"}:
+            return {}
+        height_only = True
     foreground = shape_mask.astype(bool)
     if not view.has_mask:
         # A detection box may include a wall or floor. Keep the depth cluster
@@ -141,6 +169,8 @@ def object_dimensions(view, shape_mask, depth, camera, up):
     if len(points) < 60:
         return {}
     points = points @ upright_basis(up)
-    width, length = sizes(points)
     height = float(np.ptp(np.percentile(points[:, 2], [1, 99])) * 100)
+    if height_only:
+        return {"height": height}
+    width, length = sizes(points)
     return {"width": float(width), "depth": float(length), "height": height}

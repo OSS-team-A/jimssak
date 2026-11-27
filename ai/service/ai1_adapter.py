@@ -13,7 +13,9 @@ agreed with AI 1 (``docs/ai1-handoff-for-ai2.md``):
   otherwise the track's item id. Possible matches AI 1 only flagged are left separate.
 - An outline in several pieces (an object split by something in front of it) is sent whole
   as ``mask_rle``, so both ends stay in the measurement; one piece is sent as a polygon.
-- A detection whose box touches the image border is marked ``complete: false``.
+- A detection whose box or outline comes within 1% of the long side (about 19 px at
+  1920) of the image border is marked ``complete: false``. Outlines come from a 640 px
+  model mask scaled up, so a cut edge often stops a few pixels short of the border.
 
 The worker uses :func:`recognize` (``--recognizer ai.service.ai1_adapter:recognize``). It
 runs ``infer.py`` and ``link_reappearance.py`` as subprocesses, so AI 1's own dependencies
@@ -46,6 +48,9 @@ MAX_SIDE = 1920
 VIEWS_PER_ITEM = 8
 MAX_ANNOTATED_FRAMES = 100
 BORDER_PX = 2
+# Margin from the image border, as a share of the long side, within which a box or an
+# outline counts as cut off (frame 387 of room05: a cut bookshelf stopped 5 px short).
+BORDER_FRACTION = 0.01
 LISTED = {"confirmed", "needs_review"}
 
 
@@ -93,9 +98,13 @@ def _view(det: dict, item_id: str, label: str, frame: int, scale: float,
             pieces.append(points)
     if not pieces:
         return None
-    x1, y1, x2, y2 = (v * scale for v in det["box_xyxy"])
-    complete = (x1 > BORDER_PX and y1 > BORDER_PX
-                and x2 < width - 1 - BORDER_PX and y2 < height - 1 - BORDER_PX)
+    box = [v * scale for v in det["box_xyxy"]]
+    outline = np.vstack(pieces)
+    margin = max(BORDER_PX, BORDER_FRACTION * max(width, height))
+    complete = all(
+        x1 > margin and y1 > margin and x2 < width - 1 - margin and y2 < height - 1 - margin
+        for x1, y1, x2, y2 in (box, (*outline.min(axis=0), *outline.max(axis=0)))
+    )
     view = {"frame_index": frame, "track_id": item_id, "label": label, "complete": complete}
     if len(pieces) == 1:
         view["mask_polygon_px"] = [[round(x, 1), round(y, 1)] for x, y in pieces[0]]
