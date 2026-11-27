@@ -278,8 +278,8 @@ export function ChatPage() {
         <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
         <h1>이 내용으로 견적을 비교할까요?</h1>
         <p className="review-chat-intro">확인한 이삿짐과 이사 조건을 바탕으로 이사 유형별 예상 비용을 비교해요. 실제 견적은 업체와 상담할 때 확인해주세요.</p>
-        {chatExchange(4)}
         <Button disabled={sending || !!draft.pendingProposal} onClick={() => { void confirmList().then(saved => { if (saved) updateDraft(current => ({ ...current, step: 5 })); }); }}>예상 비용 비교하기</Button>
+        {chatExchange(4)}
       </section>}
       {step === 5 && <section className="review-chat-turn review-estimate-turn" data-chat-step="5">
         <EstimateConversation total={total} selected={draft.selectedMoveType} pdfEnabled={canDownload} onSelect={type => updateDraft(current => ({ ...current, selectedMoveType: type }))} onPdf={onPdf} />
