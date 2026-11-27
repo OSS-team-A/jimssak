@@ -64,8 +64,8 @@ export function AnalysisPage() {
     <div className="analysis-content"><h1>촬영한 영상이 없어요</h1><p className="analysis-intro">방 영상을 촬영하거나 업로드하면 분석을 시작할 수 있어요.</p><Button variant="secondary" onClick={() => navigate(routes.capture)}>촬영 준비로 돌아가기</Button></div>
   </main>;
 
-  if (snapshot?.data.analysis.demo) return <main className="app-page analysis-page"><BrandHeader />
-    <div className="analysis-content"><h1>실제 분석 결과를 기다리고 있어요</h1><p className="analysis-intro">데모 분석 결과는 이삿짐 목록으로 표시하지 않아요.</p><Button variant="secondary" onClick={retry}>다시 확인하기</Button></div>
+  if (status === 'completed' && snapshot?.data.analysis.demo) return <main className="app-page analysis-page"><BrandHeader />
+    <div className="analysis-content"><h1>실제 이삿짐 목록을 만들지 못했어요</h1><p className="analysis-intro">영상은 업로드됐지만 현재 실제 영상 분석을 이용할 수 없어요. 임시 분석 결과는 이삿짐 목록에 표시하지 않아요.</p><Button variant="secondary" onClick={() => navigate(routes.moveInfo)}>이사 정보로 돌아가기</Button></div>
   </main>;
 
   if (error && !snapshot) return <main className="app-page analysis-page"><BrandHeader />
