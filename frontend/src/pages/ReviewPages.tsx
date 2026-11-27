@@ -3,6 +3,8 @@ import { BrandHeader } from '../components/common/BrandHeader';
 import { Button } from '../components/common/Button';
 import { InventoryDeleteDialog } from '../components/common/InventoryDeleteDialog';
 import { getAnalysisPhoto } from '../api/moves';
+import { applyMoveChat, sendMoveChat } from '../api/chat';
+import { ApiError } from '../api/client';
 import { navigate, routes } from '../app/routes';
 import { dimensions, navigateReview, useReview, type ReviewDraft } from '../features/review';
 import { downloadReviewPdf } from '../features/reviewPdf';
@@ -93,8 +95,10 @@ function EstimateConversation({ total, selected, pdfEnabled, onSelect, onPdf }: 
 }
 
 export function ChatPage() {
-  const { move, analysis, inventory, draft, loading, error, items, added, total, updateDraft, confirmList, retry } = useReview();
+  const { move, analysis, inventory, draft, loading, error, items, added, total, updateDraft, confirmList, prepareChat, setChatInventory, refreshInventory, retry } = useReview();
   const [message, setMessage] = useState('');
+  const [chatError, setChatError] = useState('');
+  const [sending, setSending] = useState(false);
   const [pdfNotice, setPdfNotice] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const step = Math.min(draft?.step ?? 0, 5);
@@ -116,24 +120,96 @@ export function ChatPage() {
       if (scroll) scroll.scrollTop = scroll.scrollHeight;
     });
     return () => cancelAnimationFrame(frame);
-  }, [ready, step, draft?.notes.length]);
+  }, [ready, step, draft?.chatMessages.length, draft?.notes.length]);
 
   async function next() {
-    if (step === 0 && !(await confirmList())) return;
     updateDraft(current => ({
       ...current,
       answers: current.step >= 1 && current.step <= 3
         ? [...current.answers, { step: current.step, text: questions[current.step - 1].skip }]
         : current.answers,
+      choices: [],
+      pendingProposal: null,
       step: Math.min(current.step + 1, 4),
     }));
   }
+
+  async function sendChat(text: string) {
+    if (!text || !move || !draft || !ready || sending || draft.pendingProposal || step === 0 || step === 4) return;
+    setSending(true);
+    setChatError('');
+    try {
+      await prepareChat();
+      const history = draft.chatMessages.map(({ role, content }) => ({ role, content }));
+      const reply = await sendMoveChat(move.move_id, move.guest_token, text, history);
+      updateDraft(current => ({
+        ...current,
+        chatMessages: [...current.chatMessages, { step: current.step, role: 'user', content: text }, { step: current.step, role: 'assistant', content: reply.message }],
+        pendingProposal: reply.proposal_id ? { id: reply.proposal_id, summary: reply.summary, step: current.step } : null,
+        choices: reply.choices,
+        answers: reply.advance && current.step <= 3 ? [...current.answers, { step: current.step, text }] : current.answers,
+        step: reply.advance && !reply.proposal_id ? Math.min(current.step + 1, 5) : current.step,
+      }));
+      setMessage('');
+      if (step === 5 && reply.advance && !reply.proposal_id) await confirmList();
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 409) void refreshInventory();
+      setChatError(cause instanceof ApiError ? cause.status === 409 ? '목록 상태가 바뀌었어요. 같은 내용을 다시 보내주세요.' : cause.status === 401 ? '로그인이 만료됐어요. 다시 로그인해주세요.' : cause.message : '답변을 보내지 못했어요. 다시 시도해주세요.');
+    } finally { setSending(false); }
+  }
+
+  async function applyProposal() {
+    if (!move || !draft?.pendingProposal || sending) return;
+    setSending(true);
+    setChatError('');
+    try {
+      const applied = await applyMoveChat(move.move_id, move.guest_token, draft.pendingProposal.id);
+      setChatInventory(applied.inventory);
+      updateDraft(current => ({
+        ...current,
+        chatMessages: [...current.chatMessages, { step: current.step, role: 'assistant', content: applied.message }],
+        pendingProposal: null,
+        choices: applied.choices,
+        answers: applied.advance && current.step <= 3 ? [...current.answers, { step: current.step, text: current.chatMessages.filter(entry => entry.step === current.step && entry.role === 'user').at(-1)?.content ?? '' }] : current.answers,
+        step: applied.advance ? Math.min(current.step + 1, 5) : current.step,
+      }));
+      if (step === 5 && applied.advance) await confirmList();
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 409) {
+        updateDraft(current => ({ ...current, pendingProposal: null }));
+        void refreshInventory();
+      }
+      setChatError(cause instanceof ApiError ? cause.status === 409 ? '목록이 바뀌어 이 제안을 적용할 수 없어요. 내용을 다시 보내주세요.' : cause.status === 401 ? '로그인이 만료됐어요. 다시 로그인해주세요.' : cause.message : '변경 내용을 반영하지 못했어요. 다시 시도해주세요.');
+    } finally { setSending(false); }
+  }
+
+  function cancelProposal() {
+    updateDraft(current => ({ ...current, pendingProposal: null, choices: [] }));
+    if (step === 5) void confirmList();
+  }
+
+  function chatExchange(questionStep: number) {
+    if (!draft) return null;
+    const messages = draft.chatMessages.filter(entry => entry.step === questionStep);
+    return <>
+      {messages.map((entry, index) => entry.role === 'user'
+        ? <div className="review-user-bubble" key={`${questionStep}-${index}`}>{entry.content}</div>
+        : <p className="review-chat-intro" key={`${questionStep}-${index}`}>{entry.content}</p>)}
+      {draft.pendingProposal?.step === questionStep && <div className="review-chat-proposal">
+        <strong>변경 내용을 확인해주세요</strong>
+        <ul>{draft.pendingProposal.summary.map((item, index) => <li key={index}>{item}</li>)}</ul>
+        <Button disabled={sending} onClick={() => void applyProposal()}>{sending ? '반영 중...' : '이대로 반영하기'}</Button>
+        <button className="review-text-button" type="button" disabled={sending} onClick={cancelProposal}>취소하기</button>
+      </div>}
+      {draft.step === questionStep && !draft.pendingProposal && draft.choices.length > 0 && <div className="review-chat-choices">
+        {draft.choices.map(choice => <button type="button" key={choice} disabled={sending} onClick={() => void sendChat(choice)}>{choice}</button>)}
+      </div>}
+    </>;
+  }
+
   function send(event: FormEvent) {
     event.preventDefault();
-    const text = message.trim();
-    if (!text || !ready || step === 0 || step === 4) return;
-    updateDraft(current => ({ ...current, notes: [...current.notes, { step, text }], answers: [...current.answers, { step, text }], step: step === 5 ? 5 : Math.min(current.step + 1, 4) }));
-    setMessage('');
+    void sendChat(message.trim());
   }
 
   return <main className="app-page review-chat-page">
@@ -163,28 +239,29 @@ export function ChatPage() {
           <h1>{question.title}</h1>
           <p className="review-chat-intro">{question.description}</p>
           <div className="review-example"><strong>예를 들어 이렇게 알려주세요</strong><p>{question.example}</p></div>
-          {completed ? <div className="review-user-bubble">{answer}</div> : <>
-            <Button onClick={() => void next()}>{question.skip}</Button>
-            <p className="review-local-note">입력한 내용은 이 브라우저에 임시 보관돼요. 목록 수정은 이삿짐 목록에서 해주세요.</p>
-          </>}
+          {chatExchange(questionStep)}
+          {completed && !draft.chatMessages.some(entry => entry.step === questionStep && entry.role === 'user') && <div className="review-user-bubble">{answer}</div>}
+          {!completed && !draft.pendingProposal && <Button disabled={sending} onClick={() => void next()}>{question.skip}</Button>}
         </section>;
       })}
       {step === 4 && <section className="review-chat-turn">
         <div className="review-avatar"><img src={chatAvatar} alt="" /><strong>짐싹</strong></div>
         <h1>이 내용으로 견적을 비교할까요?</h1>
         <p className="review-chat-intro">확인한 이삿짐과 이사 조건을 바탕으로 이사 유형별 예상 비용을 비교해요. 실제 견적은 업체와 상담할 때 확인해주세요.</p>
-        <Button onClick={() => updateDraft(current => ({ ...current, step: 5 }))}>예상 비용 비교하기</Button>
+        <Button onClick={() => { void confirmList().then(saved => { if (saved) updateDraft(current => ({ ...current, step: 5 })); }); }}>예상 비용 비교하기</Button>
       </section>}
       {step === 5 && <section className="review-chat-turn review-estimate-turn">
         <EstimateConversation total={total} selected={draft.selectedMoveType} pdfEnabled={canDownload} onSelect={type => updateDraft(current => ({ ...current, selectedMoveType: type }))} onPdf={onPdf} />
+        {chatExchange(5)}
       </section>}
       {step === 5 && draft.notes.filter(note => note.step === 5).map((note, index) => <div className="review-user-bubble" key={index}>{note.text}</div>)}
     </div> : <ReviewGate loading={loading} error={error} hasMove={!!move} completed={analysis?.status === 'completed'} onRetry={retry} />}
     <div className="review-chat-bottom">
       <ChatFooter canDownload={canDownload} onPdf={onPdf} result={step === 5} />
+      {chatError && <p className="review-local-note" role="alert">{chatError} {chatError.includes('만료') && <button type="button" onClick={() => navigate(routes.login)}>로그인하기</button>}</p>}
       <form className="review-chat-input" onSubmit={send}>
-        <input value={message} onChange={event => setMessage(event.target.value)} placeholder="수정할 내용을 알려주세요" aria-label="검토 내용" disabled={!ready || step === 0 || step === 4} />
-        <button type="submit" aria-label="내용 보내기" disabled={!message.trim() || !ready || step === 0 || step === 4}><img src={sendIcon} alt="" /></button>
+        <input value={message} maxLength={1000} onChange={event => setMessage(event.target.value)} placeholder="수정할 내용을 알려주세요" aria-label="검토 내용" disabled={!ready || sending || !!draft?.pendingProposal || step === 0 || step === 4} />
+        <button type="submit" aria-label="내용 보내기" disabled={!message.trim() || !ready || sending || !!draft?.pendingProposal || step === 0 || step === 4}><img src={sendIcon} alt="" /></button>
       </form>
       <p>문서는 목록과 이사 조건을 확인한 뒤 만들 수 있어요</p>
     </div>
