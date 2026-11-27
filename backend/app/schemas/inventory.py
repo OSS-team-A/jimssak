@@ -14,6 +14,9 @@ ItemName = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_ITEM_NAME_LENGTH)
 ]
 ItemNotes = Annotated[str, StringConstraints(max_length=MAX_ITEM_NOTES_LENGTH)]
+DisassemblyPossible = Annotated[
+    bool | None, Field(description="분리 가능 여부. null이면 확인되지 않음")
+]
 
 
 class ItemCreate(BaseModel):
@@ -24,6 +27,7 @@ class ItemCreate(BaseModel):
     dimensions_cm: Dimensions = Field(default_factory=Dimensions)
     notes: ItemNotes | None = None
     disassembly_required: bool | None = None
+    disassembly_possible: DisassemblyPossible = None
 
 
 class ItemPatch(BaseModel):
@@ -34,6 +38,7 @@ class ItemPatch(BaseModel):
     dimensions_cm: Dimensions | None = None
     notes: ItemNotes | None = None
     disassembly_required: bool | None = None
+    disassembly_possible: DisassemblyPossible = None
 
     @model_validator(mode="after")
     def validate_changes(self):
@@ -59,6 +64,7 @@ class InventoryItem(BaseModel):
     review_reasons: list[str] = Field(default_factory=list)
     notes: str | None = None
     disassembly_required: bool | None = None
+    disassembly_possible: DisassemblyPossible = None
     snapshots: list[Snapshot] = Field(default_factory=list)
 
 

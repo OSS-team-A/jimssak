@@ -1,5 +1,6 @@
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 
+from psycopg import Connection
 from psycopg.types.json import Jsonb
 
 from ..db import Database
@@ -15,6 +16,10 @@ def load_inventory(db: Database, job: AnalysisJob | None) -> Inventory:
             "SELECT items, confirmed FROM move_inventories WHERE analysis_id = %s",
             (job.analysis_id,),
         ).fetchone()
+    return inventory_from_row(row)
+
+
+def inventory_from_row(row: dict | None) -> Inventory:
     if row is None:
         return Inventory()
     items = row["items"]
@@ -26,15 +31,17 @@ def load_inventory(db: Database, job: AnalysisJob | None) -> Inventory:
 
 
 @contextmanager
-def edit_inventory(db: Database, analysis_id: str):
+def edit_inventory(db: Database, analysis_id: str, *, conn: Connection | None = None):
     # Serialize edits so two requests changing different items keep both changes.
-    with db.connect() as conn:
-        row = conn.execute(
+    with db.connect() if conn is None else nullcontext(conn) as active:
+        row = active.execute(
             "SELECT items, confirmed FROM move_inventories WHERE analysis_id = %s FOR UPDATE",
             (analysis_id,),
         ).fetchone()
         yield row
-        conn.execute(
+        if row is None:
+            return
+        active.execute(
             "UPDATE move_inventories SET items = %s, confirmed = %s WHERE analysis_id = %s",
             (Jsonb(row["items"]), row["confirmed"], analysis_id),
         )
