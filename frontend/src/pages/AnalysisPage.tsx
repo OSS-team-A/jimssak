@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { BrandHeader } from '../components/common/BrandHeader';
 import { Button } from '../components/common/Button';
 import { getMove } from '../api/moves';
+import { ApiError } from '../api/client';
 import { navigate, routes } from '../app/routes';
 import readyMascot from '../assets/analysis-mascot-ready.png';
 import failedMascot from '../assets/analysis-mascot-failed.png';
@@ -14,30 +15,32 @@ type AnalysisScreen = 'waiting' | 'complete' | 'failed';
 export function AnalysisPage() {
   const params = new URLSearchParams(window.location.search);
   const afterMove = params.get('mode') === 'after';
-  const preview = import.meta.env.DEV && params.get('preview') === '1';
   const [snapshot, setSnapshot] = useState<MoveSnapshot | null>(null);
   const [error, setError] = useState('');
-  const [retryState, setRetryState] = useState<AnalysisScreen | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [retryKey, setRetryKey] = useState(0);
   const saved = sessionStorage.getItem('jimssak-member-move') || sessionStorage.getItem('jimssak-guest-move');
   let move: { move_id: string; guest_token: string } | null = null;
   try { move = saved ? JSON.parse(saved) : null; } catch { /* Invalid session data is treated as missing. */ }
   const moveId = move?.move_id;
   const guestToken = move?.guest_token;
+  const retry = () => { setLoading(true); setRetryKey(key => key + 1); };
 
   useEffect(() => {
     if (!moveId || afterMove) return;
     let active = true;
     const refresh = () => {
       void getMove(moveId, guestToken).then(value => { if (active) { setSnapshot(value); setError(''); } })
-        .catch(() => { if (active) setError('분석 상태를 불러오지 못했어요. 잠시 후 다시 확인해주세요.'); });
+        .catch(cause => { if (active) setError(cause instanceof ApiError && cause.status === 401 ? '로그인이 만료됐어요. 다시 로그인해주세요.' : '분석 상태를 불러오지 못했어요. 잠시 후 다시 확인해주세요.'); })
+        .finally(() => { if (active) setLoading(false); });
     };
     refresh();
-    const timer = window.setInterval(refresh, 5000);
+    const timer = window.setInterval(refresh, 3000);
     return () => { active = false; window.clearInterval(timer); };
-  }, [moveId, guestToken, afterMove]);
+  }, [moveId, guestToken, afterMove, retryKey]);
 
   const status = snapshot?.data.analysis.status;
-  const screen: AnalysisScreen = afterMove && preview ? retryState ?? (params.get('state') === 'complete' ? 'complete' : params.get('state') === 'failed' ? 'failed' : 'waiting') : status === 'completed' ? 'complete' : status === 'failed' ? 'failed' : 'waiting';
+  const screen: AnalysisScreen = status === 'completed' ? 'complete' : status === 'failed' ? 'failed' : 'waiting';
 
   useEffect(() => {
     if (status !== 'completed' || afterMove) return;
@@ -45,17 +48,24 @@ export function AnalysisPage() {
     return () => window.clearTimeout(timer);
   }, [status, afterMove]);
 
-  useEffect(() => {
-    if (!afterMove || !preview || screen !== 'complete') return;
-    const timer = window.setTimeout(() => {
-      window.history.pushState({}, '', `${routes.afterReview}?preview=1`);
-      window.dispatchEvent(new PopStateEvent('popstate'));
-    }, 2500);
-    return () => window.clearTimeout(timer);
-  }, [afterMove, preview, screen]);
-
-  if (!moveId && !preview) return <main className="app-page analysis-page"><BrandHeader />
+  if (!moveId) return <main className="app-page analysis-page"><BrandHeader />
     <div className="analysis-content"><h1>이사 정보를 찾을 수 없어요</h1><Button onClick={() => navigate(routes.capture)}>촬영 준비로 돌아가기</Button></div>
+  </main>;
+
+  if (loading && !snapshot && !afterMove) return <main className="app-page analysis-page"><BrandHeader />
+    <div className="analysis-content"><h1>분석 상태를 확인하고 있어요</h1></div>
+  </main>;
+
+  if (afterMove) return <main className="app-page analysis-page"><BrandHeader />
+    <div className="analysis-content"><h1>이사 후 비교를 준비하고 있어요</h1><p className="analysis-intro">이사 전후 비교 결과 API가 연결되면 결과를 확인할 수 있어요.</p><Button variant="secondary" onClick={() => navigate(routes.history)}>나의 이사 기록으로 돌아가기</Button></div>
+  </main>;
+
+  if (snapshot?.data.room_video.status === 'empty') return <main className="app-page analysis-page"><BrandHeader />
+    <div className="analysis-content"><h1>촬영한 영상이 없어요</h1><p className="analysis-intro">방 영상을 촬영하거나 업로드하면 분석을 시작할 수 있어요.</p><Button variant="secondary" onClick={() => navigate(routes.capture)}>촬영 준비로 돌아가기</Button></div>
+  </main>;
+
+  if (error && !snapshot) return <main className="app-page analysis-page"><BrandHeader />
+    <div className="analysis-content"><h1>분석 상태를 불러오지 못했어요</h1><p className="analysis-intro">{error}</p><Button variant="secondary" onClick={() => error.includes('만료') ? navigate(routes.login) : retry()}>{error.includes('만료') ? '로그인하기' : '다시 확인하기'}</Button></div>
   </main>;
 
   return <main className="app-page analysis-page">
@@ -70,7 +80,7 @@ export function AnalysisPage() {
           : <><img src={warningIcon} alt="" />영상 분석 실패!</>}
       </div>
       {screen === 'failed'
-        ? <Button variant="secondary" onClick={() => { if (afterMove && preview) { setRetryState('waiting'); window.history.replaceState({}, '', `${routes.analysis}?mode=after&preview=1&state=waiting`); } else if (afterMove) setError('이사 후 영상 재분석 API가 아직 연결되지 않았어요.'); else navigate(routes.capture); }}>{afterMove ? '다시 분석하기' : '영상 다시 촬영하기'}</Button>
+        ? <Button variant="secondary" onClick={() => navigate(routes.capture)}>영상 다시 촬영하기</Button>
         : !afterMove && <p className="analysis-detail">입력한 정보는 그대로 유지돼요.</p>}
       {error && <p className="analysis-error" role="alert">{error}</p>}
     </div>
