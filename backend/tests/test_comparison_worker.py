@@ -46,7 +46,10 @@ def comparison_job(client, videos):
     assert client.post(f"{url}/inventory/confirm", headers=headers).status_code == 204
     client.post(f"{url}/after-media", headers=headers,
                 files={"file": ("after.mp4", videos["upright"], "video/mp4")})
-    task = client.post(f"{WORKER}/analyses/claim", headers=KEY).json()
+    # The first-analysis queue never hands out comparisons: an analysis-only worker keeps
+    # working.
+    assert client.post(f"{WORKER}/analyses/claim", headers=KEY).status_code == 204
+    task = client.post(f"{WORKER}/comparisons/claim", headers=KEY).json()
     assert task["kind"] == "comparison"
     return url, headers, task
 
@@ -156,3 +159,4 @@ def test_comparison_routes_need_the_worker_key(client, videos):
     base = f"{WORKER}/comparisons/{task['comparison_id']}"
     assert client.get(f"{base}/before-video").status_code == 401
     assert client.post(f"{base}/result", json=result(task)).status_code == 401
+    assert client.post(f"{WORKER}/comparisons/claim").status_code == 401

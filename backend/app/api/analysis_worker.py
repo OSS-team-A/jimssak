@@ -50,37 +50,22 @@ def _section(job: AnalysisJob) -> AnalysisSection:
     dependencies=[Worker],
     summary="대기 중인 분석 작업 가져가기",
     description=(
-        "가장 오래 기다린 작업 하나를 `running`으로 바꾸고 돌려준다. 대기 작업이 없으면 204.\n\n"
-        "- `kind: analysis`(첫 분석): 결과의 `analysis_id`와 `video.video_id`에 받은 값을 "
-        "그대로 넣어 `/internal/analyses/{analysis_id}/result`로 보낸다.\n"
-        "- `kind: comparison`(이사 후 비교): 이사 전·후 영상과 확정 목록(`items`)을 받는다. "
-        "결과는 `/internal/comparisons/{comparison_id}/result`로 보낸다.\n\n"
-        "첫 분석 작업을 먼저 내준다."
+        "첫 분석 작업 중 가장 오래 기다린 하나를 `running`으로 바꾸고 돌려준다. 결과의 "
+        "`analysis_id`와 `video.video_id`에는 받은 값을 그대로 넣는다. 대기 작업이 없으면 204. "
+        "이사 후 비교 작업은 여기서 주지 않는다(`POST /internal/comparisons/claim`)."
     ),
-    response_model=WorkerJob | ComparisonJob,
+    response_model=WorkerJob,
     responses={204: {"description": "대기 중인 작업 없음"}},
 )
-def claim(request: Request, analyses: Analyses) -> WorkerJob | ComparisonJob | Response:
+def claim(request: Request, analyses: Analyses) -> WorkerJob | Response:
     job = analyses.claim_next()
-    if job is not None:
-        media = request.app.state.move_store.get_video(job.move_id)
-        return WorkerJob(
-            analysis_id=job.analysis_id, move_id=job.move_id, video_id=job.media_id,
-            video_url=f"/api/v1/internal/analyses/{job.analysis_id}/video",
-            content_type=media.content_type if media else "video/mp4",
-        )
-    task = request.app.state.comparison_store.claim_next()
-    if task is None:
+    if job is None:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-    base = f"/api/v1/internal/comparisons/{task.comparison_id}"
-    return ComparisonJob(
-        comparison_id=task.comparison_id, move_id=task.move_id,
-        before_video_id=task.before_media_id, after_video_id=task.after_media_id,
-        before_video_url=f"{base}/before-video", after_video_url=f"{base}/after-video",
-        items=[ComparisonJobItem(
-            item_id=item["item_id"], label=item.get("label"), label_ko=item["label_ko"],
-            quantity=item["quantity"], dimensions_cm=item.get("dimensions_cm") or {},
-        ) for item in task.inventory],
+    media = request.app.state.move_store.get_video(job.move_id)
+    return WorkerJob(
+        analysis_id=job.analysis_id, move_id=job.move_id, video_id=job.media_id,
+        video_url=f"/api/v1/internal/analyses/{job.analysis_id}/video",
+        content_type=media.content_type if media else "video/mp4",
     )
 
 
@@ -211,6 +196,35 @@ Comparisons = Annotated[ComparisonStore, Depends(get_comparisons)]
 def _comparison_section(task: ComparisonTask) -> AnalysisSection:
     return AnalysisSection(status=task.status, analysis_id=task.comparison_id,
                            progress=task.progress, demo=task.demo)
+
+
+@comparison_router.post(
+    "/claim",
+    dependencies=[Worker],
+    summary="대기 중인 이사 후 비교 작업 가져가기",
+    description=(
+        "이사 후 비교 작업 중 가장 오래 기다린 하나를 `running`으로 바꾸고 돌려준다. 이사 전·후 "
+        "영상 주소와 비교할 확정 목록(`items`)이 들어 있다. 결과의 `comparison_id`와 "
+        "`video.video_id`(이사 후 영상)에는 받은 값을 그대로 넣는다. 대기 작업이 없으면 204. "
+        "첫 분석 작업과 따로 가져가므로, 각 워커는 자기 작업만 받는다."
+    ),
+    response_model=ComparisonJob,
+    responses={204: {"description": "대기 중인 작업 없음"}},
+)
+def claim_comparison(comparisons: Comparisons) -> ComparisonJob | Response:
+    task = comparisons.claim_next()
+    if task is None:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    base = f"/api/v1/internal/comparisons/{task.comparison_id}"
+    return ComparisonJob(
+        comparison_id=task.comparison_id, move_id=task.move_id,
+        before_video_id=task.before_media_id, after_video_id=task.after_media_id,
+        before_video_url=f"{base}/before-video", after_video_url=f"{base}/after-video",
+        items=[ComparisonJobItem(
+            item_id=item["item_id"], label=item.get("label"), label_ko=item["label_ko"],
+            quantity=item["quantity"], dimensions_cm=item.get("dimensions_cm") or {},
+        ) for item in task.inventory],
+    )
 
 
 def _comparison_video(request: Request, comparisons: ComparisonStore, comparison_id: str,
