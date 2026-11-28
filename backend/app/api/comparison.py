@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, status
 from ..schemas.analysis import AnalysisError
 from ..schemas.comparison import (
     ComparisonCheck,
+    ComparisonComplete,
     ComparisonItem,
     ComparisonOut,
     ComparisonPhoto,
@@ -81,9 +82,14 @@ def get_comparison(
     return comparison_out(comparisons.current(move.id, job.analysis_id if job else None))
 
 
-def _completed(move, analyses, comparisons) -> ComparisonTask:
+def _completed(move, analyses, comparisons, shown: str) -> ComparisonTask:
+    """The current comparison, which must be finished and the one the screen is showing."""
     job = analyses.current(move.id)
     task = comparisons.current(move.id, job.analysis_id if job else None)
+    if task is not None and task.comparison_id != shown:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "비교 결과가 바뀌었어요. 결과를 다시 불러와 주세요."
+        )
     if task is None or task.status != "completed":
         raise HTTPException(status.HTTP_409_CONFLICT, "이사 후 비교가 끝난 뒤에 확인할 수 있어요.")
     return task
@@ -100,14 +106,15 @@ def _completed(move, analyses, comparisons) -> ComparisonTask:
     responses={
         **ACCESS,
         404: {"description": "이사가 없거나 비교 결과에 없는 물품"},
-        409: {"description": "비교가 끝나지 않음, 확인이 필요 없는 물품, 또는 검토를 이미 마침"},
+        409: {"description": "비교가 끝나지 않음, 화면의 비교가 바뀜(`comparison_id` 불일치), "
+                           "확인이 필요 없는 물품, 또는 검토를 이미 마침"},
     },
 )
 def check_item(
     move: AccessibleMove, item_id: str, body: ComparisonCheck,
     analyses: AnalysisDep, comparisons: ComparisonDep,
 ) -> ComparisonOut:
-    task = _completed(move, analyses, comparisons)
+    task = _completed(move, analyses, comparisons, body.comparison_id)
     found = task.results().get(item_id)
     if found is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "비교 결과에 없는 물품입니다.")
@@ -129,13 +136,15 @@ def check_item(
     ),
     responses={
         **ACCESS,
-        409: {"description": "비교가 끝나지 않았거나 아직 답하지 않은 물품이 있음"},
+        409: {"description": "비교가 끝나지 않음, 화면의 비교가 바뀜, 또는 아직 답하지 "
+                           "않은 물품이 있음"},
     },
 )
 def complete_review(
-    move: AccessibleMove, analyses: AnalysisDep, comparisons: ComparisonDep,
+    move: AccessibleMove, body: ComparisonComplete, analyses: AnalysisDep,
+    comparisons: ComparisonDep,
 ) -> ComparisonOut:
-    task = _completed(move, analyses, comparisons)
+    task = _completed(move, analyses, comparisons, body.comparison_id)
     needs_check = [item_id for item_id, found in task.results().items()
                    if found["result"] in NEEDS_CHECK]
     if not comparisons.finish_review(task.comparison_id, needs_check):

@@ -73,10 +73,23 @@ class ComparisonOut(BaseModel):
     )
 
 
+SHOWN_DOC = (
+    "화면에 보이는 비교 결과의 `comparison_id`. 이사 후 영상을 다시 올려 비교가 바뀌었으면 "
+    "409이므로, 이전 화면의 답이 새 결과에 들어가지 않는다."
+)
+
+
 class ComparisonCheck(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    comparison_id: str = Field(min_length=1, description=SHOWN_DOC)
     user_check: UserCheck = Field(description=USER_CHECK_DOC)
+
+
+class ComparisonComplete(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    comparison_id: str = Field(min_length=1, description=SHOWN_DOC)
 
 
 # --- the AI analyzer's side ---

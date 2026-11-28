@@ -149,14 +149,21 @@ def test_failed_demo_comparison(client):
 def test_user_answers_and_finishes_the_review(client):
     clock = Clock(client)
     url, headers = confirmed_move(client, clock)
-    assert client.post(f"{url}/comparison/complete", headers=headers).status_code == 409
+    nothing = client.post(f"{url}/comparison/complete", headers=headers,
+                          json={"comparison_id": "cmp_none"})
+    assert nothing.status_code == 409
     upload(client, url, headers, "after-media")
     clock.advance(6)
-    desk, chair, box = comparison(client, url, headers)["items"]
+    shown = comparison(client, url, headers)
+    desk, chair, box = shown["items"]
+    shown_id = {"comparison_id": shown["comparison_id"]}
 
     def check(item, answer):
         return client.patch(f"{url}/comparison/items/{item['item_id']}", headers=headers,
-                            json={"user_check": answer})
+                            json={**shown_id, "user_check": answer})
+
+    def complete():
+        return client.post(f"{url}/comparison/complete", headers=headers, json=shown_id)
 
     assert check(box, "confirmed").status_code == 409          # nothing to check
     assert check({"item_id": "nope"}, "confirmed").status_code == 404
@@ -165,15 +172,15 @@ def test_user_answers_and_finishes_the_review(client):
     assert answered["items"][0]["user_check"] == "not_found"
     assert answered["summary"]["unchecked"] == 1
     # Not every item answered yet.
-    assert client.post(f"{url}/comparison/complete", headers=headers).status_code == 409
+    assert complete().status_code == 409
     # Answers can change until the review is finished.
     assert check(desk, "confirmed").json()["items"][0]["user_check"] == "confirmed"
     check(chair, "not_found")
 
-    done = client.post(f"{url}/comparison/complete", headers=headers)
+    done = complete()
     assert done.status_code == 200 and done.json()["reviewed_at"] is not None
     assert done.json()["summary"]["unchecked"] == 0
-    again = client.post(f"{url}/comparison/complete", headers=headers)
+    again = complete()
     assert again.status_code == 200
     assert again.json()["reviewed_at"] == done.json()["reviewed_at"]
     assert check(chair, "confirmed").status_code == 409
@@ -201,16 +208,42 @@ def test_history_stage_follows_the_after_move_review(client):
     upload(client, url, member, "after-media")
     assert stage() == "comparing"
     clock.advance(6)
-    items = comparison(client, url, member)["items"]
-    for item in items:
+    shown = comparison(client, url, member)
+    shown_id = {"comparison_id": shown["comparison_id"]}
+    for item in shown["items"]:
         if item["needs_check"]:
             client.patch(f"{url}/comparison/items/{item['item_id']}", headers=member,
-                         json={"user_check": "confirmed"})
-    client.post(f"{url}/comparison/complete", headers=member)
+                         json={**shown_id, "user_check": "confirmed"})
+    client.post(f"{url}/comparison/complete", headers=member, json=shown_id)
     assert stage() == "done"
     # Retaking the first video starts the move over.
     upload(client, url, member)
     assert stage() == "preparing"
+
+
+def test_answers_from_an_old_screen_do_not_reach_a_new_comparison(client):
+    clock = Clock(client)
+    url, headers = confirmed_move(client, clock)
+    upload(client, url, headers, "after-media")
+    clock.advance(6)
+    old = comparison(client, url, headers)
+    desk = old["items"][0]
+    # Another tab retakes the after-move video; the new comparison has the same item_ids.
+    upload(client, url, headers, "after-media", name="retake.mp4")
+    clock.advance(6)
+    new = comparison(client, url, headers)
+    assert new["items"][0]["item_id"] == desk["item_id"]
+
+    stale = {"comparison_id": old["comparison_id"]}
+    answer = client.patch(f"{url}/comparison/items/{desk['item_id']}", headers=headers,
+                          json={**stale, "user_check": "confirmed"})
+    assert answer.status_code == 409
+    assert client.post(f"{url}/comparison/complete", headers=headers,
+                       json=stale).status_code == 409
+    assert comparison(client, url, headers)["items"][0]["user_check"] is None
+    # Without the id the request is refused outright.
+    assert client.patch(f"{url}/comparison/items/{desk['item_id']}", headers=headers,
+                        json={"user_check": "confirmed"}).status_code == 422
 
 
 def test_comparison_is_private(client):
