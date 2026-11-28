@@ -183,13 +183,14 @@ class MoveStore:
             ).fetchone()
         return self._move(row) if row else None
 
-    def replace_video(self, media: Media) -> Media | None:
+    def replace_video(self, media: Media, *, conn: Connection | None = None) -> Media | None:
         """Make media the move's only video and return the one it replaced.
 
         Delete and insert happen in one transaction, so a failure keeps the old
-        video and a move never has zero or two videos in between.
+        video and a move never has zero or two videos in between. Passing `conn` lets the
+        caller start the video's analysis in the same transaction.
         """
-        with self.db.connect() as db:
+        with self.db.connect() if conn is None else nullcontext(conn) as db:
             # Locking the move makes two uploads to it take turns.
             db.execute("SELECT 1 FROM moves WHERE id = %s FOR UPDATE", (media.move_id,))
             old = db.execute(
@@ -203,9 +204,11 @@ class MoveStore:
             )
         return Media(**dict(old)) if old else None
 
-    def replace_after_video(self, media: Media) -> Media | None:
+    def replace_after_video(
+        self, media: Media, *, conn: Connection | None = None,
+    ) -> Media | None:
         """Store an after-move video without touching the initial room video."""
-        with self.db.connect() as db:
+        with self.db.connect() if conn is None else nullcontext(conn) as db:
             db.execute("SELECT 1 FROM moves WHERE id = %s FOR UPDATE", (media.move_id,))
             old = db.execute(
                 f"DELETE FROM move_after_videos WHERE move_id = %s RETURNING {MEDIA_COLUMNS}",

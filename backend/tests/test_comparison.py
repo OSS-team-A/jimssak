@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -106,6 +108,32 @@ def test_after_video_keeps_the_first_video_and_a_retake_starts_over(client):
     assert again["status"] == "queued" and again["comparison_id"] != first["comparison_id"]
     after = client.get(url, headers=headers).json()["data"]["room_video"]["video"]
     assert after["media_id"] == before["media_id"]
+
+
+def test_uploads_at_once_leave_jobs_pointing_at_the_kept_video(client):
+    clock = Clock(client)
+    url, headers = confirmed_move(client, clock)
+    move_id = url.rsplit("/", 1)[1]
+    state = client.app.state
+
+    def send(path, n):
+        return client.post(f"{url}/{path}", headers=headers,
+                           files={"file": (f"take-{n}.mp4", MP4, "video/mp4")}).status_code
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        codes = list(pool.map(lambda n: send("after-media", n), range(6)))
+    assert codes == [201] * 6
+    kept = state.move_store.get_after_video(move_id)
+    analysis_id = state.analysis_store.current(move_id).analysis_id
+    task = state.comparison_store.current(move_id, analysis_id)
+    assert task.after_media_id == kept.id
+    assert state.media_storage.path(kept).is_file()
+
+    # The same for the first video and its analysis.
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        codes = list(pool.map(lambda n: send("media", n), range(6)))
+    assert codes == [201] * 6
+    assert state.analysis_store.current(move_id).media_id == state.move_store.get_video(move_id).id
 
 
 def test_failed_demo_comparison(client):

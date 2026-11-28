@@ -7,8 +7,10 @@ result worked out from the time since upload, and stuck jobs time out.
 import json
 import secrets
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass, replace
 
+from psycopg import Connection
 from psycopg.types.json import Jsonb
 
 from ..db import Database
@@ -65,11 +67,15 @@ class ComparisonStore:
     def start(
         self, move_id: str, analysis_id: str, before_media_id: str, after_media_id: str,
         inventory: list[dict], demo: bool, demo_fail: bool,
+        *, conn: Connection | None = None,
     ) -> ComparisonTask:
-        """A new after-move video replaces the move's earlier comparison and its answers."""
+        """A new after-move video replaces the move's earlier comparison and its answers.
+
+        Pass the transaction that replaced the video, so the job and the video change together.
+        """
         now = int(self.clock())
         comparison_id = f"cmp_{secrets.token_hex(8)}"
-        with self.db.connect() as db:
+        with self.db.connect() if conn is None else nullcontext(conn) as db:
             db.execute(
                 "UPDATE move_comparisons SET status = 'cancelled', updated_at = %s "
                 "WHERE move_id = %s AND status != 'cancelled'", (now, move_id),

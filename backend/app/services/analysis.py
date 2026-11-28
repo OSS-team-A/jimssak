@@ -9,6 +9,7 @@ import json
 import re
 import secrets
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass, replace
 
 from psycopg import Connection
@@ -52,15 +53,21 @@ class AnalysisStore:
         fields.pop("seq", None)
         return AnalysisJob(**fields)
 
-    def start(self, move_id: str, media_id: str, demo: bool, demo_fail: bool) -> AnalysisJob:
-        """A new video replaces the move's earlier job; its late results are refused."""
+    def start(
+        self, move_id: str, media_id: str, demo: bool, demo_fail: bool,
+        *, conn: Connection | None = None,
+    ) -> AnalysisJob:
+        """A new video replaces the move's earlier job; its late results are refused.
+
+        Pass the transaction that replaced the video, so the job and the video change together.
+        """
         now = int(self.clock())
         job = AnalysisJob(
             analysis_id=f"an_{secrets.token_hex(8)}", move_id=move_id, media_id=media_id,
             status="queued", progress=0.0, demo=demo, demo_fail=demo_fail,
             result_json=None, error_json=None, created_at=now, updated_at=now,
         )
-        with self.db.connect() as db:
+        with self.db.connect() if conn is None else nullcontext(conn) as db:
             db.execute(
                 "UPDATE move_analyses SET status = 'cancelled', updated_at = %s "
                 "WHERE move_id = %s AND status IN ('queued', 'running')", (now, move_id),

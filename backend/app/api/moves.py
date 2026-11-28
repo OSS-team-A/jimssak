@@ -677,7 +677,15 @@ def upload_media(
     except MediaTooLarge as exc:
         raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, str(exc)) from exc
     try:
-        replaced = moves.replace_video(media)
+        # One transaction, holding the move's lock: two uploads at once take turns, and the
+        # analysis always belongs to the video that stays.
+        with moves.db.connect() as conn:
+            replaced = moves.replace_video(media, conn=conn)
+            # Every new video gets a fresh analysis; the previous one's late result is refused.
+            analyses.start(
+                move.id, media.id, demo=request.app.state.analysis_demo,
+                demo_fail=media.filename.lower().startswith("fail"), conn=conn,
+            )
     except BaseException:
         storage.discard(media)
         raise
@@ -685,11 +693,6 @@ def upload_media(
     if replaced is not None:
         storage.discard(replaced)
     storage.discard_snapshots(move.id)
-    # Every new video gets a fresh analysis; the previous one's late result is refused.
-    analyses.start(
-        move.id, media.id, demo=request.app.state.analysis_demo,
-        demo_fail=media.filename.lower().startswith("fail"),
-    )
     return UploadedVideo(**_media_info(media).model_dump(), replaced=replaced is not None)
 
 
@@ -720,12 +723,12 @@ def upload_after_media(
     comparisons: ComparisonDep,
     request: Request,
 ) -> UploadedVideo:
-    job = analyses.current(move.id)
-    inventory = load_inventory(analyses.db, job)
-    if job is None or inventory.status != "confirmed":
-        raise HTTPException(
-            status.HTTP_409_CONFLICT, "이사 후 비교는 이삿짐 목록을 확정한 뒤에 할 수 있어요."
-        )
+    not_confirmed = HTTPException(
+        status.HTTP_409_CONFLICT, "이사 후 비교는 이삿짐 목록을 확정한 뒤에 할 수 있어요."
+    )
+    # Checked before storing the file, so a refused upload costs nothing.
+    if load_inventory(analyses.db, analyses.current(move.id)).status != "confirmed":
+        raise not_confirmed
     try:
         media = storage.save_video(move.id, file.file, file.filename, file.content_type)
     except UnsupportedMedia as exc:
@@ -733,19 +736,26 @@ def upload_after_media(
     except MediaTooLarge as exc:
         raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, str(exc)) from exc
     try:
-        replaced = moves.replace_after_video(media)
+        # One transaction, holding the move's lock: the comparison always belongs to the
+        # after-move video that stays, and the list it compares is still the confirmed one.
+        with moves.db.connect() as conn:
+            replaced = moves.replace_after_video(media, conn=conn)
+            job = analyses.latest(move.id, conn=conn)
+            inventory = load_inventory(analyses.db, job, conn=conn)
+            if job is None or inventory.status != "confirmed":
+                raise not_confirmed
+            comparisons.start(
+                move.id, job.analysis_id, job.media_id, media.id,
+                [item.model_dump(mode="json") for item in inventory.items],
+                demo=request.app.state.analysis_demo,
+                demo_fail=media.filename.lower().startswith("fail"), conn=conn,
+            )
     except BaseException:
         storage.discard(media)
         raise
     if replaced is not None:
         storage.discard(replaced)
     storage.discard_comparison_snapshots(move.id)
-    comparisons.start(
-        move.id, job.analysis_id, job.media_id, media.id,
-        [item.model_dump(mode="json") for item in inventory.items],
-        demo=request.app.state.analysis_demo,
-        demo_fail=media.filename.lower().startswith("fail"),
-    )
     return UploadedVideo(**_media_info(media).model_dump(), replaced=replaced is not None)
 
 

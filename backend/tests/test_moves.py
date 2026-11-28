@@ -269,7 +269,7 @@ def test_failed_database_write_removes_new_file_only(client, settings, monkeypat
         f"{url}/media", headers=headers, files={"file": ("room.mp4", MP4, "video/mp4")}
     ).json()
 
-    def broken(media):
+    def broken(media, *, conn=None):
         raise psycopg.OperationalError("disk full")
 
     monkeypatch.setattr(client.app.state.move_store, "replace_video", broken)
