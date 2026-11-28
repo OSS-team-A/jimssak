@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from psycopg import Connection
 
 from ..db import Database
+from ..schemas.comparison import ComparisonCardSummary
 from ..schemas.moves import ReviewDetails
 from .building_register import count, default_ladder
 
@@ -115,6 +116,7 @@ class MoveSummaryRecord:
     origin_address: str | None
     destination_address: str | None
     stage: str = "preparing"
+    comparison_summary: ComparisonCardSummary | None = None
 
 
 @dataclass(frozen=True)
@@ -406,8 +408,8 @@ class MoveStore:
             ).fetchone()
         return Media(**dict(row)) if row else None
 
-    def get_after_video(self, move_id: str) -> Media | None:
-        with self.db.connect() as db:
+    def get_after_video(self, move_id: str, *, conn: Connection | None = None) -> Media | None:
+        with self.db.connect() if conn is None else nullcontext(conn) as db:
             row = db.execute(
                 f"SELECT {MEDIA_COLUMNS} FROM move_after_videos WHERE move_id = %s", (move_id,)
             ).fetchone()
@@ -449,7 +451,11 @@ class MoveStore:
                 "o.road_address AS origin_address, d.road_address AS destination_address, "
                 "CASE WHEN c.reviewed_at IS NOT NULL THEN 'done' "
                 "WHEN c.comparison_id IS NOT NULL THEN 'comparing' "
-                "WHEN i.confirmed THEN 'after_move' ELSE 'preparing' END AS stage "
+                "WHEN i.confirmed THEN 'after_move' ELSE 'preparing' END AS stage, "
+                "CASE WHEN c.status = 'completed' THEN jsonb_build_object("
+                "  'changed', cs.changed, 'missing', cs.missing, "
+                "  'confirmed', cs.confirmed, 'needs_attention', cs.needs_attention"
+                ") END AS comparison_summary "
                 "FROM moves AS m "
                 "LEFT JOIN move_schedules AS s ON s.move_id = m.id "
                 "LEFT JOIN move_places AS o ON o.move_id = m.id AND o.role = 'origin' "
@@ -458,14 +464,28 @@ class MoveStore:
                 "  WHERE move_id = m.id AND status != 'cancelled' "
                 "  ORDER BY created_at DESC, seq DESC LIMIT 1) AS a ON TRUE "
                 "LEFT JOIN move_inventories AS i ON i.analysis_id = a.analysis_id "
-                "LEFT JOIN LATERAL (SELECT comparison_id, reviewed_at FROM move_comparisons "
+                "LEFT JOIN LATERAL (SELECT comparison_id, reviewed_at, status, result_json, checks "
+                "  FROM move_comparisons "
                 "  WHERE move_id = m.id AND analysis_id = a.analysis_id "
                 "  AND status != 'cancelled' "
                 "  ORDER BY created_at DESC, seq DESC LIMIT 1) AS c ON TRUE "
+                "LEFT JOIN LATERAL (SELECT "
+                "  count(*) FILTER (WHERE item->>'result' = 'changed') AS changed, "
+                "  count(*) FILTER (WHERE item->>'result' = 'missing') AS missing, "
+                "  count(*) FILTER (WHERE c.checks->>(item->>'item_id') = 'confirmed') "
+                "    AS confirmed, "
+                "  count(*) FILTER (WHERE item->>'result' IN ('changed', 'missing') "
+                "    AND c.checks->>(item->>'item_id') IS DISTINCT FROM 'confirmed') "
+                "    AS needs_attention "
+                "  FROM jsonb_array_elements(c.result_json::jsonb->'items') AS results(item)"
+                ") AS cs ON c.status = 'completed' "
                 "WHERE m.user_id = %s ORDER BY m.created_at DESC, m.seq DESC "
                 "LIMIT %s OFFSET %s",
                 (user_id, limit, offset),
             ).fetchall()
+        for row in rows:
+            if row["comparison_summary"] is not None:
+                row["comparison_summary"] = ComparisonCardSummary(**row["comparison_summary"])
         return [MoveSummaryRecord(**dict(row)) for row in rows], total
 
     def get_for_guest(self, move_id: str, guest_token: str) -> Move | None:

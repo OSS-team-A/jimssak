@@ -289,6 +289,7 @@ def list_moves(
                 move_id=item.id, created_at=_time(item.created_at), move_date=item.move_date,
                 start_time=item.start_time, origin_address=item.origin_address,
                 destination_address=item.destination_address, stage=item.stage,
+                comparison_summary=item.comparison_summary,
             )
             for item in found
         ],
@@ -668,6 +669,7 @@ def upload_media(
     moves: MoveStoreDep,
     storage: MediaStorageDep,
     analyses: AnalysisDep,
+    comparisons: ComparisonDep,
     request: Request,
 ) -> UploadedVideo:
     try:
@@ -681,6 +683,8 @@ def upload_media(
         # analysis always belongs to the video that stays.
         with moves.db.connect() as conn:
             replaced = moves.replace_video(media, conn=conn)
+            previous = analyses.latest(move.id, conn=conn)
+            cancelled = comparisons.cancel_for_move(move.id, conn=conn)
             # Every new video gets a fresh analysis; the previous one's late result is refused.
             analyses.start(
                 move.id, media.id, demo=request.app.state.analysis_demo,
@@ -692,7 +696,10 @@ def upload_media(
     # The database no longer points at the old file, so it can go, with its item photos.
     if replaced is not None:
         storage.discard(replaced)
-    storage.discard_snapshots(move.id)
+    if previous is not None:
+        storage.discard_snapshots(move.id, previous.analysis_id)
+    for comparison_id in cancelled:
+        storage.discard_snapshots(move.id, comparison_id)
     return UploadedVideo(**_media_info(media).model_dump(), replaced=replaced is not None)
 
 
@@ -741,9 +748,10 @@ def upload_after_media(
         with moves.db.connect() as conn:
             replaced = moves.replace_after_video(media, conn=conn)
             job = analyses.latest(move.id, conn=conn)
-            inventory = load_inventory(analyses.db, job, conn=conn)
+            inventory = load_inventory(analyses.db, job, conn=conn, for_share=True)
             if job is None or inventory.status != "confirmed":
                 raise not_confirmed
+            cancelled = comparisons.cancel_for_move(move.id, conn=conn)
             comparisons.start(
                 move.id, job.analysis_id, job.media_id, media.id,
                 [item.model_dump(mode="json") for item in inventory.items],
@@ -755,7 +763,8 @@ def upload_after_media(
         raise
     if replaced is not None:
         storage.discard(replaced)
-    storage.discard_comparison_snapshots(move.id)
+    for comparison_id in cancelled:
+        storage.discard_snapshots(move.id, comparison_id)
     return UploadedVideo(**_media_info(media).model_dump(), replaced=replaced is not None)
 
 

@@ -132,9 +132,10 @@ def result(
             raise HTTPException(status.HTTP_409_CONFLICT, STALE_MESSAGE) from exc
         return _section(done)
 
-    def save() -> AnalysisSection:
+    def save(publish: Callable[[], None]) -> AnalysisSection:
         return _section(analyses.submit(analysis_id, "completed",
-                                        json.dumps(raw, ensure_ascii=False), None))
+                                        json.dumps(raw, ensure_ascii=False), None,
+                                        publish=publish))
 
     try:
         job = analyses.active(analysis_id)
@@ -152,13 +153,12 @@ def result(
 
 def save_with_photos(
     request: Request, move_id: str, job_id: str, photos: list[tuple[Path, str, dict]],
-    save: Callable[[], AnalysisSection],
+    save: Callable[[Callable[[], None]], AnalysisSection],
 ) -> AnalysisSection:
     """Capture (video, item_id, snapshot) photos, fill `image_url`, then save the result.
 
-    Photos go to a folder private to this request and become the job's photos only if
-    `save()` succeeds. A request that loses (a repeated or late result) or fails removes only
-    its own folder, never the photos of the result that was saved.
+    The result transaction publishes the request's staged photos after accepting the update
+    and before committing it. An overlapping or late request only removes its own staging.
     """
     storage = request.app.state.media_storage
     capture = request.app.state.snapshot_capture
@@ -176,11 +176,9 @@ def save_with_photos(
                 ) from exc
             snapshot["image_url"] = snapshot_url(move_id, job_id, number)
         try:
-            done = save()
+            return save(lambda: storage.publish_snapshots(move_id, job_id, staging))
         except StaleAnalysis as exc:
             raise HTTPException(status.HTTP_409_CONFLICT, STALE_MESSAGE) from exc
-        storage.publish_snapshots(move_id, job_id, staging)
-        return done
     finally:
         shutil.rmtree(staging, ignore_errors=True)
 
@@ -308,9 +306,10 @@ def comparison_result(
             raise HTTPException(status.HTTP_409_CONFLICT, STALE_MESSAGE) from exc
         return _comparison_section(done)
 
-    def save() -> AnalysisSection:
+    def save(publish: Callable[[], None]) -> AnalysisSection:
         return _comparison_section(comparisons.submit(
-            comparison_id, "completed", json.dumps(raw, ensure_ascii=False), None))
+            comparison_id, "completed", json.dumps(raw, ensure_ascii=False), None,
+            publish=publish))
 
     try:
         task = comparisons.active(comparison_id)

@@ -6,14 +6,23 @@ from fastapi import APIRouter, HTTPException, status
 from ..schemas.analysis import AnalysisError
 from ..schemas.comparison import (
     ComparisonCheck,
-    ComparisonComplete,
     ComparisonItem,
     ComparisonOut,
     ComparisonPhoto,
+    ComparisonSelection,
     ComparisonSummary,
 )
+from ..services.analysis import StaleAnalysis
 from ..services.comparison import NEEDS_CHECK, ComparisonReviewed, ComparisonTask
-from .moves import AccessibleMove, AnalysisDep, ComparisonDep, GuardedRoute
+from ..services.inventory import load_inventory
+from .moves import (
+    AccessibleMove,
+    AnalysisDep,
+    ComparisonDep,
+    GuardedRoute,
+    MediaStorageDep,
+    MoveStoreDep,
+)
 
 router = APIRouter(prefix="/api/v1/moves", tags=["after-move comparison"],
                    route_class=GuardedRoute)
@@ -21,6 +30,7 @@ ACCESS = {
     401: {"description": "인증 정보가 없거나 유효하지 않음"},
     404: {"description": "없거나, 만료되었거나, 다른 사용자의 이사"},
 }
+STALE_RESULT = "비교 결과가 바뀌었어요. 결과를 다시 불러와 주세요."
 
 
 def _photos(snapshots: list[dict]) -> list[ComparisonPhoto]:
@@ -42,6 +52,8 @@ def comparison_out(task: ComparisonTask | None) -> ComparisonOut:
         needs_check = found["result"] in NEEDS_CHECK
         items.append(ComparisonItem(
             item_id=listed["item_id"], label_ko=listed["label_ko"], quantity=listed["quantity"],
+            dimensions_cm=listed.get("dimensions_cm") or {},
+            disassembly_possible=listed.get("disassembly_possible"),
             result=found["result"], reasons=found.get("reasons", []),
             before_photos=_photos(found.get("before_snapshots", [])),
             after_photos=_photos(found.get("after_snapshots", [])),
@@ -53,6 +65,8 @@ def comparison_out(task: ComparisonTask | None) -> ComparisonOut:
         changed=sum(i.result == "changed" for i in items),
         missing=sum(i.result == "missing" for i in items),
         unchecked=sum(i.needs_check and i.user_check is None for i in items),
+        confirmed=sum(i.user_check == "confirmed" for i in items),
+        needs_attention=sum(i.needs_check and i.user_check != "confirmed" for i in items),
     )
     return ComparisonOut(
         status=task.status, comparison_id=task.comparison_id, progress=task.progress,
@@ -82,14 +96,62 @@ def get_comparison(
     return comparison_out(comparisons.current(move.id, job.analysis_id if job else None))
 
 
+@router.post(
+    "/{move_id}/comparison/retry",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="실패한 이사 후 비교 재시도 (SC-15F)",
+    description=(
+        "`comparison_id`로 현재 실패한 비교를 지정한다. 재시도 가능한 실패라면 저장해 둔 "
+        "이사 후 영상으로 새 비교를 시작한다. 같은 영상에서 다시 실패하면 영상을 다시 촬영한다."
+    ),
+    responses={**ACCESS, 409: {"description": "다른 비교가 시작되었거나 재시도할 수 없음"}},
+)
+def retry_comparison(
+    move: AccessibleMove, body: ComparisonSelection, analyses: AnalysisDep,
+    comparisons: ComparisonDep, moves: MoveStoreDep, storage: MediaStorageDep,
+) -> ComparisonOut:
+    job = analyses.current(move.id)
+    # Settle a timed-out job before opening the transaction that starts its replacement.
+    shown = comparisons.current(move.id, job.analysis_id if job else None)
+    if shown is None or shown.comparison_id != body.comparison_id:
+        raise HTTPException(status.HTTP_409_CONFLICT, STALE_RESULT)
+    retry_unavailable = HTTPException(
+        status.HTTP_409_CONFLICT, "이 비교를 다시 시작할 수 없어요. 이사 후 영상을 확인해 주세요."
+    )
+    if shown.status != "failed" or not json.loads(shown.error_json or "{}").get("retryable"):
+        raise retry_unavailable
+    with moves.db.connect() as conn:
+        conn.execute("SELECT 1 FROM moves WHERE id = %s FOR UPDATE", (move.id,))
+        job = analyses.latest(move.id, conn=conn)
+        if job is None or job.analysis_id != shown.analysis_id:
+            raise HTTPException(status.HTTP_409_CONFLICT, STALE_RESULT)
+        current = comparisons.latest(move.id, job.analysis_id, conn=conn)
+        if current is None or current.comparison_id != shown.comparison_id:
+            raise HTTPException(status.HTTP_409_CONFLICT, STALE_RESULT)
+        after = moves.get_after_video(move.id, conn=conn)
+        inventory = load_inventory(analyses.db, job, conn=conn, for_share=True)
+        if (
+            after is None or after.id != current.after_media_id
+            or inventory.status != "confirmed" or not storage.path(after).is_file()
+        ):
+            raise retry_unavailable
+        cancelled = comparisons.cancel_for_move(move.id, conn=conn)
+        task = comparisons.start(
+            move.id, job.analysis_id, job.media_id, after.id,
+            [item.model_dump(mode="json") for item in inventory.items],
+            demo=current.demo, demo_fail=current.demo_fail, conn=conn,
+        )
+    for comparison_id in cancelled:
+        storage.discard_snapshots(move.id, comparison_id)
+    return comparison_out(task)
+
+
 def _completed(move, analyses, comparisons, shown: str) -> ComparisonTask:
     """The current comparison, which must be finished and the one the screen is showing."""
     job = analyses.current(move.id)
     task = comparisons.current(move.id, job.analysis_id if job else None)
     if task is not None and task.comparison_id != shown:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT, "비교 결과가 바뀌었어요. 결과를 다시 불러와 주세요."
-        )
+        raise HTTPException(status.HTTP_409_CONFLICT, STALE_RESULT)
     if task is None or task.status != "completed":
         raise HTTPException(status.HTTP_409_CONFLICT, "이사 후 비교가 끝난 뒤에 확인할 수 있어요.")
     return task
@@ -121,32 +183,33 @@ def check_item(
     if found["result"] not in NEEDS_CHECK:
         raise HTTPException(status.HTTP_409_CONFLICT, "이상 없는 물품은 확인할 필요가 없어요.")
     try:
-        comparisons.set_check(task.comparison_id, item_id, body.user_check)
+        saved = comparisons.set_check(task.comparison_id, item_id, body.user_check)
+    except StaleAnalysis as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, STALE_RESULT) from exc
     except ComparisonReviewed as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, "이미 검토를 마친 이사예요.") from exc
-    return comparison_out(comparisons.get(task.comparison_id))
+    return comparison_out(saved)
 
 
 @router.post(
     "/{move_id}/comparison/complete",
     summary="이사 후 검토 마치기 (SC-16)",
     description=(
-        "확인이 필요한 물품에 모두 답했으면 검토를 마친다(`reviewed_at` 기록, 나의 이사 기록 "
-        "`stage: done`). 이미 마쳤으면 그대로 성공한다."
+        "검토를 마친다(`reviewed_at` 기록, 나의 이사 기록 `stage: done`). 미응답·"
+        "아직 못 찾은 물품은 확인 필요로 남긴다. 이미 마쳤으면 그대로 성공한다."
     ),
     responses={
         **ACCESS,
-        409: {"description": "비교가 끝나지 않음, 화면의 비교가 바뀜, 또는 아직 답하지 "
-                           "않은 물품이 있음"},
+        409: {"description": "비교가 끝나지 않았거나 화면의 비교가 바뀌었음"},
     },
 )
 def complete_review(
-    move: AccessibleMove, body: ComparisonComplete, analyses: AnalysisDep,
+    move: AccessibleMove, body: ComparisonSelection, analyses: AnalysisDep,
     comparisons: ComparisonDep,
 ) -> ComparisonOut:
     task = _completed(move, analyses, comparisons, body.comparison_id)
-    needs_check = [item_id for item_id, found in task.results().items()
-                   if found["result"] in NEEDS_CHECK]
-    if not comparisons.finish_review(task.comparison_id, needs_check):
-        raise HTTPException(status.HTTP_409_CONFLICT, "확인이 필요한 물품에 모두 답해주세요.")
-    return comparison_out(comparisons.get(task.comparison_id))
+    try:
+        saved = comparisons.finish_review(task.comparison_id)
+    except StaleAnalysis as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, STALE_RESULT) from exc
+    return comparison_out(saved)

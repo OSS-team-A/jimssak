@@ -12,6 +12,7 @@ from pydantic import (
 )
 
 from .analysis import AnalysisSection
+from .comparison import ComparisonCardSummary
 from .inventory import InventorySection
 
 # Moves happen in Korea, which has no daylight saving time.
@@ -441,6 +442,9 @@ class MoveSummary(BaseModel):
     start_time: time | None = Field(default=None, description="시작 시간. 없으면 null")
     origin_address: str | None = Field(description="출발지 도로명주소. 없으면 null")
     destination_address: str | None = Field(description="도착지 도로명주소. 없으면 null")
+    comparison_summary: ComparisonCardSummary | None = Field(
+        default=None, description="SC-13 카드에 표시하는 이사 후 비교 요약. 비교 완료 전에는 null."
+    )
     stage: Literal["preparing", "after_move", "comparing", "done"] = Field(
         default="preparing",
         description=(

@@ -2,7 +2,7 @@
 
 Each item of the confirmed list gets one result: `ok` (looks the same), `changed` (its state
 looks different) or `missing` (not found in the after-move video). Items that are not `ok`
-need the user's answer before the review can be finished.
+are shown for the user to check.
 """
 
 from datetime import datetime
@@ -10,7 +10,13 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .analysis import MAX_SNAPSHOTS, MAX_SNAPSHOTS_PER_ITEM, AnalysisError, SubmittedSnapshot
+from .analysis import (
+    MAX_SNAPSHOTS,
+    MAX_SNAPSHOTS_PER_ITEM,
+    AnalysisError,
+    Dimensions,
+    SubmittedSnapshot,
+)
 
 ComparisonResultType = Literal["ok", "changed", "missing"]
 UserCheck = Literal["confirmed", "not_found"]
@@ -38,6 +44,8 @@ class ComparisonItem(BaseModel):
     item_id: str = Field(description="확정 목록의 물품 ID")
     label_ko: str = Field(description="물품 이름")
     quantity: int = Field(description="수량")
+    dimensions_cm: Dimensions = Field(description="이사 전 확정 목록의 예상 크기(cm)")
+    disassembly_possible: bool | None = Field(description="이사 전 확인한 분리 가능 여부")
     result: ComparisonResultType = Field(description=RESULT_DOC)
     reasons: list[str] = Field(description="그렇게 판단한 이유. 화면에 그대로 보여 준다")
     before_photos: list[ComparisonPhoto] = Field(description="이사 전 영상의 사진")
@@ -46,10 +54,15 @@ class ComparisonItem(BaseModel):
     user_check: UserCheck | None = Field(description=USER_CHECK_DOC)
 
 
-class ComparisonSummary(BaseModel):
-    ok: int = Field(description="이상 없음 물품 수")
+class ComparisonCardSummary(BaseModel):
     changed: int = Field(description="상태 변화 의심 물품 수")
     missing: int = Field(description="찾지 못한 물품 수")
+    confirmed: int = Field(default=0, description="직접 확인했어요를 선택한 품목 수")
+    needs_attention: int = Field(default=0, description="미응답 또는 아직 못 찾았어요 품목 수")
+
+
+class ComparisonSummary(ComparisonCardSummary):
+    ok: int = Field(description="이상 없음 물품 수")
     unchecked: int = Field(description="확인이 필요한데 아직 답하지 않은 물품 수")
 
 
@@ -59,7 +72,7 @@ class ComparisonOut(BaseModel):
     status: Literal["not_started", "queued", "running", "completed", "failed"] = Field(
         description=(
             "not_started: 이사 후 영상 전, queued·running: 비교 중(2~3초마다 다시 조회), "
-            "completed: 결과 있음, failed: 실패(`error`, 이사 후 영상을 다시 올리면 새로 비교)"
+            "completed: 결과 있음, failed: 실패(`error`, 재시도 가능하면 비교 재시작)"
         )
     )
     comparison_id: str | None = Field(description="비교 작업 ID. 시작 전이면 null")
@@ -86,7 +99,7 @@ class ComparisonCheck(BaseModel):
     user_check: UserCheck = Field(description=USER_CHECK_DOC)
 
 
-class ComparisonComplete(BaseModel):
+class ComparisonSelection(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     comparison_id: str = Field(min_length=1, description=SHOWN_DOC)

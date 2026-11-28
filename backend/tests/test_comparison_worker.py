@@ -186,3 +186,34 @@ def test_comparison_cancelled_after_the_check_is_refused(client, videos, monkeyp
                            headers=KEY, json=result(task))
     assert response.status_code == 409
     assert not list(client.app.state.media_storage.root.rglob("cmp_*/*.jpg"))
+
+
+def test_reupload_cleanup_keeps_photos_from_new_comparison(client, videos, monkeypatch):
+    url, headers, old = comparison_job(client, videos)
+    old_url = f"{WORKER}/comparisons/{old['comparison_id']}/result"
+    assert client.post(old_url, headers=KEY, json=result(old)).status_code == 200
+    old_photo = client.get(f"{url}/comparison", headers=headers).json()["items"][0][
+        "before_photos"
+    ][0]["image_url"]
+    storage = client.app.state.media_storage
+    discard = storage.discard_snapshots
+    new_photos = []
+
+    def run_worker_during_cleanup(move_id, cancelled_id):
+        assert cancelled_id == old["comparison_id"]
+        new_task = client.post(f"{WORKER}/comparisons/claim", headers=KEY).json()
+        new_url = f"{WORKER}/comparisons/{new_task['comparison_id']}/result"
+        reply = client.post(new_url, headers=KEY, json=result(new_task))
+        assert reply.status_code == 200, reply.text
+        desk = client.get(f"{url}/comparison", headers=headers).json()["items"][0]
+        new_photos.extend(desk["before_photos"] + desk["after_photos"])
+        discard(move_id, cancelled_id)
+
+    monkeypatch.setattr(storage, "discard_snapshots", run_worker_during_cleanup)
+    reupload = client.post(f"{url}/after-media", headers=headers,
+                           files={"file": ("again.mp4", videos["upright"], "video/mp4")})
+    assert reupload.status_code == 201, reupload.text
+    assert client.get(old_photo, headers=headers).status_code == 404
+    assert len(new_photos) == 2
+    for photo in new_photos:
+        assert client.get(photo["image_url"], headers=headers).status_code == 200

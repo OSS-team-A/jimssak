@@ -10,14 +10,15 @@ from .analysis import AnalysisJob
 
 def load_inventory(
     db: Database, job: AnalysisJob | None, *, conn: Connection | None = None,
+    for_share: bool = False,
 ) -> Inventory:
     if job is None or job.status != "completed":
         return Inventory()
+    query = "SELECT items, confirmed FROM move_inventories WHERE analysis_id = %s"
+    if for_share:
+        query += " FOR SHARE"
     with db.connect() if conn is None else nullcontext(conn) as active:
-        row = active.execute(
-            "SELECT items, confirmed FROM move_inventories WHERE analysis_id = %s",
-            (job.analysis_id,),
-        ).fetchone()
+        row = active.execute(query, (job.analysis_id,)).fetchone()
     return inventory_from_row(row)
 
 

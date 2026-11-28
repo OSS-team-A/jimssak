@@ -111,8 +111,3 @@ class MediaStorage:
         shutil.rmtree(target, ignore_errors=True)
         if staging.is_dir():
             staging.replace(target)
-
-    def discard_comparison_snapshots(self, move_id: str) -> None:
-        """Remove the photos of every after-move comparison, keeping the first analysis's."""
-        for folder in (self.root / move_id / "snapshots").glob("cmp_*"):
-            shutil.rmtree(folder, ignore_errors=True)

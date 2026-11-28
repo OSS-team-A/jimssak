@@ -11,6 +11,7 @@ import secrets
 import time
 from contextlib import nullcontext
 from dataclasses import dataclass, replace
+from typing import Callable
 
 from psycopg import Connection
 
@@ -131,7 +132,8 @@ class AnalysisStore:
         return self._finish(job, "completed", json.dumps(result, ensure_ascii=False), None, now)
 
     def _finish(self, job: AnalysisJob, status: str, result_json: str | None,
-                error_json: str | None, now: int, *, strict: bool = False) -> AnalysisJob:
+                error_json: str | None, now: int, *, strict: bool = False,
+                publish: Callable[[], None] | None = None) -> AnalysisJob:
         """End an active job. If it was no longer active (cancelled, or finished by another
         request in the meantime), nothing changes: `strict` raises StaleAnalysis, otherwise the
         job is returned as it is now stored."""
@@ -154,6 +156,8 @@ class AnalysisStore:
                     "INSERT INTO move_inventories (analysis_id, items) "
                     "VALUES (%s, %s::jsonb -> 'items')", (job.analysis_id, result_json),
                 )
+            if publish is not None:
+                publish()
         return replace(job, status=status, progress=1.0, result_json=result_json,
                        error_json=error_json, updated_at=now)
 
@@ -183,12 +187,14 @@ class AnalysisStore:
             )
         return replace(job, progress=progress, updated_at=now)
 
-    def submit(self, analysis_id: str, status: str, result_json: str | None,
-               error_json: str | None) -> AnalysisJob:
+    def submit(
+        self, analysis_id: str, status: str, result_json: str | None,
+        error_json: str | None, *, publish: Callable[[], None] | None = None,
+    ) -> AnalysisJob:
         job = self._active(analysis_id)
         # Strict: a job cancelled or finished since the check above is not reported as saved.
         return self._finish(job, status, result_json, error_json, int(self.clock()),
-                            strict=True)
+                            strict=True, publish=publish)
 
     def active(self, analysis_id: str) -> AnalysisJob:
         """The job, if an analyzer may still report on it; otherwise StaleAnalysis."""

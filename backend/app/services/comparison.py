@@ -7,8 +7,8 @@ result worked out from the time since upload, and stuck jobs time out.
 import json
 import secrets
 import time
-from contextlib import nullcontext
 from dataclasses import dataclass, replace
+from typing import Callable
 
 from psycopg import Connection
 from psycopg.types.json import Jsonb
@@ -16,7 +16,7 @@ from psycopg.types.json import Jsonb
 from ..db import Database
 from .analysis import ACTIVE, DEMO_PHOTOS, StaleAnalysis, demo_photo_url
 
-# Results that need the user's answer before the review can be finished.
+# Results shown to the user for checking.
 NEEDS_CHECK = ("changed", "missing")
 
 
@@ -67,40 +67,47 @@ class ComparisonStore:
     def start(
         self, move_id: str, analysis_id: str, before_media_id: str, after_media_id: str,
         inventory: list[dict], demo: bool, demo_fail: bool,
-        *, conn: Connection | None = None,
+        *, conn: Connection,
     ) -> ComparisonTask:
-        """A new after-move video replaces the move's earlier comparison and its answers.
-
-        Pass the transaction that replaced the video, so the job and the video change together.
-        """
+        """Start a comparison after cancelling the previous job in the same transaction."""
         now = int(self.clock())
         comparison_id = f"cmp_{secrets.token_hex(8)}"
-        with self.db.connect() if conn is None else nullcontext(conn) as db:
-            db.execute(
-                "UPDATE move_comparisons SET status = 'cancelled', updated_at = %s "
-                "WHERE move_id = %s AND status != 'cancelled'", (now, move_id),
-            )
-            row = db.execute(
-                "INSERT INTO move_comparisons(comparison_id, move_id, analysis_id, "
-                "before_media_id, after_media_id, inventory, status, demo, demo_fail, "
-                "created_at, updated_at) "
-                "VALUES (%s, %s, %s, %s, %s, %s, 'queued', %s, %s, %s, %s) RETURNING *",
-                (comparison_id, move_id, analysis_id, before_media_id, after_media_id,
-                 Jsonb(inventory), demo, demo_fail, now, now),
-            ).fetchone()
+        row = conn.execute(
+            "INSERT INTO move_comparisons(comparison_id, move_id, analysis_id, "
+            "before_media_id, after_media_id, inventory, status, demo, demo_fail, "
+            "created_at, updated_at) "
+            "VALUES (%s, %s, %s, %s, %s, %s, 'queued', %s, %s, %s, %s) RETURNING *",
+            (comparison_id, move_id, analysis_id, before_media_id, after_media_id,
+             Jsonb(inventory), demo, demo_fail, now, now),
+        ).fetchone()
         return self._task(row)
+
+    def cancel_for_move(self, move_id: str, *, conn: Connection) -> list[str]:
+        rows = conn.execute(
+            "UPDATE move_comparisons SET status = 'cancelled', updated_at = %s "
+            "WHERE move_id = %s AND status != 'cancelled' RETURNING comparison_id",
+            (int(self.clock()), move_id),
+        ).fetchall()
+        return [row["comparison_id"] for row in rows]
+
+    def latest(self, move_id: str, analysis_id: str, *, conn: Connection) -> ComparisonTask | None:
+        row = conn.execute(
+            "SELECT * FROM move_comparisons WHERE move_id = %s AND analysis_id = %s "
+            "AND status != 'cancelled' ORDER BY created_at DESC, seq DESC LIMIT 1",
+            (move_id, analysis_id),
+        ).fetchone()
+        return self._task(row) if row else None
 
     def current(self, move_id: str, analysis_id: str | None) -> ComparisonTask | None:
         """The comparison against the move's current list; one for an older list is ignored."""
         if analysis_id is None:
             return None
         with self.db.connect() as db:
-            row = db.execute(
-                "SELECT * FROM move_comparisons WHERE move_id = %s AND analysis_id = %s "
-                "AND status != 'cancelled' ORDER BY created_at DESC, seq DESC LIMIT 1",
-                (move_id, analysis_id),
-            ).fetchone()
-        return self._settle(self._task(row)) if row else None
+            task = self.latest(move_id, analysis_id, conn=db)
+        if task is None:
+            return None
+        task = self._settle(task)
+        return task if task.status != "cancelled" else None
 
     def get(self, comparison_id: str) -> ComparisonTask | None:
         with self.db.connect() as db:
@@ -132,60 +139,66 @@ class ComparisonStore:
         return task
 
     def report_progress(self, comparison_id: str, progress: float) -> ComparisonTask:
-        task = self.active(comparison_id)
+        self.active(comparison_id)
         now = int(self.clock())
         with self.db.connect() as db:
-            db.execute(
+            row = db.execute(
                 "UPDATE move_comparisons SET progress = %s, updated_at = %s "
-                "WHERE comparison_id = %s", (progress, now, comparison_id),
-            )
-        return replace(task, progress=progress, updated_at=now)
+                "WHERE comparison_id = %s AND status IN ('queued', 'running') RETURNING *",
+                (progress, now, comparison_id),
+            ).fetchone()
+        if row is None:
+            raise StaleAnalysis(comparison_id)
+        return self._task(row)
 
-    def submit(self, comparison_id: str, status: str, result_json: str | None,
-               error_json: str | None) -> ComparisonTask:
+    def submit(
+        self, comparison_id: str, status: str, result_json: str | None,
+        error_json: str | None, *, publish: Callable[[], None] | None = None,
+    ) -> ComparisonTask:
         task = self.active(comparison_id)
         # Strict: a comparison cancelled or finished since the check above is not reported as
         # saved.
         return self._finish(task, status, result_json, error_json, int(self.clock()),
-                            strict=True)
+                            strict=True, publish=publish)
 
     # --- the user's review ---
 
-    def set_check(self, comparison_id: str, item_id: str, answer: str) -> None:
+    def set_check(self, comparison_id: str, item_id: str, answer: str) -> ComparisonTask:
         """Save the user's answer for one item; answers can change until the review is done."""
         now = int(self.clock())
         with self.db.connect() as db:
             row = db.execute(
-                "SELECT reviewed_at FROM move_comparisons WHERE comparison_id = %s FOR UPDATE",
+                "SELECT status, reviewed_at FROM move_comparisons "
+                "WHERE comparison_id = %s FOR UPDATE",
                 (comparison_id,),
             ).fetchone()
+            if row is None or row["status"] != "completed":
+                raise StaleAnalysis(comparison_id)
             if row["reviewed_at"] is not None:
                 raise ComparisonReviewed(comparison_id)
-            db.execute(
+            saved = db.execute(
                 "UPDATE move_comparisons SET checks = checks || %s, updated_at = %s "
-                "WHERE comparison_id = %s", (Jsonb({item_id: answer}), now, comparison_id),
-            )
+                "WHERE comparison_id = %s RETURNING *",
+                (Jsonb({item_id: answer}), now, comparison_id),
+            ).fetchone()
+        return self._task(saved)
 
-    def finish_review(self, comparison_id: str, needs_check: list[str]) -> bool:
-        """Mark the review done if every item needing a check has an answer.
-
-        Returns False when an answer is missing. Finishing twice is harmless.
-        """
+    def finish_review(self, comparison_id: str) -> ComparisonTask:
+        """Finish while retaining unanswered items for follow-up. Finishing twice is harmless."""
         now = int(self.clock())
         with self.db.connect() as db:
             row = db.execute(
-                "SELECT checks, reviewed_at FROM move_comparisons "
-                "WHERE comparison_id = %s FOR UPDATE", (comparison_id,),
+                "SELECT * FROM move_comparisons WHERE comparison_id = %s FOR UPDATE",
+                (comparison_id,),
             ).fetchone()
-            if row["reviewed_at"] is not None:
-                return True
-            if any(item_id not in row["checks"] for item_id in needs_check):
-                return False
-            db.execute(
-                "UPDATE move_comparisons SET reviewed_at = %s, updated_at = %s "
-                "WHERE comparison_id = %s", (now, now, comparison_id),
-            )
-        return True
+            if row is None or row["status"] != "completed":
+                raise StaleAnalysis(comparison_id)
+            if row["reviewed_at"] is None:
+                row = db.execute(
+                    "UPDATE move_comparisons SET reviewed_at = %s, updated_at = %s "
+                    "WHERE comparison_id = %s RETURNING *", (now, now, comparison_id),
+                ).fetchone()
+        return self._task(row)
 
     def _settle(self, task: ComparisonTask) -> ComparisonTask:
         if task.status not in ACTIVE:
@@ -215,7 +228,8 @@ class ComparisonStore:
         return self._finish(task, "completed", json.dumps(result, ensure_ascii=False), None, now)
 
     def _finish(self, task: ComparisonTask, status: str, result_json: str | None,
-                error_json: str | None, now: int, *, strict: bool = False) -> ComparisonTask:
+                error_json: str | None, now: int, *, strict: bool = False,
+                publish: Callable[[], None] | None = None) -> ComparisonTask:
         """End an active comparison. If it was no longer active, nothing changes: `strict`
         raises StaleAnalysis, otherwise the comparison is returned as it is now stored."""
         with self.db.connect() as db:
@@ -233,6 +247,8 @@ class ComparisonStore:
                     (task.comparison_id,),
                 ).fetchone()
                 return self._task(row)
+            if publish is not None:
+                publish()
         return replace(task, status=status, progress=1.0, result_json=result_json,
                        error_json=error_json, updated_at=now)
 
@@ -261,4 +277,3 @@ def demo_comparison(task: ComparisonTask) -> dict:
         "progress": 1.0, "video": {"video_id": task.after_media_id}, "items": items,
         "warnings": [], "error": None,
     }
-

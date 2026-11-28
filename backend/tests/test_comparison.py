@@ -74,7 +74,10 @@ def test_demo_comparison_flags_a_changed_and_a_missing_item(client):
     assert desk["reasons"] and desk["before_photos"] and desk["after_photos"]
     assert (chair["result"], chair["after_photos"]) == ("missing", [])
     assert (box["label_ko"], box["result"], box["needs_check"]) == ("상자", "ok", False)
-    assert done["summary"] == {"ok": 1, "changed": 1, "missing": 1, "unchecked": 2}
+    assert done["summary"] == {
+        "ok": 1, "changed": 1, "missing": 1, "unchecked": 2, "confirmed": 0, "needs_attention": 2,
+    }
+    assert desk["dimensions_cm"]["width"] is not None
     assert desk["user_check"] is None and done["reviewed_at"] is None
 
     photo = client.get(desk["after_photos"][0]["image_url"], headers=headers)
@@ -146,6 +149,26 @@ def test_failed_demo_comparison(client):
     assert failed["items"] == []
 
 
+def test_failed_comparison_retry_reuses_video(client):
+    clock = Clock(client)
+    url, headers = confirmed_move(client, clock)
+    media = upload(client, url, headers, "after-media", name="fail-dark.mp4")
+    pending = comparison(client, url, headers)
+    retry_url = f"{url}/comparison/retry"
+    body = {"comparison_id": pending["comparison_id"]}
+    assert client.post(retry_url, headers=headers, json=body).status_code == 409
+    clock.advance(6)
+    assert comparison(client, url, headers)["status"] == "failed"
+
+    reply = client.post(retry_url, headers=headers, json=body)
+    assert reply.status_code == 202, reply.text
+    retry = reply.json()
+    assert retry["status"] == "queued" and retry["comparison_id"] != body["comparison_id"]
+    task = client.app.state.comparison_store.get(retry["comparison_id"])
+    assert task.after_media_id == media["media_id"]
+    assert client.post(retry_url, headers=headers, json=body).status_code == 409
+
+
 def test_user_answers_and_finishes_the_review(client):
     clock = Clock(client)
     url, headers = confirmed_move(client, clock)
@@ -171,15 +194,14 @@ def test_user_answers_and_finishes_the_review(client):
     answered = check(desk, "not_found").json()
     assert answered["items"][0]["user_check"] == "not_found"
     assert answered["summary"]["unchecked"] == 1
-    # Not every item answered yet.
-    assert complete().status_code == 409
-    # Answers can change until the review is finished.
     assert check(desk, "confirmed").json()["items"][0]["user_check"] == "confirmed"
-    check(chair, "not_found")
 
+    # An unanswered item stays open for follow-up when the user finishes the review.
     done = complete()
     assert done.status_code == 200 and done.json()["reviewed_at"] is not None
-    assert done.json()["summary"]["unchecked"] == 0
+    assert done.json()["summary"]["unchecked"] == 1
+    assert done.json()["summary"]["needs_attention"] == 1
+    assert done.json()["items"][1]["user_check"] is None
     again = complete()
     assert again.status_code == 200
     assert again.json()["reviewed_at"] == done.json()["reviewed_at"]
@@ -216,6 +238,10 @@ def test_history_stage_follows_the_after_move_review(client):
                          json={**shown_id, "user_check": "confirmed"})
     client.post(f"{url}/comparison/complete", headers=member, json=shown_id)
     assert stage() == "done"
+    history = client.get(MOVES, headers=member).json()["moves"][0]
+    assert history["comparison_summary"] == {
+        "changed": 1, "missing": 1, "confirmed": 2, "needs_attention": 0,
+    }
     # Retaking the first video starts the move over.
     upload(client, url, member)
     assert stage() == "preparing"
