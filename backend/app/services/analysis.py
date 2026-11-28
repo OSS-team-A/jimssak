@@ -6,6 +6,7 @@ time since upload whenever the job is read, so no background thread is needed.
 """
 
 import json
+import re
 import secrets
 import time
 from dataclasses import dataclass, replace
@@ -170,6 +171,10 @@ class AnalysisStore:
         job = self._active(analysis_id)
         return self._finish(job, status, result_json, error_json, int(self.clock()))
 
+    def active(self, analysis_id: str) -> AnalysisJob:
+        """The job, if an analyzer may still report on it; otherwise StaleAnalysis."""
+        return self._active(analysis_id)
+
     def _active(self, analysis_id: str) -> AnalysisJob:
         job = self.get(analysis_id)
         if job is None or job.status not in ACTIVE or job.demo:
@@ -184,6 +189,15 @@ DEMO_PHOTOS = {"chair": "chair.jpg", "desk": "desk.jpg"}
 
 def demo_photo_url(move_id: str, photo: str) -> str:
     return f"/api/v1/moves/{move_id}/analysis/photos/{DEMO_PHOTOS[photo]}"
+
+
+# Captured item photos: `<analysis_id>_<number>.jpg`. The analysis ID in the name keeps a
+# retake's photos from being mistaken for (or cached as) the previous video's.
+SNAPSHOT_NAME = re.compile(r"^(an_[0-9a-f]{16})_([1-9][0-9]{0,3})\.jpg$")
+
+
+def snapshot_url(move_id: str, analysis_id: str, number: int) -> str:
+    return f"/api/v1/moves/{move_id}/analysis/photos/{analysis_id}_{number}.jpg"
 
 
 def demo_result(job: AnalysisJob) -> dict:

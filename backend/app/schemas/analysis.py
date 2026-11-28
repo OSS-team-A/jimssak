@@ -5,7 +5,7 @@ and expects both back unchanged. Extra fields from the AI are kept, not rejected
 """
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -23,6 +23,8 @@ AnalysisStatus = Literal["queued", "running", "completed", "failed"]
 MAX_INVENTORY_ITEMS = 200
 MAX_ITEM_NAME_LENGTH = 50
 MAX_ITEM_NOTES_LENGTH = 500
+MAX_SNAPSHOTS_PER_ITEM = 3
+MAX_SNAPSHOTS = 200
 DimensionsStatus = Literal["estimated", "partial", "unavailable"]
 
 
@@ -64,9 +66,36 @@ class AnalysisItem(V2):
     snapshots: list[Snapshot] = Field(default_factory=list, description="물품 사진")
 
 
+class SubmittedSnapshot(Snapshot):
+    """분석기가 보내는 사진 요청. 백엔드가 `time_ms` 시각의 화면을 영상에서 캡처한다."""
+
+    image_url: str | None = Field(
+        default=None, description="비워 보낸다. 백엔드가 캡처한 사진 주소로 채운다"
+    )
+    bbox: list[Annotated[int, Field(ge=0)]] | None = Field(
+        default=None, min_length=4, max_length=4,
+        description=(
+            "물품 영역 [x1, y1, x2, y2]. 똑바로 세운 화면의 픽셀 기준. "
+            "보내면 이 영역만 잘라내고, 없으면 전체 화면을 쓴다"
+        ),
+    )
+
+    @model_validator(mode="after")
+    def box_has_area(self):
+        if self.bbox is not None and not (
+            self.bbox[2] > self.bbox[0] and self.bbox[3] > self.bbox[1]
+        ):
+            raise ValueError("bbox는 x1 < x2, y1 < y2여야 합니다.")
+        return self
+
+
 class SubmittedAnalysisItem(AnalysisItem):
     label_ko: str = Field(min_length=1, max_length=MAX_ITEM_NAME_LENGTH)
     notes: str | None = Field(default=None, max_length=MAX_ITEM_NOTES_LENGTH)
+    snapshots: list[SubmittedSnapshot] = Field(
+        default_factory=list, max_length=MAX_SNAPSHOTS_PER_ITEM,
+        description=f"물품 사진 요청. 물품당 최대 {MAX_SNAPSHOTS_PER_ITEM}장",
+    )
 
 
 class AnalysisError(V2):
@@ -99,6 +128,8 @@ class AnalysisResultV2(V2):
             raise ValueError("status가 failed이면 error가 필요합니다.")
         if self.status == "completed" and self.error is not None:
             raise ValueError("status가 completed이면 error는 null이어야 합니다.")
+        if sum(len(item.snapshots) for item in self.items) > MAX_SNAPSHOTS:
+            raise ValueError(f"사진은 모두 합쳐 {MAX_SNAPSHOTS}장까지 보낼 수 있습니다.")
         return self
 
 

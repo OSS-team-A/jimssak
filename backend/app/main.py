@@ -22,6 +22,7 @@ from .services.media import MediaStorage
 from .services.move_chat import MoveChat
 from .services.moves import MoveStore
 from .services.route import KakaoRouter
+from .services.snapshots import SnapshotCapture
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -42,6 +43,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         app.state.move_store = MoveStore(db, settings.guest_move_ttl_seconds)
         app.state.media_storage = MediaStorage(settings.media_dir, settings.media_max_bytes)
+        app.state.snapshot_capture = SnapshotCapture()
         app.state.analysis_store = AnalysisStore(
             db, settings.analysis_timeout_seconds, settings.analysis_demo_seconds
         )

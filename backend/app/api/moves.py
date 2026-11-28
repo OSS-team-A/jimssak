@@ -38,7 +38,7 @@ from ..schemas.moves import (
     ScheduleSection,
     UploadedVideo,
 )
-from ..services.analysis import DEMO_PHOTOS, AnalysisJob, AnalysisStore
+from ..services.analysis import DEMO_PHOTOS, SNAPSHOT_NAME, AnalysisJob, AnalysisStore
 from ..services.auth import AuthStore
 from ..services.building_register import (
     BuildingLookupFailed,
@@ -673,9 +673,10 @@ def upload_media(
     except BaseException:
         storage.discard(media)
         raise
-    # The database no longer points at the old file, so it can go.
+    # The database no longer points at the old file, so it can go, with its item photos.
     if replaced is not None:
         storage.discard(replaced)
+    storage.discard_snapshots(move.id)
     # Every new video gets a fresh analysis; the previous one's late result is refused.
     analyses.start(
         move.id, media.id, demo=request.app.state.analysis_demo,
@@ -771,16 +772,24 @@ def get_analysis(move: AccessibleMove, analyses: AnalysisDep) -> AnalysisOut:
 
 @router.get(
     "/{move_id}/analysis/photos/{name}",
-    summary="데모 분석 물품 사진",
+    summary="분석 물품 사진",
     description=(
-        "데모 분석 결과의 `snapshots[].image_url`이 가리키는 샘플 사진. 이 이사를 열 수 "
-        "있는 사용자만 받을 수 있다."
+        "분석 결과·이삿짐 목록의 `snapshots[].image_url`이 가리키는 물품 사진(JPG). AI 분석 "
+        "결과의 사진은 영상에서 캡처한 것이고, 데모 결과는 샘플 사진이다. 이 이사를 열 수 "
+        "있는 사용자만 받을 수 있으므로 `<img src>`에 바로 넣지 말고 인증 헤더를 붙여 받는다."
     ),
     response_class=FileResponse,
     responses={404: {"description": "없는 사진이거나 다른 사용자의 이사"}},
 )
-def get_analysis_photo(name: str, move: AccessibleMove) -> FileResponse:
-    if name not in DEMO_PHOTOS.values():
+def get_analysis_photo(
+    name: str, move: AccessibleMove, storage: MediaStorageDep,
+) -> FileResponse:
+    if name in DEMO_PHOTOS.values():
+        return FileResponse(DEMO_PHOTO_DIR / name, media_type="image/jpeg")
+    match = SNAPSHOT_NAME.match(name)
+    # The folder is under this move's own directory, so another move's photos are unreachable.
+    path = storage.snapshot_dir(move.id, match[1]) / f"{match[2]}.jpg" if match else None
+    if path is None or not path.is_file():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "사진을 찾을 수 없습니다.")
-    return FileResponse(DEMO_PHOTO_DIR / name, media_type="image/jpeg")
+    return FileResponse(path, media_type="image/jpeg")
 
