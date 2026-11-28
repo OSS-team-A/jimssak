@@ -22,8 +22,10 @@ MAX_PAGES = 10
 # The service sometimes answers 200 with an empty body or 503 SERVICETIMEOUT_ERROR.
 ATTEMPTS = 3
 RETRY_PAUSE_SECONDS = 0.5
-# 건축법상 6층 이상 건물은 대부분 승용승강기 대상이라, 이런 건물의 '0대'는 기록 누락일 수 있다.
-TALL_BUILDING_FLOORS = 6
+# A building this tall recorded with no elevator is more likely a gap in the record, so the
+# user is asked to check. Without a usable elevator, moving at this height defaults to a
+# ladder truck.
+TALL_BUILDING_FLOORS = 5
 
 
 @dataclass(frozen=True)
@@ -196,3 +198,10 @@ def decide_elevator(row: dict) -> str:
         # A tall building recorded with no elevator is more likely a gap in the record.
         return "unknown"
     return "unavailable"
+
+
+def default_ladder(elevator: str, building_floors: int | None, floor: int | None) -> str:
+    """use / not_use when the user has not chosen: a tall building with no usable elevator."""
+    floors = building_floors if building_floors is not None else floor
+    tall = floors is not None and floors >= TALL_BUILDING_FLOORS
+    return "use" if tall and elevator in ("unavailable", "unknown") else "not_use"

@@ -26,7 +26,7 @@ from ..schemas.moves import MoveUpdate, PlaceInput, ReviewDetails, ScheduleInput
 from ..services.analysis import AnalysisJob, AnalysisStore
 from ..services.inventory import edit_inventory, inventory_from_row, load_inventory
 from ..services.move_chat import ChatProviderError, ChatUnavailable
-from ..services.moves import MoveStore, PlaceRecord, ScheduleRecord
+from ..services.moves import MoveStore, PlaceRecord, ScheduleRecord, place_ladder
 from .inventory import append_item, find_item, patch_item
 from .moves import (
     AccessibleMove,
@@ -71,7 +71,8 @@ class ReviewState:
                       for item in self.inventory.items],
             "schedule": asdict(self.schedule) if self.schedule else None,
             "review": self.review.model_dump(mode="json") if self.review else None,
-            "places": {role: {"floor": place.floor, "elevator": place.elevator}
+            "places": {role: {"floor": place.floor, "elevator": place.elevator,
+                              "ladder": place_ladder(place, None)[0]}
                        for role, place in self.places.items()},
         }
 
@@ -203,11 +204,13 @@ def _move_update(
         values.update(new_fields)
         updates[role] = PlaceInput.model_validate(values)
         labels = {"road_address": "주소", "detail_address": "상세 주소", "floor": "층",
-                  "elevator": "승강기"}
+                  "elevator": "승강기", "ladder": "사다리차"}
         for name, value in new_fields.items():
             if name == "elevator":
                 value = {"available": "있음", "unavailable": "없음",
                          "unknown": "확인 필요", None: "확인 필요"}[value]
+            elif name == "ladder":
+                value = {"use": "사용", "not_use": "사용 안 함", None: "기본값"}[value]
             summary.append(f"{title} {labels[name]} → {value if value is not None else '미입력'}")
         if place and not same_place:
             summary.append(f"{title} 변경 후 상세 주소·층·승강기 정보 확인 필요")

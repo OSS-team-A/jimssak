@@ -65,12 +65,14 @@ def test_sc06_form_completes_the_move(client):
     assert response.status_code == 200
     data = response.json()["data"]
     assert data["origin"] == {"status": "filled", "value": {
-        **ORIGIN, "elevator_source": "user", "building": NO_LOOKUP,
+        **ORIGIN, "elevator_source": "user", "ladder": "not_use", "ladder_source": "default",
+        "building": NO_LOOKUP,
     }}
-    # Elevator not sent: shown as 확인 필요, with no source yet.
+    # Elevator not sent: shown as 확인 필요, with no source yet. Fifth floor without a known
+    # elevator, so a ladder truck is assumed.
     assert data["destination"] == {"status": "filled", "value": {
         **DESTINATION, "detail_address": None, "elevator": "unknown", "elevator_source": None,
-        "building": NO_LOOKUP,
+        "ladder": "use", "ladder_source": "default", "building": NO_LOOKUP,
     }}
     assert data["schedule"]["status"] == "filled"
     assert data["schedule"]["value"] == {"move_date": MOVE_DAY, "start_time": "09:00:00"}
@@ -98,7 +100,8 @@ def test_only_sent_sections_change(client):
     }).json()["data"]["origin"]["value"]
     assert moved == {
         "road_address": "서울 중구 퇴계로36길 4", "detail_address": None, "floor": -1,
-        "elevator": "unknown", "elevator_source": None, "building": NO_LOOKUP,
+        "elevator": "unknown", "elevator_source": None,
+        "ladder": "not_use", "ladder_source": "default", "building": NO_LOOKUP,
     }
 
     cleared = client.patch(url, headers=headers, json={"destination": None}).json()
@@ -222,6 +225,46 @@ def test_elevator_kept_unless_building_changes(client):
     # The user corrects it again for the new building.
     corrected = origin(road_address="서울 중구 퇴계로36길 4", floor=2, elevator="unavailable")
     assert (corrected["elevator"], corrected["elevator_source"]) == ("unavailable", "user")
+
+
+@pytest.mark.parametrize(("floor", "elevator", "expected"), [
+    (5, "unavailable", "use"),
+    (5, "unknown", "use"),
+    (5, "available", "not_use"),
+    (4, "unavailable", "not_use"),
+    (12, None, "use"),       # elevator not sent: unknown
+    (-1, None, "not_use"),
+])
+def test_ladder_default(client, floor, elevator, expected):
+    url, headers = guest_move(client)
+    place = {"road_address": "서울 중구 퇴계로36길 2", "floor": floor}
+    if elevator:
+        place["elevator"] = elevator
+    value = client.patch(url, headers=headers, json={"origin": place}).json()["data"]["origin"]
+    assert (value["value"]["ladder"], value["value"]["ladder_source"]) == (expected, "default")
+
+
+def test_ladder_choice_kept_unless_building_changes(client):
+    url, headers = guest_move(client)
+
+    def origin(**fields):
+        response = client.patch(url, headers=headers, json={"origin": fields})
+        assert response.status_code == 200, response.text
+        value = response.json()["data"]["origin"]["value"]
+        return value["ladder"], value["ladder_source"]
+
+    address = "서울 중구 퇴계로36길 2"
+    assert origin(road_address=address, floor=7) == ("use", "default")
+    # The user says a ladder truck cannot be used there; it outranks the default.
+    assert origin(road_address=address, floor=7, ladder="not_use") == ("not_use", "user")
+    # Saving again without the field keeps the choice for the same building.
+    assert origin(road_address=address, floor=8) == ("not_use", "user")
+    # A different building starts over from the default.
+    assert origin(road_address="서울 중구 퇴계로36길 4", floor=8) == ("use", "default")
+    # Only use / not_use are accepted.
+    response = client.patch(url, headers=headers, json={"origin": {
+        "road_address": address, "floor": 3, "ladder": "maybe"}})
+    assert response.status_code == 422
 
 
 def test_elevator_kept_per_end(client):

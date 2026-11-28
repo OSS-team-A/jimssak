@@ -231,6 +231,31 @@ def test_chat_applies_inventory_and_move_changes_only_after_confirmation(demo_cl
     assert move["review"] == {"delivery_date": delivery.isoformat(), "notes": "트럭 진입 제한"}
 
 
+def test_chat_changes_the_ladder_choice(demo_client, monkeypatch):
+    clock = Clock(demo_client)
+    url, headers = new_move(demo_client)
+    upload(demo_client, url, headers)
+    clock.advance(6)
+    place = {"road_address": "서울 중구 퇴계로36길 2", "detail_address": "701호", "floor": 7}
+    demo_client.patch(url, headers=headers, json={"destination": place})
+    before = demo_client.get(url, headers=headers).json()["data"]["destination"]["value"]
+    assert (before["ladder"], before["ladder_source"]) == ("use", "default")
+
+    proposal = ChatInterpretation.model_validate({
+        "message": "도착지에서 사다리차를 쓰지 않는 것으로 바꿀까요?",
+        "changes": {"destination": {"ladder": "not_use"}},
+    })
+    monkeypatch.setattr(demo_client.app.state.move_chat, "interpret", lambda *_: proposal)
+    reply = demo_client.post(f"{url}/chat", headers=headers, json={"message": "사다리차 못 써요"})
+    assert reply.json()["summary"] == ["도착지 사다리차 → 사용 안 함"]
+    applied = demo_client.post(f"{url}/chat/apply", headers=headers,
+                               json={"proposal_id": reply.json()["proposal_id"]})
+    assert applied.status_code == 200, applied.text
+    after = demo_client.get(url, headers=headers).json()["data"]["destination"]["value"]
+    assert (after["ladder"], after["ladder_source"]) == ("not_use", "user")
+    assert (after["floor"], after["detail_address"]) == (7, "701호")
+
+
 def test_chat_asks_for_missing_size_then_adds_item_without_confirmation(demo_client, monkeypatch):
     clock = Clock(demo_client)
     url, headers = new_move(demo_client)

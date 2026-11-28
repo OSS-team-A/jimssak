@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from backend.app.config import Settings
 from backend.app.main import create_app
@@ -95,6 +96,36 @@ def test_handless_saturday_uses_highest_date_rate_and_second_floor_uses_elevator
     )
     assert result.yes2404.full_pack == 520_000  # 44만 + 18km 3만 + 승강기 5만
     assert "출발지 승강기 사용 가정" in result.assumptions
+
+
+def test_stored_ladder_choice_picks_the_transport():
+    def full_pack(place):
+        return calculate_estimate(
+            {"origin": place}, {}, None, None, None, EstimateOptions(), {},
+        )
+
+    # 7th floor, no known elevator: ladder truck by default (7층 16만).
+    default = full_pack(PlaceRecord("서울특별시 중구 필동로1길 30", None, 7, "unknown", None))
+    assert default.yes2404.full_pack == 370_000 + 30_000 + 160_000
+    assert any("사다리차 사용 가정" in note for note in default.assumptions)
+    # The user said no ladder truck: stairs, 6 floors × 1만5천.
+    stairs = full_pack(
+        PlaceRecord("서울특별시 중구 필동로1길 30", None, 7, "unknown", None, "not_use")
+    )
+    assert stairs.yes2404.full_pack == 370_000 + 30_000 + 90_000
+    # A ladder truck chosen even with an elevator.
+    chosen = full_pack(
+        PlaceRecord("서울특별시 중구 필동로1길 30", None, 7, "available", "user", "use")
+    )
+    assert chosen.yes2404.full_pack == default.yes2404.full_pack
+    assert not any("사다리차 사용 가정" in note for note in chosen.assumptions)
+
+
+def test_stone_bed_option_is_gone():
+    with pytest.raises(ValidationError):
+        EstimateOptions.model_validate({"stone_beds": []})
+    with pytest.raises(ValidationError):
+        EstimateOptions.model_validate({"origin": {"ladder_available": True}})
 
 
 def test_inventory_volume_uses_quantity_and_adds_each_extra_vehicle_once():

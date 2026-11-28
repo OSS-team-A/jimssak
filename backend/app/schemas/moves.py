@@ -28,10 +28,16 @@ ELEVATOR_DOC = (
     "|---|---|---|\n"
     "| `available` | 승강기 있음 | 대장에 승용 또는 비상용 승강기가 1대 이상, "
     "또는 사용자가 ‘있음’을 고름 |\n"
-    "| `unavailable` | 승강기 없음 | 5층 이하이고 대장상 0대, 또는 사용자가 ‘없음’을 고름 |\n"
+    "| `unavailable` | 승강기 없음 | 4층 이하이고 대장상 0대, 또는 사용자가 ‘없음’을 고름 |\n"
     "| `unknown` | 승강기 확인 필요 | 아직 모름: 직접 입력한 주소(조회 안 함), 조회 실패, "
-    "건물 특정 실패(동 미입력), 대장 항목 누락, 6층 이상인데 대장상 0대, 주소 변경 직후 |\n\n"
+    "건물 특정 실패(동 미입력), 대장 항목 누락, 5층 이상인데 대장상 0대, 주소 변경 직후 |\n\n"
     "`unknown`이면 사용자에게 있음/없음을 골라 달라고 안내한다."
+)
+Ladder = Literal["use", "not_use"]
+LADDER_DOC = (
+    "사다리차 사용 여부. `use` 사용 / `not_use` 사용 안 함.\n\n"
+    "사용자가 고르지 않았으면 기본값을 쓴다: 5층 이상 건물(건축물대장 지상층수, 없으면 "
+    "이사하는 층)이고 승강기가 `unavailable`이나 `unknown`이면 `use`, 그 외에는 `not_use`."
 )
 # Where the elevator value came from: the user, or the building register lookup (later).
 ElevatorSource = Literal["user", "building_register"]
@@ -135,6 +141,14 @@ class PlaceInput(BaseModel):
         description=(
             "이사하는 층(-5~80). 지하는 음수(지하 1층 = -1)이고 0은 없다. "
             "보내지 않으면 주소만 저장되고 상태가 partial로 남는다."
+        ),
+    )
+    ladder: Ladder | None = Field(
+        default=None,
+        description=(
+            "사용자가 사다리차 사용 여부를 고를 때만 보낸다(`use` 사용 / `not_use` 사용 안 함). "
+            "보내지 않으면 주소가 같을 때 기존 선택을 유지하고, 주소가 바뀌면 기본값으로 "
+            "돌아간다. 기본값 규칙은 응답의 `ladder` 설명 참고."
         ),
     )
     elevator: Elevator | None = Field(
@@ -287,6 +301,10 @@ class Place(BaseModel):
             "| `user` | 사용자가 직접 고름 | (사용자가 고른 값 그대로) |\n"
             "| `null` | 아직 모름 (`elevator`가 `unknown`) | 승강기 확인 필요 |"
         )
+    )
+    ladder: Ladder = Field(description=LADDER_DOC)
+    ladder_source: Literal["user", "default"] = Field(
+        description="`user`: 사용자가 고름, `default`: 기본값 규칙으로 정함"
     )
     building: BuildingInfo = Field(description="건축물대장 조회 결과")
 

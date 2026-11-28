@@ -13,7 +13,7 @@ from ..schemas.estimates import (
 )
 from ..schemas.inventory import InventoryItem
 from ..schemas.moves import DayInfoOut
-from .moves import LookupRecord, PlaceRecord, RouteRecord, ScheduleRecord
+from .moves import LookupRecord, PlaceRecord, RouteRecord, ScheduleRecord, place_ladder
 
 DEMO_DISTANCE_M = 18_000
 ELEVATOR_FEE = 50_000
@@ -133,7 +133,8 @@ def _distance_fees(distance: int, origin: str | None, destination: str | None) -
 
 
 def _place_fee(
-    place: PlaceRecord | None, work: EstimatePlace, side: str, assumptions: list[str],
+    place: PlaceRecord | None, lookup: LookupRecord | None, work: EstimatePlace, side: str,
+    assumptions: list[str],
 ) -> int:
     if work.carry_fee_krw is not None:
         carry = work.carry_fee_krw
@@ -154,15 +155,13 @@ def _place_fee(
             method = "ground_floor"
             if floor is None:
                 assumptions.append(f"{side} 층수 미확인으로 진입층에서 바로 운반 가정")
-        elif place is not None and place.elevator == "available":
+        elif place_ladder(place, lookup)[0] == "use":
+            method = "ladder"
+            if place_ladder(place, lookup)[1] == "default":
+                assumptions.append(f"{side} 5층 이상·승강기 미확인으로 사다리차 사용 가정")
+        elif place.elevator == "available":
             method = "elevator"
             assumptions.append(f"{side} 승강기 사용 가정")
-        elif floor >= 3 and work.ladder_available is not False:
-            method = "ladder"
-            assumptions.append(f"{side} 사다리차 사용 가정")
-        elif floor >= 3:
-            method = "mixed"
-            assumptions.append(f"{side} 운반 방식 미확인으로 작업 예비비 적용")
         else:
             method = "stairs"
             assumptions.append(f"{side} 계단 사용 가정")
@@ -223,11 +222,7 @@ def _waiting_fee(options: EstimateOptions, *, yes2404: bool = False) -> int:
     return 20_000 * ((minutes + 59) // 60)
 
 
-def _common_fees(
-    options: EstimateOptions,
-    items: dict[str, InventoryItem],
-    vehicles: int,
-) -> int:
+def _common_fees(options: EstimateOptions, vehicles: int) -> int:
     total = (options.workers - 1) * 80_000 + (vehicles - 1) * EXTRA_VEHICLE_FEE
     total += (
         options.toll_fee_krw if options.toll_fee_krw is not None
@@ -236,12 +231,6 @@ def _common_fees(
     total += sum(
         SPECIAL_WORK_ALLOWANCE if fee is None else fee for fee in options.other_service_fees_krw
     )
-    for bed in options.stone_beds:
-        default_fee = 40_000 if bed.size == "single" else 80_000
-        total += (
-            bed.fee_krw if bed.fee_krw is not None
-            else default_fee * items[bed.item_id].quantity
-        )
     return total
 
 
@@ -283,9 +272,11 @@ def calculate_estimate(
         assumptions.append("공휴일·연휴 전날·손 없는 날 중 미확인 조건은 날짜 할증에서 제외")
     yes_base, ajd_flat, ajd_percent, late = _date_rates(schedule, day)
     night = options.night_work if options.night_work is not None else late
-    common = _common_fees(options, items, vehicles)
-    common += _place_fee(origin, options.origin, "출발지", assumptions)
-    common += _place_fee(destination, options.destination, "도착지", assumptions)
+    common = _common_fees(options, vehicles)
+    common += _place_fee(origin, lookups.get("origin"), options.origin, "출발지", assumptions)
+    common += _place_fee(
+        destination, lookups.get("destination"), options.destination, "도착지", assumptions,
+    )
     ajd_extras = ajd_distance + _waiting_fee(options)
     yes_extras = yes_distance + _waiting_fee(options, yes2404=True)
 
