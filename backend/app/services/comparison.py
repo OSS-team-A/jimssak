@@ -144,7 +144,10 @@ class ComparisonStore:
     def submit(self, comparison_id: str, status: str, result_json: str | None,
                error_json: str | None) -> ComparisonTask:
         task = self.active(comparison_id)
-        return self._finish(task, status, result_json, error_json, int(self.clock()))
+        # Strict: a comparison cancelled or finished since the check above is not reported as
+        # saved.
+        return self._finish(task, status, result_json, error_json, int(self.clock()),
+                            strict=True)
 
     # --- the user's review ---
 
@@ -212,14 +215,24 @@ class ComparisonStore:
         return self._finish(task, "completed", json.dumps(result, ensure_ascii=False), None, now)
 
     def _finish(self, task: ComparisonTask, status: str, result_json: str | None,
-                error_json: str | None, now: int) -> ComparisonTask:
+                error_json: str | None, now: int, *, strict: bool = False) -> ComparisonTask:
+        """End an active comparison. If it was no longer active, nothing changes: `strict`
+        raises StaleAnalysis, otherwise the comparison is returned as it is now stored."""
         with self.db.connect() as db:
-            db.execute(
+            updated = db.execute(
                 "UPDATE move_comparisons SET status = %s, progress = 1, result_json = %s, "
                 "error_json = %s, updated_at = %s WHERE comparison_id = %s "
                 "AND status IN ('queued', 'running')",
                 (status, result_json, error_json, now, task.comparison_id),
             )
+            if not updated.rowcount:
+                if strict:
+                    raise StaleAnalysis(task.comparison_id)
+                row = db.execute(
+                    "SELECT * FROM move_comparisons WHERE comparison_id = %s",
+                    (task.comparison_id,),
+                ).fetchone()
+                return self._task(row)
         return replace(task, status=status, progress=1.0, result_json=result_json,
                        error_json=error_json, updated_at=now)
 

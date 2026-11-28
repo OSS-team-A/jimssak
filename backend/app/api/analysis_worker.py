@@ -5,6 +5,8 @@ Protected by a shared key (X-Worker-Key). Users never call these routes.
 
 import json
 import secrets
+import shutil
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
 
@@ -38,6 +40,7 @@ def get_analyses(request: Request) -> AnalysisStore:
 Analyses = Annotated[AnalysisStore, Depends(get_analyses)]
 Worker = Depends(require_worker)
 STALE = {409: {"description": "현재 작업이 아님(영상이 교체됨) 또는 이미 끝난 작업"}}
+STALE_MESSAGE = "현재 진행 중인 작업이 아닙니다."
 
 
 def _section(job: AnalysisJob) -> AnalysisSection:
@@ -121,52 +124,49 @@ def result(
             "analysis_id와 video.video_id는 작업을 가져갈 때 받은 값을 그대로 보내주세요.",
         )
     raw = body.model_dump(mode="json")
-    storage = request.app.state.media_storage
-    captured = False
+    if body.status == "failed":
+        try:
+            done = analyses.submit(analysis_id, "failed", None,
+                                   json.dumps(raw["error"], ensure_ascii=False))
+        except StaleAnalysis as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, STALE_MESSAGE) from exc
+        return _section(done)
+
+    def save() -> AnalysisSection:
+        return _section(analyses.submit(analysis_id, "completed",
+                                        json.dumps(raw, ensure_ascii=False), None))
+
     try:
-        if body.status == "completed":
-            job = analyses.active(analysis_id)
-            _capture_snapshots(request, job, raw)
-            captured = True
-            done = analyses.submit(analysis_id, "completed", json.dumps(raw, ensure_ascii=False),
-                                   None)
-        else:
-            error = json.dumps(raw["error"], ensure_ascii=False)
-            done = analyses.submit(analysis_id, "failed", None, error)
+        job = analyses.active(analysis_id)
+        media = request.app.state.move_store.get_video(job.move_id)
+        if media is None or media.id != job.media_id:
+            raise StaleAnalysis(analysis_id)
     except StaleAnalysis as exc:
-        if captured:
-            storage.discard_snapshots(job.move_id, analysis_id)
-        raise HTTPException(status.HTTP_409_CONFLICT, "현재 진행 중인 작업이 아닙니다.") from exc
-    return _section(done)
-
-
-def _capture_snapshots(request: Request, job: AnalysisJob, raw: dict) -> None:
-    """Cut each requested photo from the video and point `image_url` at it."""
-    media = request.app.state.move_store.get_video(job.move_id)
-    if media is None or media.id != job.media_id:
-        raise StaleAnalysis(job.analysis_id)
+        raise HTTPException(status.HTTP_409_CONFLICT, STALE_MESSAGE) from exc
     video = request.app.state.media_storage.path(media)
-    capture_photos(request, job.move_id, job.analysis_id, [
+    return save_with_photos(request, job.move_id, analysis_id, [
         (video, item["item_id"], snapshot)
         for item in raw["items"] for snapshot in item["snapshots"]
-    ])
+    ], save)
 
 
-def capture_photos(
+def save_with_photos(
     request: Request, move_id: str, job_id: str, photos: list[tuple[Path, str, dict]],
-) -> None:
-    """Capture (video, item_id, snapshot) photos into the job's folder and fill `image_url`.
+    save: Callable[[], AnalysisSection],
+) -> AnalysisSection:
+    """Capture (video, item_id, snapshot) photos, fill `image_url`, then save the result.
 
-    Any failure removes the photos already taken, so a refused result leaves none behind.
+    Photos go to a folder private to this request and become the job's photos only if
+    `save()` succeeds. A request that loses (a repeated or late result) or fails removes only
+    its own folder, never the photos of the result that was saved.
     """
     storage = request.app.state.media_storage
     capture = request.app.state.snapshot_capture
-    folder = storage.snapshot_dir(move_id, job_id)
-    storage.discard_snapshots(move_id, job_id)
+    staging = storage.snapshot_staging(move_id, job_id)
     try:
         for number, (video, item_id, snapshot) in enumerate(photos, start=1):
             try:
-                capture.capture(video, snapshot["time_ms"], folder / f"{number}.jpg",
+                capture.capture(video, snapshot["time_ms"], staging / f"{number}.jpg",
                                 snapshot.get("bbox"))
             except SnapshotFailed as exc:
                 raise HTTPException(
@@ -175,9 +175,14 @@ def capture_photos(
                     "time_ms가 영상 길이 안인지, bbox가 화면 안인지 확인해주세요.",
                 ) from exc
             snapshot["image_url"] = snapshot_url(move_id, job_id, number)
-    except BaseException:
-        storage.discard_snapshots(move_id, job_id)
-        raise
+        try:
+            done = save()
+        except StaleAnalysis as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, STALE_MESSAGE) from exc
+        storage.publish_snapshots(move_id, job_id, staging)
+        return done
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
 
 
 # --- after-move comparisons (SC-14~16) ---
@@ -295,24 +300,36 @@ def comparison_result(
             "comparison_id와 video.video_id(이사 후 영상)는 작업에서 받은 값을 그대로 보내주세요.",
         )
     raw = body.model_dump(mode="json")
-    storage = request.app.state.media_storage
-    captured = False
+    if body.status == "failed":
+        try:
+            done = comparisons.submit(comparison_id, "failed", None,
+                                      json.dumps(raw["error"], ensure_ascii=False))
+        except StaleAnalysis as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, STALE_MESSAGE) from exc
+        return _comparison_section(done)
+
+    def save() -> AnalysisSection:
+        return _comparison_section(comparisons.submit(
+            comparison_id, "completed", json.dumps(raw, ensure_ascii=False), None))
+
     try:
-        if body.status == "completed":
-            task = comparisons.active(comparison_id)
-            _check_items(task, raw["items"])
-            _capture_comparison(request, task, raw)
-            captured = True
-            done = comparisons.submit(comparison_id, "completed",
-                                      json.dumps(raw, ensure_ascii=False), None)
-        else:
-            error = json.dumps(raw["error"], ensure_ascii=False)
-            done = comparisons.submit(comparison_id, "failed", None, error)
+        task = comparisons.active(comparison_id)
+        _check_items(task, raw["items"])
+        moves = request.app.state.move_store
+        before, after = moves.get_video(task.move_id), moves.get_after_video(task.move_id)
+        if (before is None or before.id != task.before_media_id
+                or after is None or after.id != task.after_media_id):
+            raise StaleAnalysis(comparison_id)
     except StaleAnalysis as exc:
-        if captured:
-            storage.discard_snapshots(task.move_id, comparison_id)
-        raise HTTPException(status.HTTP_409_CONFLICT, "현재 진행 중인 작업이 아닙니다.") from exc
-    return _comparison_section(done)
+        raise HTTPException(status.HTTP_409_CONFLICT, STALE_MESSAGE) from exc
+    storage = request.app.state.media_storage
+    before_path, after_path = storage.path(before), storage.path(after)
+    return save_with_photos(request, task.move_id, comparison_id, [
+        *((before_path, item["item_id"], shot)
+          for item in raw["items"] for shot in item["before_snapshots"]),
+        *((after_path, item["item_id"], shot)
+          for item in raw["items"] for shot in item["after_snapshots"]),
+    ], save)
 
 
 def _check_items(task: ComparisonTask, items: list[dict]) -> None:
@@ -328,19 +345,3 @@ def _check_items(task: ComparisonTask, items: list[dict]) -> None:
             "확정 목록의 물품마다 정확히 한 번씩 보내주세요. "
             f"빠짐: {missing}, 목록에 없음: {extra}, 중복: {repeated}",
         )
-
-
-def _capture_comparison(request: Request, task: ComparisonTask, raw: dict) -> None:
-    moves = request.app.state.move_store
-    before, after = moves.get_video(task.move_id), moves.get_after_video(task.move_id)
-    if (before is None or before.id != task.before_media_id
-            or after is None or after.id != task.after_media_id):
-        raise StaleAnalysis(task.comparison_id)
-    storage = request.app.state.media_storage
-    before_path, after_path = storage.path(before), storage.path(after)
-    capture_photos(request, task.move_id, task.comparison_id, [
-        *((before_path, item["item_id"], shot)
-          for item in raw["items"] for shot in item["before_snapshots"]),
-        *((after_path, item["item_id"], shot)
-          for item in raw["items"] for shot in item["after_snapshots"]),
-    ])

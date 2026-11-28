@@ -1,4 +1,5 @@
 import copy
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from fastapi.testclient import TestClient
@@ -160,3 +161,28 @@ def test_comparison_routes_need_the_worker_key(client, videos):
     assert client.get(f"{base}/before-video").status_code == 401
     assert client.post(f"{base}/result", json=result(task)).status_code == 401
     assert client.post(f"{WORKER}/comparisons/claim").status_code == 401
+
+
+def test_comparison_result_sent_twice_at_once_keeps_the_saved_photos(client, videos):
+    url, headers, task = comparison_job(client, videos)
+    send = f"{WORKER}/comparisons/{task['comparison_id']}/result"
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        codes = sorted(pool.map(
+            lambda _: client.post(send, headers=KEY, json=result(task)).status_code, range(2)))
+    assert codes == [200, 409]
+    desk = client.get(url + "/comparison", headers=headers).json()["items"][0]
+    for photo in desk["before_photos"] + desk["after_photos"]:
+        assert client.get(photo["image_url"], headers=headers).status_code == 200
+
+
+def test_comparison_cancelled_after_the_check_is_refused(client, videos, monkeypatch):
+    url, headers, task = comparison_job(client, videos)
+    store = client.app.state.comparison_store
+    checked = store.active(task["comparison_id"])
+    client.post(f"{url}/after-media", headers=headers,
+                files={"file": ("again.mp4", videos["room"], "video/mp4")})
+    monkeypatch.setattr(store, "active", lambda _id: checked)
+    response = client.post(f"{WORKER}/comparisons/{task['comparison_id']}/result",
+                           headers=KEY, json=result(task))
+    assert response.status_code == 409
+    assert not list(client.app.state.media_storage.root.rglob("cmp_*/*.jpg"))

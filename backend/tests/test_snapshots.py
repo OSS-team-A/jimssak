@@ -1,4 +1,5 @@
 import struct
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from fastapi.testclient import TestClient
@@ -136,3 +137,35 @@ def test_result_for_a_replaced_video_leaves_no_photos(client, videos):
                        json=result(job, [{"time_ms": 100}]))
     assert late.status_code == 409
     assert photo_files(client) == []
+
+
+def test_result_sent_twice_at_once_keeps_the_saved_photos(client, videos):
+    for _ in range(3):
+        url, headers, job = start(client, videos["room"])
+        body = result(job, [{"time_ms": 300}, {"time_ms": 900}])
+        send = f"{WORKER}/{job['analysis_id']}/result"
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            codes = sorted(pool.map(
+                lambda _: client.post(send, headers=KEY, json=body).status_code, range(2)))
+        assert codes == [200, 409]
+        items = client.get(f"{url}/analysis", headers=headers).json()["items"]
+        for shot in items[0]["snapshots"]:
+            assert client.get(shot["image_url"], headers=headers).status_code == 200
+    root = client.app.state.media_storage.root
+    assert not [p for p in root.rglob("*.staging")]
+
+
+def test_result_for_a_job_cancelled_after_the_check_is_refused(client, videos, monkeypatch):
+    url, headers, job = start(client, videos["room"])
+    store = client.app.state.analysis_store
+    checked = store.active(job["analysis_id"])
+    # The video is replaced between the analyzer's check and the save.
+    client.post(f"{url}/media", headers=headers,
+                files={"file": ("retake.mp4", videos["room"], "video/mp4")})
+    monkeypatch.setattr(store, "active", lambda _id: checked)
+    monkeypatch.setattr(store, "_active", lambda _id: checked)
+    response = client.post(f"{WORKER}/{job['analysis_id']}/result", headers=KEY,
+                           json=result(job, [{"time_ms": 300}]))
+    assert response.status_code == 409
+    assert photo_files(client) == []
+    assert client.get(url, headers=headers).json()["data"]["analysis"]["status"] == "queued"

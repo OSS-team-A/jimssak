@@ -131,7 +131,10 @@ class AnalysisStore:
         return self._finish(job, "completed", json.dumps(result, ensure_ascii=False), None, now)
 
     def _finish(self, job: AnalysisJob, status: str, result_json: str | None,
-                error_json: str | None, now: int) -> AnalysisJob:
+                error_json: str | None, now: int, *, strict: bool = False) -> AnalysisJob:
+        """End an active job. If it was no longer active (cancelled, or finished by another
+        request in the meantime), nothing changes: `strict` raises StaleAnalysis, otherwise the
+        job is returned as it is now stored."""
         with self.db.connect() as db:
             updated = db.execute(
                 "UPDATE move_analyses SET status = %s, progress = 1, result_json = %s, "
@@ -139,7 +142,14 @@ class AnalysisStore:
                 "AND status IN ('queued', 'running')",
                 (status, result_json, error_json, now, job.analysis_id),
             )
-            if updated.rowcount and status == "completed":
+            if not updated.rowcount:
+                if strict:
+                    raise StaleAnalysis(job.analysis_id)
+                row = db.execute(
+                    "SELECT * FROM move_analyses WHERE analysis_id = %s", (job.analysis_id,)
+                ).fetchone()
+                return self._job(row)
+            if status == "completed":
                 db.execute(
                     "INSERT INTO move_inventories (analysis_id, items) "
                     "VALUES (%s, %s::jsonb -> 'items')", (job.analysis_id, result_json),
@@ -176,7 +186,9 @@ class AnalysisStore:
     def submit(self, analysis_id: str, status: str, result_json: str | None,
                error_json: str | None) -> AnalysisJob:
         job = self._active(analysis_id)
-        return self._finish(job, status, result_json, error_json, int(self.clock()))
+        # Strict: a job cancelled or finished since the check above is not reported as saved.
+        return self._finish(job, status, result_json, error_json, int(self.clock()),
+                            strict=True)
 
     def active(self, analysis_id: str) -> AnalysisJob:
         """The job, if an analyzer may still report on it; otherwise StaleAnalysis."""
