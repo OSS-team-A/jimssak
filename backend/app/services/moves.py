@@ -114,6 +114,7 @@ class MoveSummaryRecord:
     start_time: str | None
     origin_address: str | None
     destination_address: str | None
+    stage: str = "preparing"
 
 
 @dataclass(frozen=True)
@@ -430,13 +431,27 @@ class MoveStore:
             total = db.execute(
                 "SELECT COUNT(*) AS total FROM moves WHERE user_id = %s", (user_id,)
             ).fetchone()["total"]
+            # Stage: done once the after-move review is finished, comparing while an
+            # after-move comparison of the current list exists, after_move once the list is
+            # confirmed, preparing before that.
             rows = db.execute(
                 "SELECT m.id, m.created_at, s.move_date, s.start_time, "
-                "o.road_address AS origin_address, d.road_address AS destination_address "
+                "o.road_address AS origin_address, d.road_address AS destination_address, "
+                "CASE WHEN c.reviewed_at IS NOT NULL THEN 'done' "
+                "WHEN c.comparison_id IS NOT NULL THEN 'comparing' "
+                "WHEN i.confirmed THEN 'after_move' ELSE 'preparing' END AS stage "
                 "FROM moves AS m "
                 "LEFT JOIN move_schedules AS s ON s.move_id = m.id "
                 "LEFT JOIN move_places AS o ON o.move_id = m.id AND o.role = 'origin' "
                 "LEFT JOIN move_places AS d ON d.move_id = m.id AND d.role = 'destination' "
+                "LEFT JOIN LATERAL (SELECT analysis_id FROM move_analyses "
+                "  WHERE move_id = m.id AND status != 'cancelled' "
+                "  ORDER BY created_at DESC, seq DESC LIMIT 1) AS a ON TRUE "
+                "LEFT JOIN move_inventories AS i ON i.analysis_id = a.analysis_id "
+                "LEFT JOIN LATERAL (SELECT comparison_id, reviewed_at FROM move_comparisons "
+                "  WHERE move_id = m.id AND analysis_id = a.analysis_id "
+                "  AND status != 'cancelled' "
+                "  ORDER BY created_at DESC, seq DESC LIMIT 1) AS c ON TRUE "
                 "WHERE m.user_id = %s ORDER BY m.created_at DESC, m.seq DESC "
                 "LIMIT %s OFFSET %s",
                 (user_id, limit, offset),

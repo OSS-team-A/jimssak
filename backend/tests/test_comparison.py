@@ -118,6 +118,73 @@ def test_failed_demo_comparison(client):
     assert failed["items"] == []
 
 
+def test_user_answers_and_finishes_the_review(client):
+    clock = Clock(client)
+    url, headers = confirmed_move(client, clock)
+    assert client.post(f"{url}/comparison/complete", headers=headers).status_code == 409
+    upload(client, url, headers, "after-media")
+    clock.advance(6)
+    desk, chair, box = comparison(client, url, headers)["items"]
+
+    def check(item, answer):
+        return client.patch(f"{url}/comparison/items/{item['item_id']}", headers=headers,
+                            json={"user_check": answer})
+
+    assert check(box, "confirmed").status_code == 409          # nothing to check
+    assert check({"item_id": "nope"}, "confirmed").status_code == 404
+    assert check(desk, "maybe").status_code == 422
+    answered = check(desk, "not_found").json()
+    assert answered["items"][0]["user_check"] == "not_found"
+    assert answered["summary"]["unchecked"] == 1
+    # Not every item answered yet.
+    assert client.post(f"{url}/comparison/complete", headers=headers).status_code == 409
+    # Answers can change until the review is finished.
+    assert check(desk, "confirmed").json()["items"][0]["user_check"] == "confirmed"
+    check(chair, "not_found")
+
+    done = client.post(f"{url}/comparison/complete", headers=headers)
+    assert done.status_code == 200 and done.json()["reviewed_at"] is not None
+    assert done.json()["summary"]["unchecked"] == 0
+    again = client.post(f"{url}/comparison/complete", headers=headers)
+    assert again.status_code == 200
+    assert again.json()["reviewed_at"] == done.json()["reviewed_at"]
+    assert check(chair, "confirmed").status_code == 409
+
+
+def test_history_stage_follows_the_after_move_review(client):
+    clock = Clock(client)
+    client.post("/api/v1/auth/signup",
+                json={"email": "mover@example.com", "password": "a long passphrase"})
+    token = client.post("/api/v1/auth/login", json={
+        "email": "mover@example.com", "password": "a long passphrase"}).json()["access_token"]
+    member = {"Authorization": f"Bearer {token}"}
+
+    def stage():
+        return client.get(MOVES, headers=member).json()["moves"][0]["stage"]
+
+    url = f"{MOVES}/{client.post(MOVES, headers=member).json()['move_id']}"
+    assert stage() == "preparing"
+    upload(client, url, member)
+    clock.advance(6)
+    client.get(url, headers=member)  # the demo analysis finishes when read
+    assert stage() == "preparing"
+    client.post(f"{url}/inventory/confirm", headers=member)
+    assert stage() == "after_move"
+    upload(client, url, member, "after-media")
+    assert stage() == "comparing"
+    clock.advance(6)
+    items = comparison(client, url, member)["items"]
+    for item in items:
+        if item["needs_check"]:
+            client.patch(f"{url}/comparison/items/{item['item_id']}", headers=member,
+                         json={"user_check": "confirmed"})
+    client.post(f"{url}/comparison/complete", headers=member)
+    assert stage() == "done"
+    # Retaking the first video starts the move over.
+    upload(client, url, member)
+    assert stage() == "preparing"
+
+
 def test_comparison_is_private(client):
     clock = Clock(client)
     url, headers = confirmed_move(client, clock)

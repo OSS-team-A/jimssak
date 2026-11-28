@@ -441,12 +441,16 @@ class MoveSummary(BaseModel):
     start_time: time | None = Field(default=None, description="시작 시간. 없으면 null")
     origin_address: str | None = Field(description="출발지 도로명주소. 없으면 null")
     destination_address: str | None = Field(description="도착지 도로명주소. 없으면 null")
-    stage: Literal["preparing"] = Field(
+    stage: Literal["preparing", "after_move", "comparing", "done"] = Field(
         default="preparing",
         description=(
-            "진행 상태. 지금은 preparing(이사 준비 중)만 있다. 이사 후 확인 기능이 생기면 "
-            "after_move(이사 후 확인 전), comparing(전후 비교 확인 중), done(이사 기록 완료)이 "
-            "추가된다."
+            "진행 상태.\n\n"
+            "| 값 | 뜻 | 언제 |\n"
+            "|---|---|---|\n"
+            "| `preparing` | 이사 준비 중 | 이삿짐 목록 확정 전 |\n"
+            "| `after_move` | 이사 후 확인 전 | 목록을 확정했고 이사 후 영상은 아직 |\n"
+            "| `comparing` | 전후 비교 확인 중 | 이사 후 영상을 올렸고 검토를 마치기 전 |\n"
+            "| `done` | 이사 기록 완료 | 이사 후 검토를 마침 |"
         ),
     )
 

@@ -103,6 +103,42 @@ class ComparisonStore:
             ).fetchone()
         return self._settle(self._task(row)) if row else None
 
+    def set_check(self, comparison_id: str, item_id: str, answer: str) -> None:
+        """Save the user's answer for one item; answers can change until the review is done."""
+        now = int(self.clock())
+        with self.db.connect() as db:
+            row = db.execute(
+                "SELECT reviewed_at FROM move_comparisons WHERE comparison_id = %s FOR UPDATE",
+                (comparison_id,),
+            ).fetchone()
+            if row["reviewed_at"] is not None:
+                raise ComparisonReviewed(comparison_id)
+            db.execute(
+                "UPDATE move_comparisons SET checks = checks || %s, updated_at = %s "
+                "WHERE comparison_id = %s", (Jsonb({item_id: answer}), now, comparison_id),
+            )
+
+    def finish_review(self, comparison_id: str, needs_check: list[str]) -> bool:
+        """Mark the review done if every item needing a check has an answer.
+
+        Returns False when an answer is missing. Finishing twice is harmless.
+        """
+        now = int(self.clock())
+        with self.db.connect() as db:
+            row = db.execute(
+                "SELECT checks, reviewed_at FROM move_comparisons "
+                "WHERE comparison_id = %s FOR UPDATE", (comparison_id,),
+            ).fetchone()
+            if row["reviewed_at"] is not None:
+                return True
+            if any(item_id not in row["checks"] for item_id in needs_check):
+                return False
+            db.execute(
+                "UPDATE move_comparisons SET reviewed_at = %s, updated_at = %s "
+                "WHERE comparison_id = %s", (now, now, comparison_id),
+            )
+        return True
+
     def _settle(self, task: ComparisonTask) -> ComparisonTask:
         if task.status not in ACTIVE:
             return task

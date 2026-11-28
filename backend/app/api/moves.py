@@ -288,7 +288,7 @@ def list_moves(
             MoveSummary(
                 move_id=item.id, created_at=_time(item.created_at), move_date=item.move_date,
                 start_time=item.start_time, origin_address=item.origin_address,
-                destination_address=item.destination_address,
+                destination_address=item.destination_address, stage=item.stage,
             )
             for item in found
         ],
