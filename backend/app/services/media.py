@@ -96,3 +96,18 @@ class MediaStorage:
         if analysis_id is not None:
             target = target / analysis_id
         shutil.rmtree(target, ignore_errors=True)
+
+    def snapshot_staging(self, move_id: str, job_id: str) -> Path:
+        """A private folder for one result request's photos, published only if it is saved.
+
+        Two requests reporting the same job never share a folder, so the one that loses
+        cannot delete the winner's photos.
+        """
+        return self.root / move_id / "snapshots" / f"{job_id}.{uuid.uuid4().hex}.staging"
+
+    def publish_snapshots(self, move_id: str, job_id: str, staging: Path) -> None:
+        """Make a saved result's photos the job's photos."""
+        target = self.snapshot_dir(move_id, job_id)
+        shutil.rmtree(target, ignore_errors=True)
+        if staging.is_dir():
+            staging.replace(target)

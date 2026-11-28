@@ -140,6 +140,7 @@ class AnalysisProgress(BaseModel):
 class WorkerJob(BaseModel):
     """분석기가 가져간 작업."""
 
+    kind: Literal["analysis"] = "analysis"
     analysis_id: str
     move_id: str
     video_id: str = Field(description="결과의 video.video_id에 그대로 돌려준다.")

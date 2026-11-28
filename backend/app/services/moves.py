@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from psycopg import Connection
 
 from ..db import Database
+from ..schemas.comparison import ComparisonCardSummary
 from ..schemas.moves import ReviewDetails
 from .building_register import count, default_ladder
 
@@ -114,6 +115,8 @@ class MoveSummaryRecord:
     start_time: str | None
     origin_address: str | None
     destination_address: str | None
+    stage: str = "preparing"
+    comparison_summary: ComparisonCardSummary | None = None
 
 
 @dataclass(frozen=True)
@@ -182,13 +185,14 @@ class MoveStore:
             ).fetchone()
         return self._move(row) if row else None
 
-    def replace_video(self, media: Media) -> Media | None:
+    def replace_video(self, media: Media, *, conn: Connection | None = None) -> Media | None:
         """Make media the move's only video and return the one it replaced.
 
         Delete and insert happen in one transaction, so a failure keeps the old
-        video and a move never has zero or two videos in between.
+        video and a move never has zero or two videos in between. Passing `conn` lets the
+        caller start the video's analysis in the same transaction.
         """
-        with self.db.connect() as db:
+        with self.db.connect() if conn is None else nullcontext(conn) as db:
             # Locking the move makes two uploads to it take turns.
             db.execute("SELECT 1 FROM moves WHERE id = %s FOR UPDATE", (media.move_id,))
             old = db.execute(
@@ -202,9 +206,11 @@ class MoveStore:
             )
         return Media(**dict(old)) if old else None
 
-    def replace_after_video(self, media: Media) -> Media | None:
+    def replace_after_video(
+        self, media: Media, *, conn: Connection | None = None,
+    ) -> Media | None:
         """Store an after-move video without touching the initial room video."""
-        with self.db.connect() as db:
+        with self.db.connect() if conn is None else nullcontext(conn) as db:
             db.execute("SELECT 1 FROM moves WHERE id = %s FOR UPDATE", (media.move_id,))
             old = db.execute(
                 f"DELETE FROM move_after_videos WHERE move_id = %s RETURNING {MEDIA_COLUMNS}",
@@ -402,6 +408,13 @@ class MoveStore:
             ).fetchone()
         return Media(**dict(row)) if row else None
 
+    def get_after_video(self, move_id: str, *, conn: Connection | None = None) -> Media | None:
+        with self.db.connect() if conn is None else nullcontext(conn) as db:
+            row = db.execute(
+                f"SELECT {MEDIA_COLUMNS} FROM move_after_videos WHERE move_id = %s", (move_id,)
+            ).fetchone()
+        return Media(**dict(row)) if row else None
+
     def claim(self, move_id: str, guest_token: str, user_id: int) -> Move | None:
         """Turn an unexpired guest move into the member's, keeping everything attached.
 
@@ -430,17 +443,49 @@ class MoveStore:
             total = db.execute(
                 "SELECT COUNT(*) AS total FROM moves WHERE user_id = %s", (user_id,)
             ).fetchone()["total"]
+            # Stage: done once the after-move review is finished, comparing while an
+            # after-move comparison of the current list exists, after_move once the list is
+            # confirmed, preparing before that.
             rows = db.execute(
                 "SELECT m.id, m.created_at, s.move_date, s.start_time, "
-                "o.road_address AS origin_address, d.road_address AS destination_address "
+                "o.road_address AS origin_address, d.road_address AS destination_address, "
+                "CASE WHEN c.reviewed_at IS NOT NULL THEN 'done' "
+                "WHEN c.comparison_id IS NOT NULL THEN 'comparing' "
+                "WHEN i.confirmed THEN 'after_move' ELSE 'preparing' END AS stage, "
+                "CASE WHEN c.status = 'completed' THEN jsonb_build_object("
+                "  'changed', cs.changed, 'missing', cs.missing, "
+                "  'confirmed', cs.confirmed, 'needs_attention', cs.needs_attention"
+                ") END AS comparison_summary "
                 "FROM moves AS m "
                 "LEFT JOIN move_schedules AS s ON s.move_id = m.id "
                 "LEFT JOIN move_places AS o ON o.move_id = m.id AND o.role = 'origin' "
                 "LEFT JOIN move_places AS d ON d.move_id = m.id AND d.role = 'destination' "
+                "LEFT JOIN LATERAL (SELECT analysis_id FROM move_analyses "
+                "  WHERE move_id = m.id AND status != 'cancelled' "
+                "  ORDER BY created_at DESC, seq DESC LIMIT 1) AS a ON TRUE "
+                "LEFT JOIN move_inventories AS i ON i.analysis_id = a.analysis_id "
+                "LEFT JOIN LATERAL (SELECT comparison_id, reviewed_at, status, result_json, checks "
+                "  FROM move_comparisons "
+                "  WHERE move_id = m.id AND analysis_id = a.analysis_id "
+                "  AND status != 'cancelled' "
+                "  ORDER BY created_at DESC, seq DESC LIMIT 1) AS c ON TRUE "
+                "LEFT JOIN LATERAL (SELECT "
+                "  count(*) FILTER (WHERE item->>'result' = 'changed') AS changed, "
+                "  count(*) FILTER (WHERE item->>'result' = 'missing') AS missing, "
+                "  count(*) FILTER (WHERE c.checks->>(item->>'item_id') = 'confirmed') "
+                "    AS confirmed, "
+                "  count(*) FILTER (WHERE item->>'result' IN ('changed', 'missing') "
+                "    AND c.checks->>(item->>'item_id') IS DISTINCT FROM 'confirmed') "
+                "    AS needs_attention "
+                "  FROM jsonb_array_elements(c.result_json::jsonb->'items') AS results(item)"
+                ") AS cs ON c.status = 'completed' "
                 "WHERE m.user_id = %s ORDER BY m.created_at DESC, m.seq DESC "
                 "LIMIT %s OFFSET %s",
                 (user_id, limit, offset),
             ).fetchall()
+        for row in rows:
+            if row["comparison_summary"] is not None:
+                row["comparison_summary"] = ComparisonCardSummary(**row["comparison_summary"])
         return [MoveSummaryRecord(**dict(row)) for row in rows], total
 
     def get_for_guest(self, move_id: str, guest_token: str) -> Move | None:

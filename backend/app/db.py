@@ -160,6 +160,31 @@ CREATE TABLE IF NOT EXISTS move_chat_proposals (
     changes JSONB NOT NULL,
     applied BOOLEAN NOT NULL DEFAULT FALSE
 );
+-- SC-14~16: the after-move video compared with the confirmed list of one analysis.
+CREATE TABLE IF NOT EXISTS move_comparisons (
+    comparison_id TEXT PRIMARY KEY,
+    -- Creation order, to pick the newest of comparisons started in the same second.
+    seq BIGINT GENERATED ALWAYS AS IDENTITY,
+    move_id TEXT NOT NULL REFERENCES moves(id) ON DELETE CASCADE,
+    analysis_id TEXT NOT NULL REFERENCES move_analyses(analysis_id) ON DELETE CASCADE,
+    before_media_id TEXT NOT NULL,
+    after_media_id TEXT NOT NULL,
+    -- The confirmed list as it was when the comparison started.
+    inventory JSONB NOT NULL,
+    status TEXT NOT NULL,
+    progress DOUBLE PRECISION NOT NULL DEFAULT 0,
+    demo BOOLEAN NOT NULL DEFAULT FALSE,
+    demo_fail BOOLEAN NOT NULL DEFAULT FALSE,
+    result_json TEXT,
+    error_json TEXT,
+    -- item_id -> confirmed / not_found, the user's answers for items needing a check.
+    checks JSONB NOT NULL DEFAULT '{}'::jsonb,
+    reviewed_at BIGINT,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS move_comparisons_move ON move_comparisons(move_id);
+CREATE INDEX IF NOT EXISTS move_comparisons_queue ON move_comparisons(status, created_at);
 -- Include successful analyses saved before editable inventories existed.
 INSERT INTO move_inventories (analysis_id, items)
 SELECT a.analysis_id, a.result_json::jsonb -> 'items' FROM move_analyses a

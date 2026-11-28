@@ -4,8 +4,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api.addresses import router as addresses_router
+from .api.analysis_worker import comparison_router as comparison_worker_router
 from .api.analysis_worker import router as analysis_worker_router
 from .api.auth import router as auth_router
+from .api.comparison import router as comparison_router
 from .api.estimates import router as estimates_router
 from .api.inventory import router as inventory_router
 from .api.move_chat import router as move_chat_router
@@ -18,6 +20,7 @@ from .services.analysis import AnalysisStore
 from .services.auth import AuthStore
 from .services.building_register import HubBuildingRegister
 from .services.calendar import KasiCalendar
+from .services.comparison import ComparisonStore
 from .services.media import MediaStorage
 from .services.move_chat import MoveChat
 from .services.moves import MoveStore
@@ -45,6 +48,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.media_storage = MediaStorage(settings.media_dir, settings.media_max_bytes)
         app.state.snapshot_capture = SnapshotCapture()
         app.state.analysis_store = AnalysisStore(
+            db, settings.analysis_timeout_seconds, settings.analysis_demo_seconds
+        )
+        app.state.comparison_store = ComparisonStore(
             db, settings.analysis_timeout_seconds, settings.analysis_demo_seconds
         )
         app.state.analysis_demo = settings.analysis_demo
@@ -97,9 +103,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(moves_router)
     app.include_router(estimates_router)
     app.include_router(inventory_router)
+    app.include_router(comparison_router)
     app.include_router(move_chat_router)
     app.include_router(addresses_router)
     app.include_router(analysis_worker_router)
+    app.include_router(comparison_worker_router)
     return app
 
 

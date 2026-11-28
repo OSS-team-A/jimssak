@@ -9,7 +9,9 @@ import json
 import re
 import secrets
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass, replace
+from typing import Callable
 
 from psycopg import Connection
 
@@ -52,15 +54,21 @@ class AnalysisStore:
         fields.pop("seq", None)
         return AnalysisJob(**fields)
 
-    def start(self, move_id: str, media_id: str, demo: bool, demo_fail: bool) -> AnalysisJob:
-        """A new video replaces the move's earlier job; its late results are refused."""
+    def start(
+        self, move_id: str, media_id: str, demo: bool, demo_fail: bool,
+        *, conn: Connection | None = None,
+    ) -> AnalysisJob:
+        """A new video replaces the move's earlier job; its late results are refused.
+
+        Pass the transaction that replaced the video, so the job and the video change together.
+        """
         now = int(self.clock())
         job = AnalysisJob(
             analysis_id=f"an_{secrets.token_hex(8)}", move_id=move_id, media_id=media_id,
             status="queued", progress=0.0, demo=demo, demo_fail=demo_fail,
             result_json=None, error_json=None, created_at=now, updated_at=now,
         )
-        with self.db.connect() as db:
+        with self.db.connect() if conn is None else nullcontext(conn) as db:
             db.execute(
                 "UPDATE move_analyses SET status = 'cancelled', updated_at = %s "
                 "WHERE move_id = %s AND status IN ('queued', 'running')", (now, move_id),
@@ -124,7 +132,11 @@ class AnalysisStore:
         return self._finish(job, "completed", json.dumps(result, ensure_ascii=False), None, now)
 
     def _finish(self, job: AnalysisJob, status: str, result_json: str | None,
-                error_json: str | None, now: int) -> AnalysisJob:
+                error_json: str | None, now: int, *, strict: bool = False,
+                publish: Callable[[], None] | None = None) -> AnalysisJob:
+        """End an active job. If it was no longer active (cancelled, or finished by another
+        request in the meantime), nothing changes: `strict` raises StaleAnalysis, otherwise the
+        job is returned as it is now stored."""
         with self.db.connect() as db:
             updated = db.execute(
                 "UPDATE move_analyses SET status = %s, progress = 1, result_json = %s, "
@@ -132,11 +144,20 @@ class AnalysisStore:
                 "AND status IN ('queued', 'running')",
                 (status, result_json, error_json, now, job.analysis_id),
             )
-            if updated.rowcount and status == "completed":
+            if not updated.rowcount:
+                if strict:
+                    raise StaleAnalysis(job.analysis_id)
+                row = db.execute(
+                    "SELECT * FROM move_analyses WHERE analysis_id = %s", (job.analysis_id,)
+                ).fetchone()
+                return self._job(row)
+            if status == "completed":
                 db.execute(
                     "INSERT INTO move_inventories (analysis_id, items) "
                     "VALUES (%s, %s::jsonb -> 'items')", (job.analysis_id, result_json),
                 )
+            if publish is not None:
+                publish()
         return replace(job, status=status, progress=1.0, result_json=result_json,
                        error_json=error_json, updated_at=now)
 
@@ -166,10 +187,14 @@ class AnalysisStore:
             )
         return replace(job, progress=progress, updated_at=now)
 
-    def submit(self, analysis_id: str, status: str, result_json: str | None,
-               error_json: str | None) -> AnalysisJob:
+    def submit(
+        self, analysis_id: str, status: str, result_json: str | None,
+        error_json: str | None, *, publish: Callable[[], None] | None = None,
+    ) -> AnalysisJob:
         job = self._active(analysis_id)
-        return self._finish(job, status, result_json, error_json, int(self.clock()))
+        # Strict: a job cancelled or finished since the check above is not reported as saved.
+        return self._finish(job, status, result_json, error_json, int(self.clock()),
+                            strict=True, publish=publish)
 
     def active(self, analysis_id: str) -> AnalysisJob:
         """The job, if an analyzer may still report on it; otherwise StaleAnalysis."""
@@ -193,11 +218,12 @@ def demo_photo_url(move_id: str, photo: str) -> str:
 
 # Captured item photos: `<analysis_id>_<number>.jpg`. The analysis ID in the name keeps a
 # retake's photos from being mistaken for (or cached as) the previous video's.
-SNAPSHOT_NAME = re.compile(r"^(an_[0-9a-f]{16})_([1-9][0-9]{0,3})\.jpg$")
+SNAPSHOT_NAME = re.compile(r"^((?:an|cmp)_[0-9a-f]{16})_([1-9][0-9]{0,3})\.jpg$")
 
 
-def snapshot_url(move_id: str, analysis_id: str, number: int) -> str:
-    return f"/api/v1/moves/{move_id}/analysis/photos/{analysis_id}_{number}.jpg"
+def snapshot_url(move_id: str, job_id: str, number: int) -> str:
+    """Photo of an analysis (an_...) or an after-move comparison (cmp_...)."""
+    return f"/api/v1/moves/{move_id}/analysis/photos/{job_id}_{number}.jpg"
 
 
 def demo_result(job: AnalysisJob) -> dict:

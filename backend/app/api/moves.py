@@ -49,6 +49,7 @@ from ..services.building_register import (
     select_building,
 )
 from ..services.calendar import Calendar
+from ..services.comparison import ComparisonStore
 from ..services.date_info import is_complete, judge_move_date
 from ..services.inventory import load_inventory
 from ..services.media import MediaStorage, MediaTooLarge, UnsupportedMedia
@@ -180,6 +181,13 @@ def get_analysis_store(request: Request) -> AnalysisStore:
 AnalysisDep = Annotated[AnalysisStore, Depends(get_analysis_store)]
 
 
+def get_comparison_store(request: Request) -> ComparisonStore:
+    return request.app.state.comparison_store
+
+
+ComparisonDep = Annotated[ComparisonStore, Depends(get_comparison_store)]
+
+
 def get_calendar(request: Request) -> Calendar:
     return request.app.state.calendar
 
@@ -280,7 +288,8 @@ def list_moves(
             MoveSummary(
                 move_id=item.id, created_at=_time(item.created_at), move_date=item.move_date,
                 start_time=item.start_time, origin_address=item.origin_address,
-                destination_address=item.destination_address,
+                destination_address=item.destination_address, stage=item.stage,
+                comparison_summary=item.comparison_summary,
             )
             for item in found
         ],
@@ -660,6 +669,7 @@ def upload_media(
     moves: MoveStoreDep,
     storage: MediaStorageDep,
     analyses: AnalysisDep,
+    comparisons: ComparisonDep,
     request: Request,
 ) -> UploadedVideo:
     try:
@@ -669,19 +679,27 @@ def upload_media(
     except MediaTooLarge as exc:
         raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, str(exc)) from exc
     try:
-        replaced = moves.replace_video(media)
+        # One transaction, holding the move's lock: two uploads at once take turns, and the
+        # analysis always belongs to the video that stays.
+        with moves.db.connect() as conn:
+            replaced = moves.replace_video(media, conn=conn)
+            previous = analyses.latest(move.id, conn=conn)
+            cancelled = comparisons.cancel_for_move(move.id, conn=conn)
+            # Every new video gets a fresh analysis; the previous one's late result is refused.
+            analyses.start(
+                move.id, media.id, demo=request.app.state.analysis_demo,
+                demo_fail=media.filename.lower().startswith("fail"), conn=conn,
+            )
     except BaseException:
         storage.discard(media)
         raise
     # The database no longer points at the old file, so it can go, with its item photos.
     if replaced is not None:
         storage.discard(replaced)
-    storage.discard_snapshots(move.id)
-    # Every new video gets a fresh analysis; the previous one's late result is refused.
-    analyses.start(
-        move.id, media.id, demo=request.app.state.analysis_demo,
-        demo_fail=media.filename.lower().startswith("fail"),
-    )
+    if previous is not None:
+        storage.discard_snapshots(move.id, previous.analysis_id)
+    for comparison_id in cancelled:
+        storage.discard_snapshots(move.id, comparison_id)
     return UploadedVideo(**_media_info(media).model_dump(), replaced=replaced is not None)
 
 
@@ -690,13 +708,15 @@ def upload_media(
     status_code=status.HTTP_201_CREATED,
     summary="이사 후 방 영상 업로드",
     description=(
-        "SC-15 촬영 종료 시 이사 후 영상을 저장한다. 이사 전 영상은 유지된다. "
-        "이사 후 영상을 다시 올리면 이전 이사 후 영상만 교체한다. "
-        "영상 비교 분석은 아직 시작하지 않는다."
+        "SC-15 촬영 종료 시 이사 후 영상을 저장하고, 확정한 이삿짐 목록과 비교를 시작한다. "
+        "이사 전 영상은 유지된다. 이사 후 영상을 다시 올리면 이전 이사 후 영상·비교 결과·"
+        "확인 답을 버리고 새로 비교한다. 결과는 `GET /moves/{move_id}/comparison`으로 "
+        "2~3초마다 확인한다."
     ),
     responses={
         401: {"description": "인증 정보 없음"},
         404: {"description": "없거나, 만료되었거나, 다른 사용자의 이사"},
+        409: {"description": "이삿짐 목록을 아직 확정하지 않음"},
         413: {"description": "최대 용량 초과"},
         415: {"description": "mp4·mov가 아니거나 영상으로 읽을 수 없는 파일"},
     },
@@ -706,7 +726,16 @@ def upload_after_media(
     file: Annotated[UploadFile, File(description="이사 후 방 촬영 영상 (mp4, mov)")],
     moves: MoveStoreDep,
     storage: MediaStorageDep,
+    analyses: AnalysisDep,
+    comparisons: ComparisonDep,
+    request: Request,
 ) -> UploadedVideo:
+    not_confirmed = HTTPException(
+        status.HTTP_409_CONFLICT, "이사 후 비교는 이삿짐 목록을 확정한 뒤에 할 수 있어요."
+    )
+    # Checked before storing the file, so a refused upload costs nothing.
+    if load_inventory(analyses.db, analyses.current(move.id)).status != "confirmed":
+        raise not_confirmed
     try:
         media = storage.save_video(move.id, file.file, file.filename, file.content_type)
     except UnsupportedMedia as exc:
@@ -714,12 +743,28 @@ def upload_after_media(
     except MediaTooLarge as exc:
         raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, str(exc)) from exc
     try:
-        replaced = moves.replace_after_video(media)
+        # One transaction, holding the move's lock: the comparison always belongs to the
+        # after-move video that stays, and the list it compares is still the confirmed one.
+        with moves.db.connect() as conn:
+            replaced = moves.replace_after_video(media, conn=conn)
+            job = analyses.latest(move.id, conn=conn)
+            inventory = load_inventory(analyses.db, job, conn=conn, for_share=True)
+            if job is None or inventory.status != "confirmed":
+                raise not_confirmed
+            cancelled = comparisons.cancel_for_move(move.id, conn=conn)
+            comparisons.start(
+                move.id, job.analysis_id, job.media_id, media.id,
+                [item.model_dump(mode="json") for item in inventory.items],
+                demo=request.app.state.analysis_demo,
+                demo_fail=media.filename.lower().startswith("fail"), conn=conn,
+            )
     except BaseException:
         storage.discard(media)
         raise
     if replaced is not None:
         storage.discard(replaced)
+    for comparison_id in cancelled:
+        storage.discard_snapshots(move.id, comparison_id)
     return UploadedVideo(**_media_info(media).model_dump(), replaced=replaced is not None)
 
 
