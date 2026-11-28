@@ -10,8 +10,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import FileResponse
+from fastapi.security import APIKeyHeader
 
 from ..schemas.analysis import AnalysisProgress, AnalysisResultV2, AnalysisSection, WorkerJob
 from ..schemas.comparison import ComparisonJob, ComparisonJobItem, ComparisonResult
@@ -19,12 +20,23 @@ from ..services.analysis import AnalysisJob, AnalysisStore, StaleAnalysis, snaps
 from ..services.comparison import ComparisonStore, ComparisonTask
 from ..services.snapshots import SnapshotFailed
 
-router = APIRouter(prefix="/api/v1/internal/analyses", tags=["internal: AI 분석기"])
+WORKER_RESPONSES = {
+    401: {"description": "AI 워커 인증 키가 없거나 유효하지 않음"},
+    503: {"description": "AI 워커 연동이 꺼져 있음"},
+}
+router = APIRouter(
+    prefix="/api/v1/internal/analyses", tags=["internal: AI 분석기"],
+    responses=WORKER_RESPONSES,
+)
+worker_header = APIKeyHeader(
+    name="X-Worker-Key", scheme_name="WorkerKey", auto_error=False,
+    description="AI 분석·비교 워커 전용 인증 키",
+)
 
 
 def require_worker(
     request: Request,
-    x_worker_key: Annotated[str | None, Header(description="AI 분석기 전용 키")] = None,
+    x_worker_key: Annotated[str | None, Depends(worker_header)],
 ) -> None:
     expected = request.app.state.analysis_worker_key
     if expected is None:
@@ -185,8 +197,10 @@ def save_with_photos(
 
 # --- after-move comparisons (SC-14~16) ---
 
-comparison_router = APIRouter(prefix="/api/v1/internal/comparisons",
-                              tags=["internal: AI 분석기"])
+comparison_router = APIRouter(
+    prefix="/api/v1/internal/comparisons", tags=["internal: AI 분석기"],
+    responses=WORKER_RESPONSES,
+)
 
 
 def get_comparisons(request: Request) -> ComparisonStore:
