@@ -403,6 +403,13 @@ class MoveStore:
             ).fetchone()
         return Media(**dict(row)) if row else None
 
+    def get_after_video(self, move_id: str) -> Media | None:
+        with self.db.connect() as db:
+            row = db.execute(
+                f"SELECT {MEDIA_COLUMNS} FROM move_after_videos WHERE move_id = %s", (move_id,)
+            ).fetchone()
+        return Media(**dict(row)) if row else None
+
     def claim(self, move_id: str, guest_token: str, user_id: int) -> Move | None:
         """Turn an unexpired guest move into the member's, keeping everything attached.
 

@@ -12,7 +12,7 @@ from dataclasses import dataclass, replace
 from psycopg.types.json import Jsonb
 
 from ..db import Database
-from .analysis import ACTIVE, DEMO_PHOTOS, demo_photo_url
+from .analysis import ACTIVE, DEMO_PHOTOS, StaleAnalysis, demo_photo_url
 
 # Results that need the user's answer before the review can be finished.
 NEEDS_CHECK = ("changed", "missing")
@@ -102,6 +102,45 @@ class ComparisonStore:
                 "SELECT * FROM move_comparisons WHERE comparison_id = %s", (comparison_id,)
             ).fetchone()
         return self._settle(self._task(row)) if row else None
+
+    # --- the analyzer's side ---
+
+    def claim_next(self) -> ComparisonTask | None:
+        """Hand the oldest waiting (non-demo) comparison to an analyzer and mark it running."""
+        now = int(self.clock())
+        with self.db.connect() as db:
+            row = db.execute(
+                "UPDATE move_comparisons SET status = 'running', updated_at = %s "
+                "WHERE comparison_id = (SELECT comparison_id FROM move_comparisons "
+                "WHERE status = 'queued' AND NOT demo AND created_at > %s "
+                "ORDER BY created_at, seq LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING *",
+                (now, now - self.timeout_seconds),
+            ).fetchone()
+        return self._task(row) if row else None
+
+    def active(self, comparison_id: str) -> ComparisonTask:
+        """The comparison, if an analyzer may still report on it; otherwise StaleAnalysis."""
+        task = self.get(comparison_id)
+        if task is None or task.status not in ACTIVE or task.demo:
+            raise StaleAnalysis(comparison_id)
+        return task
+
+    def report_progress(self, comparison_id: str, progress: float) -> ComparisonTask:
+        task = self.active(comparison_id)
+        now = int(self.clock())
+        with self.db.connect() as db:
+            db.execute(
+                "UPDATE move_comparisons SET progress = %s, updated_at = %s "
+                "WHERE comparison_id = %s", (progress, now, comparison_id),
+            )
+        return replace(task, progress=progress, updated_at=now)
+
+    def submit(self, comparison_id: str, status: str, result_json: str | None,
+               error_json: str | None) -> ComparisonTask:
+        task = self.active(comparison_id)
+        return self._finish(task, status, result_json, error_json, int(self.clock()))
+
+    # --- the user's review ---
 
     def set_check(self, comparison_id: str, item_id: str, answer: str) -> None:
         """Save the user's answer for one item; answers can change until the review is done."""

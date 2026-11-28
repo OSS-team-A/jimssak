@@ -1,32 +1,14 @@
 import struct
-import subprocess
 
 import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.config import Settings
 from backend.app.main import create_app
-from backend.app.services.snapshots import SnapshotCapture
 
 MOVES = "/api/v1/moves"
 WORKER = "/api/v1/internal/analyses"
 KEY = {"X-Worker-Key": "test-worker-key"}
-
-
-@pytest.fixture(scope="module")
-def videos(tmp_path_factory):
-    """A 2-second 320x240 test video, and the same video marked as filmed upright."""
-    folder = tmp_path_factory.mktemp("videos")
-    ffmpeg = SnapshotCapture().ffmpeg
-
-    def run(*args):
-        subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y", *args], check=True)
-
-    run("-f", "lavfi", "-i", "testsrc=duration=2:size=320x240:rate=10",
-        "-pix_fmt", "yuv420p", str(folder / "room.mp4"))
-    run("-display_rotation:v:0", "90", "-i", str(folder / "room.mp4"), "-c", "copy",
-        str(folder / "upright.mp4"))
-    return {name: (folder / f"{name}.mp4").read_bytes() for name in ("room", "upright")}
 
 
 @pytest.fixture

@@ -193,11 +193,12 @@ def demo_photo_url(move_id: str, photo: str) -> str:
 
 # Captured item photos: `<analysis_id>_<number>.jpg`. The analysis ID in the name keeps a
 # retake's photos from being mistaken for (or cached as) the previous video's.
-SNAPSHOT_NAME = re.compile(r"^(an_[0-9a-f]{16})_([1-9][0-9]{0,3})\.jpg$")
+SNAPSHOT_NAME = re.compile(r"^((?:an|cmp)_[0-9a-f]{16})_([1-9][0-9]{0,3})\.jpg$")
 
 
-def snapshot_url(move_id: str, analysis_id: str, number: int) -> str:
-    return f"/api/v1/moves/{move_id}/analysis/photos/{analysis_id}_{number}.jpg"
+def snapshot_url(move_id: str, job_id: str, number: int) -> str:
+    """Photo of an analysis (an_...) or an after-move comparison (cmp_...)."""
+    return f"/api/v1/moves/{move_id}/analysis/photos/{job_id}_{number}.jpg"
 
 
 def demo_result(job: AnalysisJob) -> dict:

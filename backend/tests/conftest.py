@@ -1,10 +1,13 @@
 import os
 import secrets
+import subprocess
 
 import httpx
 import psycopg
 import pytest
 from psycopg.conninfo import make_conninfo
+
+from backend.app.services.snapshots import SnapshotCapture
 
 # Tests need a PostgreSQL server; each test gets its own empty schema in this database.
 # Locally: `docker compose up -d db` (same default as the app). CI sets TEST_DATABASE_URL.
@@ -54,3 +57,19 @@ def database_url(monkeypatch):
         monkeypatch.setenv("DATABASE_URL", url)
         yield url
         admin.execute(f"DROP SCHEMA {schema} CASCADE")
+
+
+@pytest.fixture(scope="session")
+def videos(tmp_path_factory):
+    """A 2-second 320x240 test video, and the same video marked as filmed upright."""
+    folder = tmp_path_factory.mktemp("videos")
+    ffmpeg = SnapshotCapture().ffmpeg
+
+    def run(*args):
+        subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y", *args], check=True)
+
+    run("-f", "lavfi", "-i", "testsrc=duration=2:size=320x240:rate=10",
+        "-pix_fmt", "yuv420p", str(folder / "room.mp4"))
+    run("-display_rotation:v:0", "90", "-i", str(folder / "room.mp4"), "-c", "copy",
+        str(folder / "upright.mp4"))
+    return {name: (folder / f"{name}.mp4").read_bytes() for name in ("room", "upright")}

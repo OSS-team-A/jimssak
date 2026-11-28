@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api.addresses import router as addresses_router
+from .api.analysis_worker import comparison_router as comparison_worker_router
 from .api.analysis_worker import router as analysis_worker_router
 from .api.auth import router as auth_router
 from .api.comparison import router as comparison_router
@@ -106,6 +107,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(move_chat_router)
     app.include_router(addresses_router)
     app.include_router(analysis_worker_router)
+    app.include_router(comparison_worker_router)
     return app
 
 
