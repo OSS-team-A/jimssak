@@ -1,3 +1,4 @@
+import shutil
 import time
 import uuid
 from pathlib import Path, PurePath
@@ -84,3 +85,14 @@ class MediaStorage:
 
     def discard(self, media: Media) -> None:
         self.path(media).unlink(missing_ok=True)
+
+    def snapshot_dir(self, move_id: str, analysis_id: str) -> Path:
+        """Item photos captured for one analysis, kept next to the move's video."""
+        return self.root / move_id / "snapshots" / analysis_id
+
+    def discard_snapshots(self, move_id: str, analysis_id: str | None = None) -> None:
+        """Remove one analysis's photos, or every analysis's photos of the move."""
+        target = self.root / move_id / "snapshots"
+        if analysis_id is not None:
+            target = target / analysis_id
+        shutil.rmtree(target, ignore_errors=True)

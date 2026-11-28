@@ -11,7 +11,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 
 from ..schemas.analysis import AnalysisProgress, AnalysisResultV2, AnalysisSection, WorkerJob
-from ..services.analysis import AnalysisJob, AnalysisStore, StaleAnalysis
+from ..services.analysis import AnalysisJob, AnalysisStore, StaleAnalysis, snapshot_url
+from ..services.snapshots import SnapshotFailed
 
 router = APIRouter(prefix="/api/v1/internal/analyses", tags=["internal: AI 분석기"])
 
@@ -98,11 +99,17 @@ def progress(analysis_id: str, body: AnalysisProgress, analyses: Analyses) -> An
     summary="분석 결과 또는 실패 보내기",
     description=(
         "분석 결과 v2.0을 보낸다. 완료면 `status: completed`와 `items`, 실패면 "
-        "`status: failed`와 `error`(code, message, retryable). 원본 그대로 저장한다."
+        "`status: failed`와 `error`(code, message, retryable). 원본 그대로 저장한다.\n\n"
+        "물품 사진은 `snapshots`에 `time_ms`(영상 속 시각)만 보내면 백엔드가 그 시각의 화면을 "
+        "캡처해 `image_url`을 채운다. `bbox: [x1, y1, x2, y2]`를 함께 보내면 그 영역만 "
+        "잘라낸다. 물품당 최대 3장, 모두 합쳐 200장. 영상 길이를 넘는 시각이나 화면 밖 "
+        "영역이면 422."
     ),
     responses={**STALE, 422: {"description": "v2.0 형식이 아니거나 ID가 맞지 않음"}},
 )
-def result(analysis_id: str, body: AnalysisResultV2, analyses: Analyses) -> AnalysisSection:
+def result(
+    analysis_id: str, body: AnalysisResultV2, analyses: Analyses, request: Request,
+) -> AnalysisSection:
     job = analyses.get(analysis_id)
     if body.analysis_id != analysis_id or (job and body.video.video_id != job.media_id):
         raise HTTPException(
@@ -110,13 +117,50 @@ def result(analysis_id: str, body: AnalysisResultV2, analyses: Analyses) -> Anal
             "analysis_id와 video.video_id는 작업을 가져갈 때 받은 값을 그대로 보내주세요.",
         )
     raw = body.model_dump(mode="json")
+    storage = request.app.state.media_storage
+    captured = False
     try:
         if body.status == "completed":
+            job = analyses.active(analysis_id)
+            _capture_snapshots(request, job, raw)
+            captured = True
             done = analyses.submit(analysis_id, "completed", json.dumps(raw, ensure_ascii=False),
                                    None)
         else:
             error = json.dumps(raw["error"], ensure_ascii=False)
             done = analyses.submit(analysis_id, "failed", None, error)
     except StaleAnalysis as exc:
+        if captured:
+            storage.discard_snapshots(job.move_id, analysis_id)
         raise HTTPException(status.HTTP_409_CONFLICT, "현재 진행 중인 작업이 아닙니다.") from exc
     return _section(done)
+
+
+def _capture_snapshots(request: Request, job: AnalysisJob, raw: dict) -> None:
+    """Cut each requested photo from the video and point `image_url` at it."""
+    media = request.app.state.move_store.get_video(job.move_id)
+    if media is None or media.id != job.media_id:
+        raise StaleAnalysis(job.analysis_id)
+    storage = request.app.state.media_storage
+    capture = request.app.state.snapshot_capture
+    video = storage.path(media)
+    folder = storage.snapshot_dir(job.move_id, job.analysis_id)
+    storage.discard_snapshots(job.move_id, job.analysis_id)
+    number = 0
+    try:
+        for item in raw["items"]:
+            for snapshot in item["snapshots"]:
+                number += 1
+                try:
+                    capture.capture(video, snapshot["time_ms"], folder / f"{number}.jpg",
+                                    snapshot.get("bbox"))
+                except SnapshotFailed as exc:
+                    raise HTTPException(
+                        status.HTTP_422_UNPROCESSABLE_CONTENT,
+                        f"{item['item_id']}의 {snapshot['time_ms']}ms 사진을 만들 수 없습니다. "
+                        "time_ms가 영상 길이 안인지, bbox가 화면 안인지 확인해주세요.",
+                    ) from exc
+                snapshot["image_url"] = snapshot_url(job.move_id, job.analysis_id, number)
+    except BaseException:
+        storage.discard_snapshots(job.move_id, job.analysis_id)
+        raise
