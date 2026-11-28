@@ -224,8 +224,8 @@ def test_select_skips_annex_and_uses_road_then_name():
     (3, 3, 11, "available"),
     (1, 0, 4, "available"),
     (0, 0, 3, "unavailable"),
-    (0, 0, 5, "unavailable"),
-    (0, 0, 6, "unknown"),     # tall building recorded with none: likely missing
+    (0, 0, 4, "unavailable"),
+    (0, 0, 5, "unknown"),     # 5 floors or more recorded with none: likely missing
     (0, 1, 4, "available"),   # emergency only: often the everyday lift
     (0, 2, 23, "available"),  # 해솔마을 7단지 717동 as recorded on 2026-11-24
     ("", 0, 3, "unknown"),    # not recorded

@@ -61,6 +61,7 @@ from ..services.moves import (
     PlaceRecord,
     RouteRecord,
     ScheduleRecord,
+    place_ladder,
 )
 from ..services.route import AddressNotLocated, RouteLookupFailed, Router
 from .auth import Store, bearer, unauthorized
@@ -556,12 +557,18 @@ def _place_record(
     else:
         # New building: the old answer no longer applies.
         elevator, source = "unknown", None
+    if place.ladder is not None:
+        ladder = place.ladder
+    else:
+        # Like the elevator, a choice made for one building does not carry over to another.
+        ladder = current.ladder if same_address else None
     return PlaceRecord(
         road_address=place.road_address,
         detail_address=place.detail_address,
         floor=place.floor,
         elevator=elevator,
         elevator_source=source,
+        ladder=ladder,
     )
 
 
@@ -582,9 +589,11 @@ def _building_info(lookup: LookupRecord | None) -> BuildingInfo:
 def _place_section(record: PlaceRecord | None, lookup: LookupRecord | None) -> PlaceSection:
     if record is None:
         return PlaceSection(status="empty")
+    ladder, ladder_source = place_ladder(record, lookup)
+    fields = {**vars(record), "ladder": ladder}
     return PlaceSection(
         status="filled" if record.floor is not None else "partial",
-        value=Place(**vars(record), building=_building_info(lookup)),
+        value=Place(**fields, ladder_source=ladder_source, building=_building_info(lookup)),
     )
 
 

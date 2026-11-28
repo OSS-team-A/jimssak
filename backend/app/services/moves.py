@@ -1,4 +1,5 @@
 import hashlib
+import json
 import secrets
 import time
 import uuid
@@ -9,6 +10,7 @@ from psycopg import Connection
 
 from ..db import Database
 from ..schemas.moves import ReviewDetails
+from .building_register import count, default_ladder
 
 
 def _digest(token: str) -> bytes:
@@ -47,6 +49,8 @@ class PlaceRecord:
     floor: int | None
     elevator: str
     elevator_source: str | None
+    # The user's choice only (use / not_use); None means the default applies.
+    ladder: str | None = None
 
 
 @dataclass(frozen=True)
@@ -72,6 +76,16 @@ class LookupRecord:
     # The chosen row as JSON when status is found.
     building_json: str | None = None
     checked_at: int | None = None
+
+
+def place_ladder(record: PlaceRecord, lookup: LookupRecord | None) -> tuple[str, str]:
+    """The ladder value to use and where it came from: the user, or the default rule."""
+    if record.ladder is not None:
+        return record.ladder, "user"
+    building_floors = None
+    if lookup is not None and lookup.building_json:
+        building_floors = count(json.loads(lookup.building_json).get("grndFlrCnt"))
+    return default_ladder(record.elevator, building_floors, record.floor), "default"
 
 
 @dataclass(frozen=True)
@@ -211,7 +225,7 @@ class MoveStore:
             places = {
                 row["role"]: PlaceRecord(
                     row["road_address"], row["detail_address"], row["floor"],
-                    row["elevator"], row["elevator_source"],
+                    row["elevator"], row["elevator_source"], row["ladder"],
                 )
                 for row in db.execute(
                     "SELECT * FROM move_places WHERE move_id = %s", (move_id,)
@@ -348,15 +362,15 @@ class MoveStore:
                     continue
                 db.execute(
                     "INSERT INTO move_places(move_id, role, road_address, detail_address, floor, "
-                    "elevator, elevator_source, updated_at) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) "
+                    "elevator, elevator_source, ladder, updated_at) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
                     "ON CONFLICT(move_id, role) DO UPDATE SET "
                     "road_address = excluded.road_address, "
                     "detail_address = excluded.detail_address, floor = excluded.floor, "
                     "elevator = excluded.elevator, elevator_source = excluded.elevator_source, "
-                    "updated_at = excluded.updated_at",
+                    "ladder = excluded.ladder, updated_at = excluded.updated_at",
                     (move_id, role, place.road_address, place.detail_address, place.floor,
-                     place.elevator, place.elevator_source, now),
+                     place.elevator, place.elevator_source, place.ladder, now),
                 )
             if schedule_sent:
                 if schedule is None:

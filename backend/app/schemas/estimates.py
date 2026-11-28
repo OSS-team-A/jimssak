@@ -15,9 +15,11 @@ class EstimatePlace(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    method: Transport | None = None
-    ladder_available: bool | None = Field(
-        default=None, description="현장에서 사다리차 작업 가능 여부"
+    method: Transport | None = Field(
+        default=None,
+        description=(
+            "운반 방식을 직접 정할 때만 보낸다. 없으면 저장된 승강기·사다리차 값으로 정한다."
+        ),
     )
     entry_floor: int = Field(default=1, ge=MIN_FLOOR, le=MAX_FLOOR)
     handling_fee_krw: Fee | None = Field(default=None, description="확인된 장비·층 작업비 합계")
@@ -31,17 +33,7 @@ class EstimatePlace(BaseModel):
     def validate_place(self):
         if self.entry_floor == 0:
             raise ValueError("0층은 없습니다.")
-        if self.method == "ladder" and self.ladder_available is False:
-            raise ValueError("사다리차 사용이 불가한 장소에는 다른 운반 방식을 선택해 주세요.")
         return self
-
-
-class EstimateStoneBed(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    item_id: str = Field(min_length=1, max_length=128, description="확정 목록의 돌침대 ID")
-    size: Literal["single", "double"] = "single"
-    fee_krw: Fee | None = Field(default=None, description="해당 목록 항목의 확인된 작업비 합계")
 
 
 class EstimateOptions(BaseModel):
@@ -73,17 +65,10 @@ class EstimateOptions(BaseModel):
     waiting_fee_krw: Fee | None = None
     toll_road: bool = False
     toll_fee_krw: Fee | None = None
-    stone_beds: list[EstimateStoneBed] = Field(default_factory=list, max_length=20)
     other_service_fees_krw: list[Fee | None] = Field(
         default_factory=list, max_length=20,
         description="사용자가 요청한 별도 작업별 확인 금액. 금액 미확인 작업은 항목당 5만 원.",
     )
-
-    @model_validator(mode="after")
-    def validate_work(self):
-        if len({item.item_id for item in self.stone_beds}) != len(self.stone_beds):
-            raise ValueError("같은 돌침대 작업을 중복으로 보낼 수 없습니다.")
-        return self
 
 
 class EstimateCards(BaseModel):

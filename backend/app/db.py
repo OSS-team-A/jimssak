@@ -75,6 +75,9 @@ CREATE TABLE IF NOT EXISTS move_places (
     updated_at BIGINT NOT NULL,
     PRIMARY KEY (move_id, role)
 );
+-- The user's ladder truck choice (use / not_use); null means the default applies.
+ALTER TABLE move_places ADD COLUMN IF NOT EXISTS ladder TEXT
+    CHECK (ladder IN ('use', 'not_use'));
 CREATE TABLE IF NOT EXISTS move_building_lookups (
     move_id TEXT NOT NULL REFERENCES moves(id) ON DELETE CASCADE,
     role TEXT NOT NULL CHECK (role IN ('origin', 'destination')),

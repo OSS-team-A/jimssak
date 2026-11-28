@@ -53,10 +53,6 @@ def create_estimate(
         date_info = moves.get_date_info(move.id, conn=db)
 
     items = {item.item_id: item for item in inventory.items}
-    for bed in options.stone_beds:
-        item = items.get(bed.item_id)
-        if item is None or "돌침대" not in "".join(item.label_ko.split()):
-            raise HTTPException(422, "확정 목록에 있는 돌침대만 작업을 요청할 수 있습니다.")
     day = _day_info(date_info) if (
         schedule and date_info and schedule.move_date == date_info.move_date
     ) else None

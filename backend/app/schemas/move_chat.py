@@ -5,7 +5,15 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from .inventory import Inventory, ItemCreate, ItemPatch
-from .moves import MAX_FLOOR, MIN_FLOOR, Address, DetailAddress, Elevator, ReviewDetails
+from .moves import (
+    MAX_FLOOR,
+    MIN_FLOOR,
+    Address,
+    DetailAddress,
+    Elevator,
+    Ladder,
+    ReviewDetails,
+)
 
 ChatText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1000)]
 
@@ -57,6 +65,7 @@ class PlaceChanges(BaseModel):
     detail_address: DetailAddress | None = None
     floor: int | None = Field(default=None, ge=MIN_FLOOR, le=MAX_FLOOR)
     elevator: Elevator | None = None
+    ladder: Ladder | None = None
 
 
 class ChatChanges(BaseModel):
