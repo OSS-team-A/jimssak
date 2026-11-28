@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from backend.app.config import Settings
 from backend.app.main import create_app
+from backend.app.schemas.comparison_chat import ComparisonChatInterpretation
 
 MOVES = "/api/v1/moves"
 MP4 = b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 1000
@@ -278,3 +279,65 @@ def test_comparison_is_private(client):
     other = {"X-Guest-Token": client.post(MOVES).json()["guest_token"]}
     assert client.get(f"{url}/comparison", headers=other).status_code == 404
     assert client.get(f"{url}/comparison").status_code == 401
+
+
+def test_comparison_chat_suggests_checks_without_saving_them(client, monkeypatch):
+    clock = Clock(client)
+    url, headers = confirmed_move(client, clock)
+    upload(client, url, headers, "after-media")
+    clock.advance(6)
+    shown = comparison(client, url, headers)
+    desk, chair, box = shown["items"]
+    body = {"comparison_id": shown["comparison_id"], "message": "책상은 괜찮고 의자는 못 찾았어요."}
+    expected = [
+        {"item_id": desk["item_id"], "user_check": "confirmed"},
+        {"item_id": chair["item_id"], "user_check": "not_found"},
+    ]
+
+    def reply(body, candidates):
+        assert [item["item_id"] for item in candidates] == [desk["item_id"], chair["item_id"]]
+        assert all("before_photos" not in item for item in candidates)
+        return ComparisonChatInterpretation(message="저장할까요?", checks=expected)
+
+    chat = client.app.state.move_chat
+    monkeypatch.setattr(chat, "interpret_comparison", reply)
+    path = f"{url}/comparison/chat"
+    result = client.post(path, headers=headers, json=body)
+    assert result.status_code == 200, result.text
+    assert result.json() == {
+        "comparison_id": shown["comparison_id"], "message": "저장할까요?", "checks": expected,
+    }
+    assert comparison(client, url, headers)["summary"]["unchecked"] == 2
+
+    expected[0]["item_id"] = box["item_id"]
+    assert client.post(path, headers=headers, json=body).status_code == 502
+    expected[0]["item_id"] = desk["item_id"]
+    assert client.patch(
+        f"{url}/comparison/items/{desk['item_id']}", headers=headers,
+        json={"comparison_id": shown["comparison_id"], "user_check": "confirmed"},
+    ).status_code == 200
+    assert comparison(client, url, headers)["summary"]["confirmed"] == 1
+
+    assert client.post(f"{url}/comparison/complete", headers=headers, json={
+        "comparison_id": shown["comparison_id"],
+    }).status_code == 200
+    assert client.post(path, headers=headers, json=body).status_code == 409
+
+
+def test_comparison_chat_rejects_retake_during_model_call(client, monkeypatch):
+    clock = Clock(client)
+    url, headers = confirmed_move(client, clock)
+    upload(client, url, headers, "after-media")
+    clock.advance(6)
+    old = comparison(client, url, headers)
+    body = {"comparison_id": old["comparison_id"], "message": "책상은 괜찮아요."}
+    check = {"item_id": old["items"][0]["item_id"], "user_check": "confirmed"}
+
+    def reply(*args):
+        upload(client, url, headers, "after-media", name="retake.mp4")
+        return ComparisonChatInterpretation(message="저장할까요?", checks=[check])
+
+    monkeypatch.setattr(client.app.state.move_chat, "interpret_comparison", reply)
+    result = client.post(f"{url}/comparison/chat", headers=headers, json=body)
+    assert result.status_code == 409
+    assert comparison(client, url, headers)["comparison_id"] != body["comparison_id"]

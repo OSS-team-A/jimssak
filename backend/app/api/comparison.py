@@ -1,7 +1,8 @@
 import json
+from collections import Counter
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 
 from ..schemas.analysis import AnalysisError
 from ..schemas.comparison import (
@@ -12,9 +13,11 @@ from ..schemas.comparison import (
     ComparisonSelection,
     ComparisonSummary,
 )
+from ..schemas.comparison_chat import ComparisonChatInput, ComparisonChatReply
 from ..services.analysis import StaleAnalysis
 from ..services.comparison import NEEDS_CHECK, ComparisonReviewed, ComparisonTask
 from ..services.inventory import load_inventory
+from ..services.move_chat import ChatProviderError, ChatUnavailable
 from .moves import (
     AccessibleMove,
     AnalysisDep,
@@ -31,6 +34,7 @@ ACCESS = {
     404: {"description": "없거나, 만료되었거나, 다른 사용자의 이사"},
 }
 STALE_RESULT = "비교 결과가 바뀌었어요. 결과를 다시 불러와 주세요."
+REVIEW_FINISHED = "이미 검토를 마친 이사예요."
 
 
 def _photos(snapshots: list[dict]) -> list[ComparisonPhoto]:
@@ -157,6 +161,72 @@ def _completed(move, analyses, comparisons, shown: str) -> ComparisonTask:
     return task
 
 
+def _chat_candidates(task: ComparisonTask) -> list[dict]:
+    results = task.results()
+    label_counts = Counter(item["label_ko"] for item in task.inventory)
+    candidates = []
+    for number, item in enumerate(task.inventory, start=1):
+        item_id = item["item_id"]
+        found = results.get(item_id)
+        if found is None or found["result"] not in NEEDS_CHECK:
+            continue
+        label = item["label_ko"]
+        candidates.append({
+            "item_id": item_id, "item_number": number, "label_ko": label,
+            "same_name_count": label_counts[label],
+            "quantity": item["quantity"], "dimensions_cm": item.get("dimensions_cm"),
+            "result": found["result"], "user_check": task.checks.get(item_id),
+        })
+    return candidates
+
+
+@router.post(
+    "/{move_id}/comparison/chat",
+    summary="채팅으로 이사 후 물품 확인 답 제안 (SC-16)",
+    description=(
+        "현재 `comparison_id`와 사용자 메시지, 필요하면 최근 대화 8개를 보낸다. "
+        "확인 대상의 `confirmed` 또는 `not_found` 답만 제안한다. "
+        "`checks`가 비어 있으면 질문이나 안내를 표시한다. 사용자가 제안을 확인하면 "
+        "각 물품의 기존 PATCH에 `comparison_id`와 `user_check`를 보내 저장한다."
+    ),
+    responses={
+        **ACCESS,
+        409: {"description": "비교 미완료·변경 또는 이미 검토 완료"},
+        502: {"description": "채팅 모델 호출 실패 또는 올바르지 않은 제안"},
+        503: {"description": "서버 채팅 모델 설정이 누락됨"},
+    },
+)
+def suggest_comparison_checks(
+    move: AccessibleMove, body: ComparisonChatInput, analyses: AnalysisDep,
+    comparisons: ComparisonDep, request: Request,
+) -> ComparisonChatReply:
+    task = _completed(move, analyses, comparisons, body.comparison_id)
+    if task.reviewed_at is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, REVIEW_FINISHED)
+    candidates = _chat_candidates(task)
+    if not candidates:
+        return ComparisonChatReply(
+            comparison_id=task.comparison_id, message="따로 확인할 물품이 없어요."
+        )
+
+    try:
+        proposal = request.app.state.move_chat.interpret_comparison(body, candidates)
+    except ChatUnavailable as exc:
+        raise HTTPException(503, "이사 후 확인 채팅이 아직 설정되지 않았어요.") from exc
+    except ChatProviderError as exc:
+        raise HTTPException(502, "답변을 가져오지 못했어요. 다시 시도해 주세요.") from exc
+    # A retake or review completion may occur while the model is responding.
+    current = _completed(move, analyses, comparisons, body.comparison_id)
+    if current.reviewed_at is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, REVIEW_FINISHED)
+    eligible_ids = {candidate["item_id"] for candidate in candidates}
+    if any(check.item_id not in eligible_ids for check in proposal.checks):
+        raise HTTPException(502, "현재 확인 대상에 맞는 답변을 제안하지 못했어요.")
+    return ComparisonChatReply(
+        comparison_id=current.comparison_id, message=proposal.message, checks=proposal.checks,
+    )
+
+
 @router.patch(
     "/{move_id}/comparison/items/{item_id}",
     summary="물품 확인 답 저장 (SC-16)",
@@ -187,7 +257,7 @@ def check_item(
     except StaleAnalysis as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, STALE_RESULT) from exc
     except ComparisonReviewed as exc:
-        raise HTTPException(status.HTTP_409_CONFLICT, "이미 검토를 마친 이사예요.") from exc
+        raise HTTPException(status.HTTP_409_CONFLICT, REVIEW_FINISHED) from exc
     return comparison_out(saved)
 
 
