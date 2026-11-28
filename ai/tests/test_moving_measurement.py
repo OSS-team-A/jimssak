@@ -241,3 +241,27 @@ def test_frame_hiding_the_floor_borrows_it_from_the_same_camera_path(monkeypatch
     assert cabinet.status != "unavailable"
     assert cabinet.dimensions["height"].cm == pytest.approx(150 * 89 / 100, rel=0.1)
     assert "floor_from_other_frames" in cabinet.qualifiers
+
+
+def _flat_object_view(x1, y1, x2, y2, complete, size=(480, 640)):
+    from ai.measurement.depth_geometry import object_dimensions
+    from ai.measurement.moving_video import _shape_mask
+
+    camera = np.array([[300., 0, 320], [0, 300., 240], [0, 0, 1]])
+    depth = np.full(size, 2.0)
+    view = ObjectView(frame_index=0, track_id="shelf", label="bookshelf", complete=complete,
+                      mask_polygon_px=[[x1, y1], [x2, y1], [x2, y2], [x1, y2]])
+    return object_dimensions(view, _shape_mask(view, size), depth, camera,
+                             np.array([0., -1., 0.]))
+
+
+def test_view_cut_at_a_side_keeps_only_its_height():
+    whole = _flat_object_view(100, 100, 300, 400, complete=True)
+    side_cut = _flat_object_view(450, 100, 639, 400, complete=False)
+    assert set(whole) == {"width", "depth", "height"}
+    assert side_cut.keys() == {"height"}
+    assert side_cut["height"] == pytest.approx(whole["height"], rel=0.02)
+    # Cut at the top or bottom, or marked incomplete without reaching a border (hidden
+    # behind something): nothing from this view.
+    assert _flat_object_view(100, 0, 300, 300, complete=False) == {}
+    assert _flat_object_view(100, 100, 300, 400, complete=False) == {}
