@@ -1,0 +1,126 @@
+import pytest
+from fastapi.testclient import TestClient
+
+from backend.app.config import Settings
+from backend.app.main import create_app
+
+MOVES = "/api/v1/moves"
+MP4 = b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 1000
+
+
+class Clock:
+    """One clock for both stores, so demo jobs advance together."""
+
+    def __init__(self, client):
+        self.now = 1_800_000_000.0
+        client.app.state.analysis_store.clock = lambda: self.now
+        client.app.state.comparison_store.clock = lambda: self.now
+
+    def advance(self, seconds):
+        self.now += seconds
+
+
+@pytest.fixture
+def client(tmp_path):
+    settings = Settings(media_dir=tmp_path / "media", analysis_demo=True,
+                        analysis_demo_seconds=6)
+    with TestClient(create_app(settings)) as client:
+        yield client
+
+
+def upload(client, url, headers, path="media", name="room.mp4"):
+    response = client.post(f"{url}/{path}", headers=headers,
+                           files={"file": (name, MP4, "video/mp4")})
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def confirmed_move(client, clock):
+    """A guest move whose demo list (desk, chair) plus a box is confirmed."""
+    body = client.post(MOVES).json()
+    url, headers = f"{MOVES}/{body['move_id']}", {"X-Guest-Token": body["guest_token"]}
+    upload(client, url, headers)
+    clock.advance(6)
+    client.post(f"{url}/inventory/items", headers=headers, json={"label_ko": "상자"})
+    assert client.post(f"{url}/inventory/confirm", headers=headers).status_code == 204
+    return url, headers
+
+
+def comparison(client, url, headers):
+    response = client.get(f"{url}/comparison", headers=headers)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_demo_comparison_flags_a_changed_and_a_missing_item(client):
+    clock = Clock(client)
+    url, headers = confirmed_move(client, clock)
+    assert comparison(client, url, headers)["status"] == "not_started"
+
+    upload(client, url, headers, "after-media")
+    assert comparison(client, url, headers)["status"] == "queued"
+    clock.advance(3)
+    running = comparison(client, url, headers)
+    assert running["status"] == "running" and running["items"] == []
+    clock.advance(3)
+    done = comparison(client, url, headers)
+    assert done["status"] == "completed" and done["demo"] is True
+    assert done["comparison_id"].startswith("cmp_")
+
+    desk, chair, box = done["items"]
+    assert (desk["label_ko"], desk["result"], desk["needs_check"]) == ("책상", "changed", True)
+    assert desk["reasons"] and desk["before_photos"] and desk["after_photos"]
+    assert (chair["result"], chair["after_photos"]) == ("missing", [])
+    assert (box["label_ko"], box["result"], box["needs_check"]) == ("상자", "ok", False)
+    assert done["summary"] == {"ok": 1, "changed": 1, "missing": 1, "unchecked": 2}
+    assert desk["user_check"] is None and done["reviewed_at"] is None
+
+    photo = client.get(desk["after_photos"][0]["image_url"], headers=headers)
+    assert photo.status_code == 200 and photo.headers["content-type"] == "image/jpeg"
+
+
+def test_after_video_needs_a_confirmed_list(client):
+    clock = Clock(client)
+    body = client.post(MOVES).json()
+    url, headers = f"{MOVES}/{body['move_id']}", {"X-Guest-Token": body["guest_token"]}
+    upload(client, url, headers)
+    clock.advance(6)
+    response = client.post(f"{url}/after-media", headers=headers,
+                           files={"file": ("after.mp4", MP4, "video/mp4")})
+    assert response.status_code == 409
+    assert comparison(client, url, headers)["status"] == "not_started"
+
+
+def test_after_video_keeps_the_first_video_and_a_retake_starts_over(client):
+    clock = Clock(client)
+    url, headers = confirmed_move(client, clock)
+    before = client.get(url, headers=headers).json()["data"]["room_video"]["video"]
+    first_upload = upload(client, url, headers, "after-media")
+    assert first_upload["replaced"] is False
+    clock.advance(6)
+    first = comparison(client, url, headers)
+
+    retake = upload(client, url, headers, "after-media", name="after-again.mp4")
+    assert retake["replaced"] is True
+    again = comparison(client, url, headers)
+    assert again["status"] == "queued" and again["comparison_id"] != first["comparison_id"]
+    after = client.get(url, headers=headers).json()["data"]["room_video"]["video"]
+    assert after["media_id"] == before["media_id"]
+
+
+def test_failed_demo_comparison(client):
+    clock = Clock(client)
+    url, headers = confirmed_move(client, clock)
+    upload(client, url, headers, "after-media", name="fail-dark.mp4")
+    clock.advance(6)
+    failed = comparison(client, url, headers)
+    assert failed["status"] == "failed" and failed["error"]["retryable"] is True
+    assert failed["items"] == []
+
+
+def test_comparison_is_private(client):
+    clock = Clock(client)
+    url, headers = confirmed_move(client, clock)
+    other = {"X-Guest-Token": client.post(MOVES).json()["guest_token"]}
+    assert client.get(f"{url}/comparison", headers=other).status_code == 404
+    assert client.get(f"{url}/comparison").status_code == 401

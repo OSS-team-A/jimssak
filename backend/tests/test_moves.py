@@ -175,27 +175,18 @@ def test_reupload_replaces_the_only_video(client, settings):
     assert stored_files(settings) == [f"{second.json()['media_id']}.mov"]
 
 
-def test_after_move_upload_keeps_initial_video_and_replaces_only_after_video(client, settings):
+def test_after_move_upload_needs_a_confirmed_list(client, settings):
     url, headers = guest_move(client)
     before = client.post(
         f"{url}/media", headers=headers, files={"file": ("before.mp4", MP4, "video/mp4")}
     ).json()
-    first = client.post(
+    response = client.post(
         f"{url}/after-media", headers=headers,
         files={"file": ("after.mp4", MP4, "video/mp4")},
     )
-    assert first.status_code == 201
-    assert first.json()["replaced"] is False
-    second = client.post(
-        f"{url}/after-media", headers=headers,
-        files={"file": ("after-again.mov", MP4, "video/quicktime")},
-    )
-    assert second.status_code == 201
-    assert second.json()["replaced"] is True
-    video = client.get(url, headers=headers).json()["data"]["room_video"]["video"]
-    assert video["media_id"] == before["media_id"]
-    expected_files = [f"{before['media_id']}.mp4", f"{second.json()['media_id']}.mov"]
-    assert stored_files(settings) == sorted(expected_files)
+    assert response.status_code == 409
+    # Refused before anything is stored.
+    assert stored_files(settings) == [f"{before['media_id']}.mp4"]
 
 
 def test_failed_reupload_keeps_previous_video(client, settings):
