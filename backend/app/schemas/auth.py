@@ -18,6 +18,22 @@ class LoginRequest(BaseModel):
 class SignupRequest(LoginRequest):
     """회원가입 본문."""
 
+    name: str | None = Field(default=None, min_length=1, max_length=50, description="회원 이름")
+    phone_number: str | None = Field(
+        default=None, pattern=r"^0[0-9]{1,2}-?[0-9]{3,4}-?[0-9]{4}$",
+        description="국내 전화번호. 하이픈 포함 입력 가능, 숫자만 저장",
+    )
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def strip_name(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("phone_number")
+    @classmethod
+    def normalize_phone(cls, value: str | None) -> str | None:
+        return value.replace("-", "") if value else None
+
     password: SecretStr = Field(
         min_length=8, max_length=128, description="비밀번호(8~128자). 서버에는 해시만 저장된다."
     )
@@ -35,6 +51,8 @@ class User(BaseModel):
     """회원 정보."""
 
     id: int = Field(description="회원 ID")
+    name: str | None = None
+    phone_number: str | None = None
     email: EmailStr = Field(description="이메일(소문자로 저장)")
 
 

@@ -27,6 +27,17 @@ def client(settings):
         yield client
 
 
+def test_signup_profile_is_saved(client):
+    profile = {"name": " 이사자 ", "phone_number": "010-1234-5678"}
+    signup = client.post(f"{AUTH}/signup", json={**ACCOUNT, **profile})
+    assert signup.status_code == 201
+    token = client.post(f"{AUTH}/login", json=ACCOUNT).json()["access_token"]
+    me = client.get(f"{AUTH}/me", headers={"Authorization": f"Bearer {token}"})
+    assert me.json() == signup.json()
+    assert me.json()["name"] == "이사자"
+    assert me.json()["phone_number"] == "01012345678"
+
+
 def test_account_and_sessions_survive_restart(settings):
     with TestClient(create_app(settings)) as client:
         signup = client.post(f"{AUTH}/signup", json=ACCOUNT)

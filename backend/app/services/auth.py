@@ -23,15 +23,18 @@ class AuthStore:
         # Unknown accounts go through the same password verification as existing accounts.
         self.dummy_hash = self.hasher.hash(secrets.token_urlsafe(32))
 
-    def signup(self, email: str, password: str) -> User | None:
+    def signup(
+        self, email: str, password: str, name: str | None = None, phone_number: str | None = None
+    ) -> User | None:
         password_hash = self.hasher.hash(password)
         with self.db.connect() as db:
             row = db.execute(
-                "INSERT INTO users(email, password_hash) VALUES (%s, %s) "
-                "ON CONFLICT(email) DO NOTHING RETURNING id",
-                (email, password_hash),
+                "INSERT INTO users(email, password_hash, name, phone_number) "
+                "VALUES (%s, %s, %s, %s) "
+                "ON CONFLICT(email) DO NOTHING RETURNING id, email, name, phone_number",
+                (email, password_hash, name, phone_number),
             ).fetchone()
-        return User(id=row["id"], email=email) if row else None
+        return User(**row) if row else None
 
     def login(self, email: str, password: str) -> LoginResponse | None:
         with self.db.connect() as db:
@@ -105,7 +108,8 @@ class AuthStore:
     def current_user(self, token: str) -> User | None:
         with self.db.connect() as db:
             user = db.execute(
-                "SELECT users.id, users.email FROM sessions JOIN users ON users.id = user_id "
+                "SELECT users.id, users.email, users.name, users.phone_number "
+                "FROM sessions JOIN users ON users.id = user_id "
                 "WHERE token_digest = %s AND expires_at > %s",
                 (_token_digest(token), int(time.time())),
             ).fetchone()

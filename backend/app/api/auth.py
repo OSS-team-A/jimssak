@@ -56,6 +56,7 @@ Token = Annotated[str, Depends(get_token)]
 
 @router.post(
     "/signup",
+    response_model_exclude_none=True,
     status_code=status.HTTP_201_CREATED,
     summary="회원가입",
     description=(
@@ -65,7 +66,9 @@ Token = Annotated[str, Depends(get_token)]
     responses={409: {"description": "이미 가입한 이메일"}},
 )
 def signup(payload: SignupRequest, store: Store) -> User:
-    user = store.signup(payload.email, payload.password.get_secret_value())
+    user = store.signup(
+        payload.email, payload.password.get_secret_value(), payload.name, payload.phone_number
+    )
     if user is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "이미 가입한 이메일입니다.")
     return user
@@ -115,8 +118,9 @@ def get_current_user(token: Token, store: Store) -> User:
 
 @router.get(
     "/me",
+    response_model_exclude_none=True,
     summary="내 정보",
-    description="Bearer 액세스 토큰으로 로그인한 회원의 ID와 이메일을 조회한다.",
+    description="회원 ID와 이메일, 가입 시 입력한 이름과 전화번호를 조회한다.",
     responses={401: {"description": "Bearer 토큰 누락, 만료 또는 무효"}},
 )
 def me(user: Annotated[User, Depends(get_current_user)]) -> User:
